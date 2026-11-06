@@ -18,7 +18,7 @@
   </form>{% endif %}
   <section class="card aside"><h2>Recently sent back</h2>
     {% for r in recent %}<div style="border-top:1px solid var(--line2);padding-top:7px"><b class="small"><span class="mono">{{ r.drive.code }}</span> · {{ r.drive.agency|default:"Studio" }}</b><div class="small muted">{{ r.sent_on|date:"j M" }} · {{ r.get_method_display }}{% if r.tracking %} · {{ r.tracking }}{% endif %}{% if r.collected_by %} · collected by {{ r.collected_by }}{% endif %}</div>
-      <form method="post" action="{% url 'drive_return_status' r.pk %}" class="actions" style="gap:6px;margin-top:4px">{% csrf_token %}<select class="input" name="status" style="width:auto;padding:5px 8px;font-size:12px" onchange="this.form.submit()" aria-label="Status of {{ r.drive.code }}">{% for v, l in statuses %}<option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form></div>
+      <form method="post" action="{% url 'drive_return_status' r.pk %}" class="actions" style="gap:6px;margin-top:4px">{% csrf_token %}<select class="input" name="status" style="width:auto;padding:5px 8px;font-size:12px" data-autosubmit aria-label="Status of {{ r.drive.code }}">{% for v, l in statuses %}<option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form></div>
     {% empty %}<span class="small muted">None yet.</span>{% endfor %}
   </section>
 </div>

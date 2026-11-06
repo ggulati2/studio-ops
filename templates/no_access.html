@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}No access{% endblock %}
+{% block content %}
+<div class="head"><div><h1>This page isn't part of your role</h1>
+<p>Your login works, but this screen belongs to another role. If you need it for your work, ask a founder to change your role.</p></div></div>
+<div class="actions"><a class="btn primary" href="{% url 'home' %}">Go to my start page</a></div>
+{% endblock %}

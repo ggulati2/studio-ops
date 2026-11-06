@@ -5,6 +5,7 @@ services:
     runtime: python
     plan: free
     region: singapore
+    autoDeploy: true            # every push to main redeploys, but only after CI passes (Render waits for checks)
     buildCommand: ./build.sh
     startCommand: gunicorn config.wsgi:application --workers 2 --timeout 60
     healthCheckPath: /health/
@@ -23,3 +24,5 @@ services:
         value: localhost
       - key: TIME_ZONE
         value: Asia/Kolkata
+      - key: ADMIN_IDLE_MINUTES
+        value: "120"

@@ -8,7 +8,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from ..access import ADMIN, roles
+from ..rbac import ADMIN, requires
 from ..models import Agency, Invoice, InvoiceLine, PayrollMonth, Payslip, Profile, Project, StudioSettings
 from ..services import (add_months, leave_count, month_start, next_invoice_number, parse_month, payslip_figures,
                         refresh_overdue)
@@ -17,7 +17,7 @@ User = get_user_model()
 __all__ = ["invoices", "invoice_update", "invoice_new", "invoice_print", "payroll", "payroll_save"]
 
 
-@roles(ADMIN)
+@requires("invoices.manage")
 def invoices(request):
     refresh_overdue()
     status = request.GET.get("status", "")
@@ -50,7 +50,7 @@ def invoices(request):
         "unbilled": unbilled, "owed": sorted(owed.items(), key=lambda x: -x[1]["amount"])})
 
 
-@roles(ADMIN)
+@requires("invoices.manage")
 def invoice_update(request, pk):
     """Inline row update: payment status + amount received."""
     inv = get_object_or_404(Invoice, pk=pk)
@@ -72,7 +72,7 @@ def invoice_update(request, pk):
     return redirect(request.POST.get("next") or "invoices")
 
 
-@roles(ADMIN)
+@requires("invoices.manage")
 def invoice_new(request):
     agencies = Agency.objects.filter(active=True)
     agency = agencies.filter(pk=request.GET.get("agency") or request.POST.get("agency")).first()
@@ -111,7 +111,7 @@ def invoice_new(request):
         "number": next_invoice_number(agency.currency if agency else "INR"), "studio": StudioSettings.get()})
 
 
-@roles(ADMIN)
+@requires("invoices.manage")
 def invoice_print(request, pk):
     inv = get_object_or_404(Invoice.objects.select_related("agency").prefetch_related("lines"), pk=pk)
     rows, last = [], None
@@ -126,7 +126,7 @@ def _people():
             .select_related("profile").order_by("first_name"))
 
 
-@roles(ADMIN)
+@requires("payroll.manage")
 def payroll(request):
     month = parse_month(request.GET.get("m"))
     run = PayrollMonth.objects.filter(month=month).first()
@@ -158,7 +158,7 @@ def payroll(request):
         "explain": next((r for r in rows if r["f"]["unpaid_leaves"] > 0), rows[0] if rows else None)})
 
 
-@roles(ADMIN)
+@requires("payroll.manage")
 def payroll_save(request):
     """Save adjustments (draft) or finalize: freezes every figure into payslips."""
     month = parse_month(request.POST.get("m"))

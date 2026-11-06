@@ -10,7 +10,8 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from ..access import ADMIN, roles
+from ..audit import record
+from ..rbac import ADMIN, requires
 from ..forms import (AgencyForm, AssignForm, EOTMForm, HolidayForm, NewProjectForm, PersonForm, ProjectForm,
                      StudioSettingsForm)
 from ..models import (Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Invoice, PlanEntry, Pod,
@@ -24,7 +25,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
 User = get_user_model()
 __all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_assign", "planner", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "extra_admin", "eotm",
-           "agencies", "agency_edit", "settings_view", "holiday_delete"]
+           "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
 
 def _load(user):
@@ -34,7 +35,7 @@ def _load(user):
     return avail
 
 
-@roles(ADMIN)
+@requires("dashboard.view")
 def dashboard(request):
     today = timezone.localdate()
     month = month_start(today)
@@ -76,7 +77,7 @@ def dashboard(request):
     return render(request, "founder/dashboard.html", ctx)
 
 
-@roles(ADMIN)
+@requires("projects.manage")
 def projects(request):
     qs = Project.objects.select_related("agency", "editor__profile", "drive")
     status = request.GET.get("status", "open")
@@ -99,7 +100,7 @@ def projects(request):
         "assign_form": AssignForm(), "new_form": NewProjectForm()})
 
 
-@roles(ADMIN)
+@requires("projects.manage")
 def project_new(request):
     form = NewProjectForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -120,7 +121,7 @@ def project_new(request):
                                               "submit": "Create jobs"})
 
 
-@roles(ADMIN)
+@requires("projects.manage")
 def project_edit(request, pk):
     p = get_object_or_404(Project, pk=pk)
     form = ProjectForm(request.POST or None, instance=p)
@@ -135,7 +136,7 @@ def project_edit(request, pk):
                                                        "reviews": p.reviews.select_related("reviewer")})
 
 
-@roles(ADMIN)
+@requires("projects.manage")
 def project_assign(request, pk):
     p = get_object_or_404(Project, pk=pk)
     form = AssignForm(request.POST)
@@ -146,7 +147,7 @@ def project_assign(request, pk):
     return redirect(request.POST.get("next") or "projects")
 
 
-@roles(ADMIN)
+@requires("planner.manage")
 def planner(request):
     start = request.GET.get("start")
     try:
@@ -188,7 +189,7 @@ def planner(request):
         "tray": open_projects.filter(editor__isnull=True)})
 
 
-@roles(ADMIN)
+@requires("deadlines.view")
 def deadlines(request):
     month = parse_month(request.GET.get("m"))
     agency = request.GET.get("agency", "")
@@ -231,7 +232,7 @@ def deadlines(request):
         "unassigned_soon": qs.filter(editor__isnull=True, deadline__lte=today + timedelta(days=21)).exclude(status=Project.CLOSED).count()})
 
 
-@roles(ADMIN)
+@requires("delivered.view")
 def delivered(request):
     month = parse_month(request.GET.get("m"))
     qs = (Project.objects.filter(status=Project.CLOSED, closed_on__range=(month_start(month), month_end(month)))
@@ -259,7 +260,7 @@ def delivered(request):
                                                     "drives": drives})
 
 
-@roles(ADMIN)
+@requires("reports.manage")
 def reports(request):
     s = StudioSettings.get()
     agency_id = request.GET.get("agency")
@@ -284,7 +285,7 @@ def reports(request):
                                                   "rows": rows, "stages": Project.CLIENT_STAGES, "buffer": s.report_buffer_days})
 
 
-@roles(ADMIN)
+@requires("reports.manage")
 def report_print(request):
     s = StudioSettings.get()
     today = timezone.localdate()
@@ -306,7 +307,7 @@ def report_print(request):
     return render(request, "print/team_report.html", {"groups": sorted(groups.items()), "note": note, "today": today})
 
 
-@roles(ADMIN)
+@requires("attendance.view_all")
 def team_view(request):
     month = parse_month(request.GET.get("m"))
     hpd = float(StudioSettings.get().hours_per_day)
@@ -324,23 +325,35 @@ def team_view(request):
                                                "next": add_months(month, 1), "pods": Pod.objects.all()})
 
 
-@roles(ADMIN)
+@requires("people.manage")
 def person_edit(request, pk=None):
     user = get_object_or_404(User, pk=pk) if pk else None
     form = PersonForm(request.POST or None, instance=user)
+    form.actor = request.user
     if request.method == "POST" and form.is_valid():
         c = form.cleaned_data
+        created = user is None
+        old_role = None if created else user.profile.role
         with transaction.atomic():
             if not user:
                 user = User(username=c["username"])
             user.username, user.first_name, user.email = c["username"], c["first_name"], c["email"]
             user.is_active = c["active"]
+            # Founders get the back office; nobody else does.
+            user.is_staff = user.is_superuser = (c["role"] == Profile.ADMIN)
             if c["password"]:
                 user.set_password(c["password"])
             user.save()
             p, _ = Profile.objects.get_or_create(user=user)
             p.role, p.pod, p.monthly_salary, p.joined_on, p.active = c["role"], c["pod"], c["monthly_salary"], c["joined_on"], c["active"]
+            if c["password"] and user.pk != request.user.pk:
+                p.must_change_password = True   # a password someone else knows must be replaced at first login
             p.save()
+        record(request, "people.create" if created else "people.update", user.username,
+               f"role {old_role or '-'} -> {c['role']}; active={c['active']}" + ("; password set" if c["password"] else ""))
+        if c["password"] and user.pk == request.user.pk:
+            from django.contrib.auth import update_session_auth_hash
+            update_session_auth_hash(request, user)
         messages.success(request, f"Saved {user.profile.name}.")
         return redirect("team")
     return render(request, "form_page.html", {"form": form, "title": f"Edit {user.profile.name}" if user else "Add a person",
@@ -348,7 +361,7 @@ def person_edit(request, pk=None):
                                               "intro": "Only people you add here can log in. Share their login name and password with them directly."})
 
 
-@roles(ADMIN)
+@requires("extra.manage")
 def extra_admin(request):
     month = parse_month(request.GET.get("m"))
     a, b = month_start(month), month_end(month)
@@ -374,7 +387,7 @@ def extra_admin(request):
                                                 "total_hours": round(sum(r["extra"] for r in rows), 1)})
 
 
-@roles(ADMIN)
+@requires("eotm.manage")
 def eotm(request):
     form = EOTMForm(request.POST or None, request.FILES or None,
                     initial={"month": add_months(month_start(timezone.localdate()), -1),
@@ -410,7 +423,7 @@ def _tally():
     return sorted(((users[k], v) for k, v in counts.items()), key=lambda x: -x[1])
 
 
-@roles(ADMIN)
+@requires("agencies.manage")
 def agencies(request):
     rows = []
     year = date(timezone.localdate().year, 1, 1)
@@ -421,7 +434,7 @@ def agencies(request):
     return render(request, "founder/agencies.html", {"rows": rows})
 
 
-@roles(ADMIN)
+@requires("agencies.manage")
 def agency_edit(request, pk=None):
     a = get_object_or_404(Agency, pk=pk) if pk else None
     form = AgencyForm(request.POST or None, instance=a)
@@ -438,7 +451,7 @@ def agency_edit(request, pk=None):
                                               "intro": "Saved once, used on every invoice, report and reminder."})
 
 
-@roles(ADMIN)
+@requires("settings.manage")
 def settings_view(request):
     s = StudioSettings.get()
     form = StudioSettingsForm(request.POST or None, instance=s, prefix="s")
@@ -470,9 +483,10 @@ def settings_view(request):
     return render(request, "founder/settings.html", {"form": form, "hform": hform, "holidays": hol})
 
 
-@roles(ADMIN)
+@requires("backup.download")
 def backup(request):
     """Download every record as one JSON file (restore with `manage.py loaddata`)."""
+    record(request, "backup.download", "full JSON backup")
     import io
     from django.core.management import call_command
     from django.http import HttpResponse
@@ -483,9 +497,40 @@ def backup(request):
     return resp
 
 
-@roles(ADMIN)
+@requires("settings.manage")
 def holiday_delete(request, pk):
     if request.method == "POST":
         Holiday.objects.filter(pk=pk).delete()
         messages.success(request, "Holiday removed.")
     return redirect("settings")
+
+
+@requires("audit.view")
+def audit_log(request):
+    from django.core.paginator import Paginator
+    from ..models import AuditEvent
+    qs = AuditEvent.objects.all()
+    q, kind = request.GET.get("q", "").strip(), request.GET.get("kind", "")
+    if q:
+        qs = qs.filter(Q(username__icontains=q) | Q(target__icontains=q) | Q(detail__icontains=q) | Q(action__icontains=q))
+    if kind == "security":
+        qs = qs.filter(Q(action__startswith="auth.") | Q(action__startswith="access.") | Q(action__startswith="people.")
+                       | Q(action="backup.download"))
+    elif kind == "changes":
+        qs = qs.filter(action__startswith="change.")
+    page = Paginator(qs, 50).get_page(request.GET.get("page"))
+    since = timezone.now() - timedelta(days=7)
+    stats = {"failed": AuditEvent.objects.filter(action="auth.login_failed", created__gte=since).count(),
+             "denied": AuditEvent.objects.filter(action="access.denied", created__gte=since).count(),
+             "locked": AuditEvent.objects.filter(action="auth.locked_out", created__gte=since).count()}
+    return render(request, "founder/audit.html", {"page": page, "q": q, "kind": kind, "stats": stats})
+
+
+@requires("settings.manage")
+def access_matrix(request):
+    from ..context import ROLE_LABEL
+    from ..rbac import PERMISSIONS, ROLE_PERMISSIONS, SENSITIVE
+    roles_ = list(ROLE_PERMISSIONS)
+    rows = [{"perm": k, "label": v, "sensitive": k in SENSITIVE, "cells": [k in ROLE_PERMISSIONS[r] for r in roles_]}
+            for k, v in PERMISSIONS.items()]
+    return render(request, "founder/access.html", {"rows": rows, "roles": [ROLE_LABEL[r] for r in roles_]})

@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "ops",
+    "ops.apps.OpsConfig",
 ]
 
 MIDDLEWARE = [
@@ -41,6 +41,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "ops.middleware.SecurityHeadersMiddleware",
+    "ops.middleware.PasswordAndSessionMiddleware",
+    "ops.middleware.AuditMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -75,7 +78,12 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+# Shared across all server processes (needed for the login lockout). Table is
+# created by `manage.py createcachetable` in build.sh.
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "ops_cache"}}
 
 LANGUAGE_CODE = "en-in"
 TIME_ZONE = os.environ.get("TIME_ZONE", "Asia/Kolkata")
@@ -96,18 +104,30 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
-# Sessions last a working fortnight; everyone logs in again after that.
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
+# Sessions: 7 days for the team (sliding), founders signed out after 2 idle hours.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = True
+ADMIN_IDLE_MINUTES = int(os.environ.get("ADMIN_IDLE_MINUTES", "120"))
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.ScryptPasswordHasher",
+                    "django.contrib.auth.hashers.PBKDF2PasswordHasher"]
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "1") == "1"
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
+    # HSTS preload needs a domain you own; *.onrender.com isn't. Turn on with a custom domain.
+    SECURE_HSTS_PRELOAD = os.environ.get("HSTS_PRELOAD", "0") == "1"
+    if not SECURE_HSTS_PRELOAD:
+        SILENCED_SYSTEM_CHECKS = ["security.W021"]
 
 # Uploaded photos are compressed and stored in the database (no disk needed
 # on free hosts). Keep uploads small.
@@ -118,4 +138,10 @@ LOGGING = {
     "version": 1,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {"django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False}},
 }
+
+# Tests: fast password hashing (real hashing is deliberately slow).
+import sys  # noqa: E402
+if len(sys.argv) > 1 and sys.argv[1] == "test":
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

@@ -13,7 +13,7 @@
   </section>
   <section class="card grow">
     <h2>Agency report</h2>
-    <form method="get" class="actions"><select class="input" name="agency" onchange="this.form.submit()" style="width:auto"><option value="">Choose an agency…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></form>
+    <form method="get" class="actions"><select class="input" name="agency" data-autosubmit style="width:auto"><option value="">Choose an agency…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></form>
     {% if agency %}
     <form method="post" class="card tight" style="border:0;padding:0">{% csrf_token %}
       <h3>What the client sees</h3>

@@ -91,3 +91,4 @@ def hours(v):
     except (TypeError, ValueError):
         return v
     return f"{v:.1f}".rstrip("0").rstrip(".") if v else "0"
+

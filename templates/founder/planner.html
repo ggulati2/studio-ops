@@ -18,7 +18,7 @@
         <span class="small" style="font-weight:700;letter-spacing:.04em">{{ c.kind|upper }}</span>{% if c.entry %}<div class="small">{{ c.entry.text }}</div>{% endif %}
       {% else %}
       <form method="post">{% csrf_token %}<input type="hidden" name="user" value="{{ c.u.pk }}"><input type="hidden" name="date" value="{{ row.d|date:'Y-m-d' }}">
-        <select name="value" onchange="this.form.submit()" aria-label="Plan for {{ c.u.profile.name }} on {{ row.d|date:'j M' }}">
+        <select name="value" data-autosubmit aria-label="Plan for {{ c.u.profile.name }} on {{ row.d|date:'j M' }}">
           <option value="">{% if c.kind == 'half' %}HALF DAY{% elif c.kind == 'wfh' %}WFH{% else %}—{% endif %}</option>
           {% for p in open_projects %}<option value="p:{{ p.pk }}" {% if c.entry.project_id == p.pk %}selected{% endif %}>{{ p }}</option>{% endfor %}
           <option value="Back-up" {% if c.entry.label == 'Back-up' %}selected{% endif %}>Back-up</option>

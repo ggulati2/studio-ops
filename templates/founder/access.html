@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Who can see what{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% url 'settings' %}" class="small">← Settings</a><h1>Who can see what</h1>
+<p>Each role's access, checked by the server on every page. Rows marked private (money, salaries, clients, people) only ever belong to founders.</p></div></div>
+<div class="card"><div class="scroll"><table class="matrix no-stack" style="min-width:640px">
+  <thead><tr><th>Permission</th>{% for r in roles %}<th>{{ r }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in rows %}
+    <tr><td>{{ row.label }}{% if row.sensitive %} <span class="tag gold">private</span>{% endif %}</td>
+      {% for c in row.cells %}<td>{% if c %}<span class="yes" aria-label="Yes">✓</span>{% else %}<span class="no" aria-label="No">–</span>{% endif %}</td>{% endfor %}</tr>
+  {% endfor %}</tbody>
+</table></div>
+<p class="small muted">To change a person's role, open Team &amp; attendance. To change what a role allows, a developer edits <span class="mono">ops/rbac.py</span>; the tests fail if a private permission is given to anyone but founders.</p></div>
+{% endblock %}

@@ -21,6 +21,57 @@ class StyledMixin:
                 f.widget.attrs.setdefault("class", "input")
 
 
+# ---------------------------------------------------------------- safe photo uploads
+MAX_PHOTO_BYTES = 10 * 1024 * 1024
+MAX_PHOTOS = 6
+ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "HEIF", "MPO"}
+
+
+def check_image(f):
+    """Reject anything that isn't a real, reasonably sized photo (checked by decoding it, not by its name)."""
+    from PIL import Image
+    if f.size > MAX_PHOTO_BYTES:
+        raise forms.ValidationError(f"{f.name} is over 10 MB.")
+    try:
+        f.seek(0)
+        with Image.open(f) as img:
+            fmt = img.format
+            if img.width * img.height > 40_000_000:
+                raise forms.ValidationError(f"{f.name} is too large in pixels.")
+            img.verify()
+    except forms.ValidationError:
+        raise
+    except Exception:
+        raise forms.ValidationError(f"{f.name} isn't a photo we can read (JPEG, PNG, WebP or HEIC).")
+    finally:
+        f.seek(0)
+    if fmt not in ALLOWED_FORMATS:
+        raise forms.ValidationError(f"{f.name}: {fmt} files aren't accepted. Use JPEG, PNG, WebP or HEIC.")
+    return f
+
+
+class MultiPhotoInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class PhotosField(forms.FileField):
+    """Several photos in one go (phone camera or gallery)."""
+    def __init__(self, *args, max_files=MAX_PHOTOS, **kwargs):
+        self.max_files = max_files
+        kwargs.setdefault("widget", MultiPhotoInput(attrs={"accept": "image/*", "multiple": True}))
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        files = data if isinstance(data, (list, tuple)) else ([data] if data else [])
+        if not files:
+            if self.required:
+                raise forms.ValidationError("Add at least one photo.")
+            return []
+        if len(files) > self.max_files:
+            raise forms.ValidationError(f"Up to {self.max_files} photos at a time.")
+        return [check_image(super(PhotosField, self).clean(f, initial)) for f in files]
+
+
 def editor_choices():
     return [("", "— Unassigned —")] + [(u.id, f"{u.profile.name} · {u.profile.pod or u.profile.get_role_display()}") for u in team()]
 
@@ -178,8 +229,7 @@ class AgencyForm(StyledMixin, forms.ModelForm):
 
 
 class DriveForm(StyledMixin, forms.ModelForm):
-    photos_upload = forms.FileField(required=False, label="Photos (label, serial sticker, any damage)",
-                                    widget=forms.ClearableFileInput(attrs={"accept": "image/*", "capture": "environment"}))
+    photos_upload = PhotosField(required=False, label="Photos (label, serial sticker, any damage) — up to 6")
 
     class Meta:
         model = HardDrive
@@ -189,8 +239,7 @@ class DriveForm(StyledMixin, forms.ModelForm):
 
 
 class DriveReturnForm(StyledMixin, forms.ModelForm):
-    photos_upload = forms.FileField(required=False, label="Photos when sending (drive, parcel, receipt)",
-                                    widget=forms.ClearableFileInput(attrs={"accept": "image/*", "capture": "environment"}))
+    photos_upload = PhotosField(required=False, label="Photos when sending (drive, parcel, receipt) — up to 6")
 
     class Meta:
         model = DriveReturn
@@ -241,18 +290,33 @@ class PersonForm(StyledMixin, forms.Form):
         return u
 
     def clean_password(self):
+        from django.contrib.auth.password_validation import validate_password
         pw = self.cleaned_data.get("password")
         if not self.instance and not pw:
             raise forms.ValidationError("New people need a first password.")
-        if pw and len(pw) < 8:
-            raise forms.ValidationError("Use at least 8 characters.")
+        if pw:
+            validate_password(pw, self.instance)
         return pw
+
+    def clean(self):
+        data = super().clean()
+        inst = self.instance
+        if inst and inst.profile.role == Profile.ADMIN:
+            losing = data.get("role") != Profile.ADMIN or not data.get("active")
+            if losing:
+                others = Profile.objects.filter(role=Profile.ADMIN, active=True, user__is_active=True).exclude(user=inst)
+                if not others.exists():
+                    raise forms.ValidationError("This is the last active founder login. Add another founder before changing it.")
+                if getattr(self, "actor", None) and self.actor.pk == inst.pk:
+                    raise forms.ValidationError("You can't remove your own founder access. Ask the other founder.")
+        return data
 
 
 class EOTMForm(StyledMixin, forms.ModelForm):
     month = forms.DateField(widget=forms.DateInput(attrs={"type": "month"}, format="%Y-%m"),
                             input_formats=["%Y-%m", "%Y-%m-%d"])
-    photo_upload = forms.FileField(required=False, label="Photo (optional)", widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
+    photo_upload = forms.FileField(required=False, label="Photo (optional)", validators=[check_image],
+                                   widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
 
     class Meta:
         model = EmployeeOfMonth

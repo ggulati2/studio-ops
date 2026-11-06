@@ -50,12 +50,8 @@ def team(roles=(Profile.TL, Profile.EDITOR)):
 
 
 def role_of(user):
-    if not user.is_authenticated:
-        return None
-    if user.is_superuser:
-        return Profile.ADMIN
-    p = getattr(user, "profile", None)
-    return p.role if p else None
+    from .rbac import role_of as _r
+    return _r(user)
 
 
 # ---------------------------------------------------------------- hours

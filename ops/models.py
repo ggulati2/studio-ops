@@ -87,6 +87,8 @@ class Profile(models.Model):
     joined_on = models.DateField(null=True, blank=True)
     color = models.CharField(max_length=9, blank=True)
     active = models.BooleanField(default=True)
+    must_change_password = models.BooleanField(default=False,
+                                               help_text="Forces a new password at next login (set when a founder sets/resets it)")
 
     def __str__(self):
         return self.name
@@ -556,3 +558,23 @@ class Congrats(models.Model):
 
     class Meta:
         unique_together = ("award", "user")
+
+
+# --------------------------------------------------------------------------
+# Audit trail
+# --------------------------------------------------------------------------
+class AuditEvent(models.Model):
+    """Append-only record of sensitive actions (who, what, when, from where)."""
+    created = models.DateTimeField(auto_now_add=True, db_index=True)
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    username = models.CharField(max_length=150, blank=True, help_text="Kept even if the user is deleted")
+    action = models.CharField(max_length=60, db_index=True)
+    target = models.CharField(max_length=200, blank=True)
+    detail = models.CharField(max_length=500, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"{self.created:%Y-%m-%d %H:%M} {self.username} {self.action} {self.target}"

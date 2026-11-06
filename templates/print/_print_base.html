@@ -19,8 +19,8 @@ td{padding:7px 5px;border-bottom:1px solid #F0EDEA;vertical-align:top}
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none}}
 @media (max-width:820px){.page{width:100%;min-height:auto;margin:0}}
 {% block style %}{% endblock %}
-</style></head>
+</style><script src="{% static 'app.js' %}" defer></script></head>
 <body>
-<div class="bar"><button onclick="window.print()">Download / Print PDF</button><a href="javascript:history.back()">Back</a></div>
+<div class="bar"><button type="button" data-print>Download / Print PDF</button><a href="/" data-back>Back</a></div>
 {% block page %}{% endblock %}
 </body></html>

@@ -7,8 +7,7 @@ from ops import views as v
 urlpatterns = [
     path("login/", v.ThrottledLogin.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
-    path("password/", auth_views.PasswordChangeView.as_view(template_name="form_page.html",
-         success_url="/", extra_context={"title": "Change my password", "submit": "Change password"}), name="password_change"),
+    path("password/", v.PasswordChange.as_view(), name="password_change"),
     path("health/", v.health, name="health"),
     path("img/<int:pk>/", v.image, name="image"),
     path("", v.home, name="home"),
@@ -63,5 +62,9 @@ urlpatterns = [
     path("qc/", v.qc_queue, name="qc_queue"),
     path("qc/<int:pk>/", v.qc_review, name="qc_review"),
     # raw data back-office for founders (Django admin)
+    path("settings/audit/", v.audit_log, name="audit_log"),
+    path("settings/access/", v.access_matrix, name="access_matrix"),
     path("backoffice/", admin.site.urls),
 ]
+
+handler403 = "ops.views.no_access"

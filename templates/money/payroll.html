@@ -25,7 +25,7 @@
     </tr>{% endfor %}</tbody>
     <tfoot><tr><td>Total</td><td class="right">₹{{ totals.salary|money }}</td><td></td><td>{{ totals.unpaid|hours }} days</td><td class="right" style="color:var(--bad)">− ₹{{ totals.leave_deduction|money }}</td><td class="right">+ ₹{{ totals.extra_pay|money }}</td><td>{{ totals.other|money }}</td><td class="right" style="color:var(--red)">₹{{ totals.net|money }}</td><td></td></tr></tfoot>
   </table></div>
-  {% if not run.finalized %}<div class="actions" style="justify-content:flex-end"><button class="btn">Save adjustments</button><button class="btn primary" name="finalize" value="1" onclick="return confirm('Finalize {{ month|date:"F" }}? Figures get locked and everyone can see their own payslip.')">Finalize {{ month|date:"F" }}</button></div>{% endif %}
+  {% if not run.finalized %}<div class="actions" style="justify-content:flex-end"><button class="btn">Save adjustments</button><button class="btn primary" name="finalize" value="1" data-confirm="Finalize {{ month|date:"F" }}? Figures get locked and everyone can see their own payslip.">Finalize {{ month|date:"F" }}</button></div>{% endif %}
   <span class="small muted">Leave = full leave days + half days × 0.5 (a studio half-day holiday isn't counted). {{ s.free_leaves_per_month|hours }} free per month; beyond that, one day's pay = {{ s.get_day_pay_basis_display|lower }}. Extra work comes from Extra work. Change the policy in Settings.</span>
 </form>
 {% if explain %}<section class="card aside" style="max-width:420px"><h2>How {{ explain.u.profile.name }}'s pay is worked out</h2>

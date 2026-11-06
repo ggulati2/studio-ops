@@ -3,7 +3,7 @@
 {% block content %}
 <div class="head"><div><a class="small" href="{% url 'invoices' %}">← Invoices</a><h1>Generate invoice</h1><p>Issued by {{ studio.legal_name }}. Your bank and PAN come from Settings.</p></div></div>
 <form method="get" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:flex-end">
-  <label style="flex:1 1 280px">Bill to<select class="input" name="agency" onchange="this.form.submit()"><option value="">Choose a client…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+  <label style="flex:1 1 280px">Bill to<select class="input" name="agency" data-autosubmit><option value="">Choose a client…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
   <a class="btn" href="{% url 'agency_new' %}">+ Add a new client</a>
 </form>
 {% if agency %}

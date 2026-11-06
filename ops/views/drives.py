@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
-from ..access import ADMIN, DRIVE, roles
+from ..rbac import ADMIN, requires
 from ..forms import DriveForm, DriveReturnForm
 from ..models import DriveReturn, HardDrive, Project
 from ..services import store_image
@@ -18,12 +18,12 @@ def _next_code(kind="HDD"):
     return f"{kind}-{(max(nums) + 1) if nums else 1:02d}"
 
 
-def _save_photos(request, field, target):
-    for f in request.FILES.getlist(field):
+def _save_photos(form, target):
+    for f in form.cleaned_data.get("photos_upload") or []:
         target.photos.add(store_image(f))
 
 
-@roles(ADMIN, DRIVE)
+@requires("drives.manage")
 def drives(request):
     qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "projects")
     status, q = request.GET.get("status", ""), request.GET.get("q", "").strip()
@@ -36,7 +36,7 @@ def drives(request):
     form = DriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
     if request.method == "POST" and form.is_valid():
         d = form.save()
-        _save_photos(request, "photos_upload", d)
+        _save_photos(form, d)
         messages.success(request, f"{d.code} recorded. Write {d.code} on its label.")
         return redirect("drives")
     all_ = HardDrive.objects.all()
@@ -47,20 +47,20 @@ def drives(request):
                                                     "status": status, "q": q, "statuses": HardDrive.STATUS})
 
 
-@roles(ADMIN, DRIVE)
+@requires("drives.manage")
 def drive_edit(request, pk):
     d = get_object_or_404(HardDrive, pk=pk)
     form = DriveForm(request.POST or None, request.FILES or None, instance=d)
     if request.method == "POST" and form.is_valid():
         form.save()
-        _save_photos(request, "photos_upload", d)
+        _save_photos(form, d)
         messages.success(request, f"{d.code} saved.")
         return redirect("drives")
     return render(request, "drives/edit.html", {"d": d, "form": form,
                                                 "jobs": d.projects.only("couple", "deliverable", "status")})
 
 
-@roles(ADMIN, DRIVE)
+@requires("drives.manage")
 def drive_returns(request):
     ready = HardDrive.objects.filter(status__in=("ready", "backup_done")).select_related("agency")
     sel = ready.filter(pk=request.GET.get("d")).first() or ready.first()
@@ -76,7 +76,7 @@ def drive_returns(request):
                 r = form.save(commit=False)
                 r.drive, r.recorded_by = sel, request.user
                 r.save()
-                _save_photos(request, "photos_upload", r)
+                _save_photos(form, r)
                 sel.status = "sent"
                 sel.save(update_fields=["status"])
                 messages.success(request, f"{sel.code} recorded as sent back.")
@@ -88,7 +88,7 @@ def drive_returns(request):
         "statuses": DriveReturn.STATUS})
 
 
-@roles(ADMIN, DRIVE)
+@requires("drives.manage")
 def drive_return_status(request, pk):
     r = get_object_or_404(DriveReturn, pk=pk)
     if request.method == "POST" and request.POST.get("status") in dict(DriveReturn.STATUS):

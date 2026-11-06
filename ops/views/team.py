@@ -3,13 +3,14 @@ own work (TLs: their pod). No money except their own extra pay and payslips."""
 from datetime import date, timedelta
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from ..access import ADMIN, EDITING, EDITOR, EVERYONE, QC, TL, roles
+from ..rbac import ADMIN, EDITOR, QC, TL, can_review_in_pod, has_perm, requires
 from ..forms import CloseJobForm, DayForm, ExtraEntryForm, ReviewForm, TaskFormSet
 from ..models import (QC_CHECKLIST, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
                       Project, Review, StudioSettings, TaskEntry)
@@ -26,7 +27,7 @@ def _my_projects(user):
     return Project.objects.filter(editor=user).exclude(status__in=(Project.CLOSED,)).select_related("agency", "drive")
 
 
-@roles(*EDITING)
+@requires("work.log_own")
 def today(request):
     user = request.user
     try:
@@ -76,7 +77,7 @@ def today(request):
     return render(request, "team/today.html", ctx)
 
 
-@roles(*EDITING)
+@requires("work.log_own")
 def my_month(request):
     user = request.user
     month = parse_month(request.GET.get("m"))
@@ -105,7 +106,7 @@ def my_month(request):
                                                "extra_h": extra_hours(user, month)})
 
 
-@roles(*EDITING)
+@requires("work.log_own")
 def my_jobs(request):
     jobs = []
     for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive"):
@@ -115,7 +116,7 @@ def my_jobs(request):
     return render(request, "team/jobs.html", {"jobs": jobs, "done": done})
 
 
-@roles(*EDITING)
+@requires("work.log_own")
 def job_submit(request, pk):
     """Editor says the cut is ready → goes to their TL (or straight to QC if they are a TL)."""
     p = get_object_or_404(Project, pk=pk, editor=request.user)
@@ -129,7 +130,7 @@ def job_submit(request, pk):
     return redirect("my_jobs")
 
 
-@roles(*EDITING)
+@requires("work.log_own")
 def close_job(request, pk):
     p = get_object_or_404(Project, pk=pk, editor=request.user)
     form = CloseJobForm(request.POST or None, initial={"project_file_link": p.project_file_link,
@@ -148,7 +149,7 @@ def close_job(request, pk):
     return render(request, "team/close_job.html", {"p": p, "form": form, "qc_ok": qc_ok})
 
 
-@roles(*EDITING)
+@requires("extra.log_own")
 def my_extra(request):
     user = request.user
     month = parse_month(request.GET.get("m"))
@@ -171,7 +172,7 @@ def my_extra(request):
         "pay": extra_pay(user, month), "hours": extra_hours(user, month)})
 
 
-@roles(*EDITING)
+@requires("extra.log_own")
 def extra_respond(request, pk):
     p = get_object_or_404(Project, pk=pk, editor=request.user, is_extra=True)
     if request.method == "POST":
@@ -183,7 +184,7 @@ def extra_respond(request, pk):
     return redirect("my_extra")
 
 
-@roles(*EDITING)
+@requires("extra.log_own")
 def extra_delete(request, pk):
     e = get_object_or_404(ExtraEntry, pk=pk, user=request.user)
     if request.method == "POST":
@@ -192,7 +193,7 @@ def extra_delete(request, pk):
     return redirect("my_extra")
 
 
-@roles(*EVERYONE)
+@requires("leaderboard.view")
 def leaderboard(request):
     counts = trophy_counts()
     people = list(User.objects.filter(profile__active=True).exclude(profile__role=ADMIN).select_related("profile"))
@@ -209,7 +210,7 @@ def leaderboard(request):
                                                      "recent": EmployeeOfMonth.objects.select_related("user__profile")[:6]})
 
 
-@roles(*EVERYONE)
+@requires("leaderboard.view")
 def congrats(request):
     award = celebrated_award()
     if request.method == "POST" and award and award.user_id != request.user.id:
@@ -219,7 +220,7 @@ def congrats(request):
     return redirect(request.POST.get("next") or "home")
 
 
-@roles(TL)
+@requires("pod.review")
 def pod(request):
     my_pod = getattr(request.user.profile, "pod", None)
     members = list(team().filter(profile__pod=my_pod)) if my_pod else [request.user]
@@ -249,11 +250,12 @@ def _review(request, p, kind):
     return passed
 
 
-@roles(TL, ADMIN)
+@requires("pod.review")
 def tl_review(request, pk):
-    p = get_object_or_404(Project, pk=pk)
-    if request.role == TL and (not request.user.profile.pod or p.editor is None
-                               or p.editor.profile.pod_id != request.user.profile.pod_id):
+    p = get_object_or_404(Project, pk=pk, status=Project.TL_REVIEW)
+    if not can_review_in_pod(request.user, p):
+        from ..audit import record
+        record(request, "access.denied", f"project {p.pk}", "TL review outside own pod")
         raise PermissionDenied
     if request.method == "POST":
         passed = _review(request, p, Review.TL)
@@ -261,7 +263,7 @@ def tl_review(request, pk):
     return redirect("pod")
 
 
-@roles(QC, ADMIN)
+@requires("qc.review")
 def qc_queue(request):
     queue = Project.objects.filter(status=Project.QC).select_related("agency", "editor__profile", "drive").order_by("deadline")
     sel = queue.filter(pk=request.GET.get("p")).first() or queue.first()
@@ -279,7 +281,7 @@ def qc_queue(request):
         "first_time": first_time})
 
 
-@roles(QC, ADMIN)
+@requires("qc.review")
 def qc_review(request, pk):
     p = get_object_or_404(Project, pk=pk, status=Project.QC)
     if request.method == "POST":
@@ -288,15 +290,16 @@ def qc_review(request, pk):
     return redirect("qc_queue")
 
 
-@roles(*EDITING)
+@requires("payslips.view_own")
 def my_payslips(request):
     slips = Payslip.objects.filter(user=request.user, payroll__finalized=True).select_related("payroll")
     return render(request, "team/payslips.html", {"slips": slips})
 
 
-@roles(*EVERYONE)
+@login_required
 def payslip_view(request, pk):
     slip = get_object_or_404(Payslip.objects.select_related("payroll", "user__profile"), pk=pk)
-    if request.role != ADMIN and (slip.user_id != request.user.id or not slip.payroll.finalized):
+    own = slip.user_id == request.user.id and slip.payroll.finalized and has_perm(request.user, "payslips.view_own")
+    if not (own or has_perm(request.user, "payroll.manage")):
         raise PermissionDenied
     return render(request, "print/payslip.html", {"s": slip})

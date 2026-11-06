@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% url 'settings' %}" class="small">← Settings</a><h1>Audit log</h1>
+<p>Every sign-in, blocked page and change, with who did it and from where. Entries can't be edited or deleted.</p></div></div>
+<div class="grid">
+  <div class="kpi{% if stats.failed > 20 %} warn{% endif %}"><span>Wrong passwords, last 7 days</span><b>{{ stats.failed }}</b></div>
+  <div class="kpi{% if stats.locked %} bad{% endif %}"><span>Logins locked, last 7 days</span><b>{{ stats.locked }}</b></div>
+  <div class="kpi{% if stats.denied %} warn{% endif %}"><span>Blocked pages, last 7 days</span><b>{{ stats.denied }}</b></div>
+</div>
+<div class="card">
+  <form method="get" class="actions">
+    <input class="input" name="q" value="{{ q }}" placeholder="Search name, page or detail" style="flex:1 1 240px;width:auto" aria-label="Search">
+    <select class="input" name="kind" data-autosubmit style="width:auto" aria-label="Filter">
+      <option value="">Everything</option>
+      <option value="security" {% if kind == 'security' %}selected{% endif %}>Sign-ins, access and people</option>
+      <option value="changes" {% if kind == 'changes' %}selected{% endif %}>Changes to data</option>
+    </select>
+    <button class="btn">Search</button>
+  </form>
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Record</th><th>Detail</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for e in page %}
+      <tr{% if e.action == 'access.denied' or e.action == 'auth.locked_out' %} class="hl"{% endif %}>
+        <td class="nowrap">{{ e.created|date:"j M, H:i" }}</td>
+        <td>{{ e.username|default:"—" }}</td>
+        <td><span class="tag{% if e.action == 'auth.login_failed' or e.action == 'auth.locked_out' or e.action == 'access.denied' %} bad{% elif e.action|slice:':5' == 'auth.' %} info{% elif e.action|slice:':7' == 'people.' %} warn{% endif %}">{{ e.action }}</span></td>
+        <td>{{ e.target }}</td>
+        <td class="small muted">{{ e.detail }}</td>
+        <td class="mono small">{{ e.ip|default:"" }}</td>
+      </tr>
+    {% empty %}<tr><td colspan="6" class="muted">Nothing matches. Clear the search to see everything.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if page.has_other_pages %}
+  <div class="actions">
+    {% if page.has_previous %}<a class="btn sm" href="?q={{ q|urlencode }}&kind={{ kind }}&page={{ page.previous_page_number }}">Newer</a>{% endif %}
+    <span class="small muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a class="btn sm" href="?q={{ q|urlencode }}&kind={{ kind }}&page={{ page.next_page_number }}">Older</a>{% endif %}
+  </div>{% endif %}
+</div>
+{% endblock %}
