@@ -25,17 +25,22 @@ Deploying it for free: **[DEPLOY.md](DEPLOY.md)**.
 | PDFs | **Print-ready HTML pages** → browser "Save as PDF" | No PDF libraries or system packages to break on a free host. Invoices, status reports and payslips each have a Download / Print button. |
 | Static files | **WhiteNoise** | Served compressed and cached by the app itself, with no CDN or bucket to set up. |
 
-### Roles and what they can open (enforced on the server, not just hidden menus)
+### Roles and permissions (RBAC)
 
-| Role | Sees |
+Access is defined in one table, `ops/rbac.py`. Each view declares what it needs with `@requires("permission")`, and the menu is built from the same table, so a link is shown only when the server would also allow the page. Founders can see the live table in the app under **Settings → Who can see what**.
+
+| Role | Can open |
 |---|---|
-| **Admin (founders)** | Everything: dashboard, projects, planner, deadlines, delivered, reports, invoices, payroll, team and attendance, value vs salary, extra work, Employee of the Month, agencies, settings, back office. |
-| **Team lead** | Their pod's jobs and today's status, review queue (approve → QC or send back), plus their own Today, month, jobs, extra work, payslips, leaderboard. No invoices or salaries. |
-| **Editor** | Their own Today, month calendar, jobs (send for review, close with Drive links), extra work, payslips, leaderboard. |
-| **QC** | QC queue with checklist, timecoded comments, pass/fail, history; leaderboard. |
-| **Drive desk** | Drive register (receive with photos), send-back records. Nothing else. |
+| **Founder** (admin) | Everything: dashboard, projects, planner, deadlines, delivered, reports, invoices, payroll, team and attendance, value vs salary, extra work, Employee of the Month, agencies, settings, audit log, backup, back office. Can also use the drive desk, pod review and QC screens. |
+| **Team lead** | Their pod's jobs and reviews (only editors in their own pod), plus their own Today, month, jobs, extra work, payslips and the leaderboard. |
+| **Editor** | Their own Today, month calendar, jobs (send for review, close with Drive links), extra work, payslips and the leaderboard. |
+| **QC** | The QC queue with checklist, pass/fail and history, plus the leaderboard. |
+| **Drive desk** | The drive register (receive with photos) and send-back records. Nothing else. |
 
-All 90 page and permission checks and 40 workflow and calculation checks pass (see *Testing* below).
+Rules that hold on every request:
+- **Private data is founders-only.** Invoices, payroll, salaries, attendance-vs-value, client rates, people management, the audit log and backups are marked `SENSITIVE`. The code refuses to start, and the tests fail, if any other role is given one of them.
+- **Records are scoped by owner.** Editors can only open their own jobs, extra work and finalized payslips. Team leads can only review films from their own pod. Drive photos are visible only to the drive desk and founders.
+- **Every page has a guard.** A test walks every URL and fails if a view has no `@requires(...)`.
 
 ### How things flow
 
@@ -63,37 +68,56 @@ Month end: Payroll draft (salary − unpaid leave + extra work ± adjustment) �
 
 ```
 config/settings.py     environment-driven settings (security on when DEBUG is off)
+ops/rbac.py            roles → permissions table, @requires decorator, pod scope
+ops/middleware.py      security headers (CSP), forced password change, founder idle sign-out, audit of every change
+ops/audit.py           audit log writer + sign-in/out signals
 ops/models.py          data model
 ops/services.py        business rules (hours, leave, payroll, capacity, value, invoice numbers, images)
-ops/access.py          @roles(...) decorator – every view declares who may open it
 ops/views/             admin.py · team.py · money.py · drives.py · common.py
+ops/tests/             test_access.py · test_flows.py · test_security.py
 templates/             base + per-area pages; templates/print/ = invoice, reports, payslip
+static/                app.css (design system) · app.js (no inline scripts anywhere) · icons.svg
 ops/management/commands/seed_demo.py      demo data (empty databases only)
 ops/management/commands/ensure_founder.py founder login from env vars at deploy
+.github/workflows/ci.yml                  tests on Postgres + deploy checks + dependency audit on every push
 ```
 
 ### Security
 
-- Invite-only: there is no sign-up page, and only founders create logins.
-- Passwords are hashed by Django and must be at least 8 characters.
-- Login is locked for 15 minutes after 8 wrong attempts.
-- In production: HTTPS only, secure cookies, HSTS, CSRF on every form, and no framing.
-- Money, salaries and client rates are only reachable by the admin role, and every money URL returns 403 for anyone else.
-- Photos are served only to logged-in users.
+| Area | What's in place |
+|---|---|
+| Accounts | Invite-only, with no sign-up page. Passwords are hashed with scrypt and must be 8+ characters, not common, not only numbers and not close to the name. A password a founder sets must be replaced by the person at their next sign-in. |
+| Sign-in | A login name is locked for 15 min after 8 wrong passwords, and an IP after 30. Counters are stored in the database so every server process shares them. Every success, failure and lockout is logged. |
+| Sessions | HttpOnly, SameSite=Lax and Secure cookies. Team sessions last 7 days (sliding). Founders are signed out after 2 idle hours (`ADMIN_IDLE_MINUTES`). |
+| Authorisation | RBAC table plus per-record ownership checks (see above). The back office (`/backoffice/`) is open to founder (superuser) accounts only, and role changes keep that in sync. The last active founder can't be demoted or deactivated, and founders can't remove their own access. |
+| Browser | HTTPS-only with HSTS (1 year). Content-Security-Policy with `script-src 'self'` (the templates contain no inline JavaScript), `frame-ancestors 'none'`, Permissions-Policy, nosniff, a same-origin referrer policy, and `no-store` caching on signed-in pages. CSRF protection on every form. |
+| Uploads | Photos are decoded with Pillow to check they're real (JPEG/PNG/WebP/HEIC), limited to 10 MB / 40 MP / 6 per upload, then re-encoded, which strips any embedded payload. They're stored in the database and served only to permitted roles. |
+| Audit log | Append-only: sign-ins, lockouts, blocked pages, people and role changes, backups, and every saved change (who, screen, record, non-secret values, IP). Founders read it at **Settings → Audit log**. Nobody can edit or delete entries, even in the back office. |
+| Supply chain | Dependabot (weekly) and `pip-audit` in CI. `manage.py check --deploy` must pass before every deploy. |
+
+How to report a problem: see [SECURITY.md](SECURITY.md).
 
 ### Testing
 
 ```bash
-DEBUG=1 python manage.py migrate && DEBUG=1 python manage.py seed_demo
+DEBUG=1 python manage.py test ops
 ```
 
-The checks used during the build log in as every role and open every page. They confirm each blocked page returns 403, then run the full workflows: day log hour split, TL review → QC → close (including rejecting a non-Drive link), invoice totals and payment states, the payroll leave deduction, extra pay, holidays reducing capacity, Employee of the Month, the drive send-back guard, and client-report overrides.
+33 tests in three groups:
+- **Access:** every role opens its own pages and gets 403 on the rest, the menu matches permissions, and every URL has a guard.
+- **Flows:** the day-log hour split, TL review → QC → close (including rejecting a non-Drive link), invoice totals and payment states, the payroll leave deduction, extra pay, holidays reducing capacity, Employee of the Month, drive photos and the send-back guard, client-report overrides, and new projects.
+- **Security:** headers and CSP, no inline scripts, lockout, forced password change, weak passwords, founder idle timeout, role-to-back-office sync, the last-founder guard, fake and oversized uploads, photo permissions, and audit entries.
+
+GitHub Actions runs the same suite on Postgres with production settings on every push and pull request.
+
+### Working on the code (changes and features)
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: one branch per change → pull request → CI must be green → merge to `main` → Render deploys automatically.
 
 ### What it doesn't do (yet)
 
 - **Sending:** it doesn't send email or WhatsApp itself. Every report, invoice and payslip opens as a PDF page you download or share from your phone. This keeps it free and keeps you in control of what gets sent.
 - **Drive link check:** it only confirms a link is a Google Drive link. Proving it sits in the *company* Drive needs the Google Drive API, which is a possible next step.
-- **Uploads:** one photo per upload field. Add more by editing the drive again.
 
 ### Running it locally
 

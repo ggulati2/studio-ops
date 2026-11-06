@@ -13,11 +13,9 @@ About 30–40 minutes, once. No credit card needed. You'll set up three free acc
 
 ---
 
-## 1. Put the code on GitHub (5 min)
+## 1. The code on GitHub (done)
 
-1. Sign up at github.com, then **New repository** → name `studio-ops` → choose **Private** → Create.
-2. Click **uploading an existing file** and drag in **everything inside** the `studioops` folder (not the folder itself), including `render.yaml` and `build.sh`.
-3. Click **Commit changes**.
+The code lives in the private repo **ggulati2/studio-ops**. Every push to `main` runs the tests (GitHub → **Actions** tab) and redeploys the app.
 
 ## 2. Create the database on Neon (5 min)
 
@@ -37,8 +35,9 @@ About 30–40 minutes, once. No credit card needed. You'll set up three free acc
    - `DATABASE_URL`: paste the Neon string.
    - `FOUNDER_USERNAME`: your login name, e.g. `ag`.
    - `FOUNDER_PASSWORD`: a strong password, at least 8 characters.
-3. Click **Apply**. The first build takes about 3–5 minutes. It installs everything, sets up the database tables and creates your founder login.
-4. Open `https://studio-ops.onrender.com`, or whatever name Render shows, and sign in.
+3. Click **Apply**. The first build takes about 3–5 minutes. It installs everything, sets up the database tables (including the shared login-lockout table), runs the production safety checks and creates your founder login.
+4. In Render → the service → **Settings → Auto-Deploy**, choose **After CI checks pass**, so a change whose tests fail never goes live.
+5. Open `https://studio-ops.onrender.com`, or whatever name Render shows, and sign in.
 
 *Forgot the founder password?* In Render → Environment, change `FOUNDER_PASSWORD`, add `FOUNDER_RESET_PASSWORD` = `1`, then redeploy. Remove `FOUNDER_RESET_PASSWORD` afterwards.
 
@@ -61,15 +60,20 @@ Without this, the first person each morning waits about a minute.
 2. **Agencies:** add each client once, with billing address, invoice emails, currency, payment terms and **usual rates** (e.g. `Trailer = 18000`).
 3. **Team & attendance → Add a person:** add each person with their role (Team lead, Editor, QC, Drive desk), pod and salary. Set a first password for each.
 4. **Pods:** in **Back office → Pods**, create Pod 1/2/3 and set each lead.
-5. Send each person the link, their login name and password. Ask them to use **Change password** on first login.
+5. Send each person the link, their login name and the first password. The app makes them choose their own password the first time they sign in.
 
 ## 6. Every week
 
 - **Settings → Download full backup:** keep the JSON file in your Google Drive. To restore: `python manage.py loaddata backup.json`.
 
+## 7. Every month (2 minutes)
+
+- **Settings → Audit log → Sign-ins, access and people:** check for repeated lockouts or blocked pages from someone who shouldn't be trying them.
+- **Team & attendance:** deactivate anyone who has left. Their login stops working immediately; their history stays.
+
 ## Updating the app later
 
-Change files in the GitHub repo (or upload new versions). Render redeploys automatically and database changes are applied during the build.
+Changes go through GitHub (see CONTRIBUTING.md): a branch, then a pull request, then green tests, then merge. Render redeploys after the checks pass, and database changes are applied during the build.
 
 ## When you outgrow free
 
