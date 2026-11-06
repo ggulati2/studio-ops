@@ -3,7 +3,7 @@
 {% block page %}
 <div class="page" style="min-height:auto"><div class="pad">
   <div style="display:flex;justify-content:space-between;align-items:flex-start"><img src="{% static 'img/redwed-on-light.png' %}" alt="" style="width:140px;margin-left:-16mm">
-    <div style="text-align:right"><div class="eyebrow" style="color:#5E5E5E">Payslip</div><div style="font-family:'Bodoni Moda',Georgia,serif;font-size:24px">{{ s.payroll.month|date:"F Y" }}</div><div style="font-size:11px;color:#5E5E5E">{{ studio.legal_name }}</div></div></div>
+    <div style="text-align:right"><div class="eyebrow" style="color:#5E5E5E">Payslip</div><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">{{ s.payroll.month|date:"F Y" }}</div><div style="font-size:11px;color:#5E5E5E">{{ studio.legal_name }}</div></div></div>
   <div style="font-size:14px"><b>{{ s.user.profile.name }}</b> · {{ s.user.profile.get_role_display }}</div>
   <table style="font-size:13px"><tbody>
     <tr><td>Monthly salary</td><td style="text-align:right">₹{{ s.salary|money }}</td></tr>

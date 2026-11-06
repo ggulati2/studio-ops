@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#2A0B0E">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="robots" content="noindex,nofollow">
 <title>{% block title %}Studio Ops{% endblock %} · {{ studio.brand_name }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400..700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'app.css' %}">
 <link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
 <script src="{% static 'app.js' %}" defer></script>
@@ -22,14 +22,14 @@
   <button type="button" class="iconbtn" data-nav-toggle aria-controls="side" aria-expanded="false" aria-label="Open menu">
     <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#menu"/></svg>
   </button>
-  <a href="{% url 'home' %}" class="toplogo"><img src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+  <a href="{% url 'home' %}" class="toplogo"><img src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"></a>
   <span class="avatar sm" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>
 </header>
 <div class="scrim" aria-hidden="true"></div>
 
 <div class="shell">
   <aside class="side" id="side" aria-label="Menu">
-    <a href="{% url 'home' %}" class="brand"><img class="logo" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+    <a href="{% url 'home' %}" class="brand"><img class="logo" src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"></a>
 
     <div class="who">
       <span class="avatar{% if celebrating %} gold{% endif %}" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>

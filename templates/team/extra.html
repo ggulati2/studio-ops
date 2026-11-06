@@ -21,7 +21,7 @@
     </table></div></section>
   </div>
   <aside class="aside">
-    <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="font-family:var(--serif);font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · fixed jobs count when the job is closed · paid with your salary on the 1st</span></section>
+    <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="letter-spacing:-.03em;font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · fixed jobs count when the job is closed · paid with your salary on the 1st</span></section>
     <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate }}/hr{% else %}Fixed ₹{{ p.extra_rate|money }}{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
   </aside>
 </div>
