@@ -1,7 +1,7 @@
 """Studio Ops settings.
 
 Everything environment-specific comes from environment variables, so the
-same code runs on a laptop (SQLite) and in production (Vercel + Supabase Postgres).
+same code runs on a laptop (SQLite) and in production (Render + Supabase Postgres).
 """
 import os
 from pathlib import Path
@@ -15,14 +15,9 @@ SECRET_KEY = os.environ.get("SECRET_KEY") or ("dev-only-insecure-key" if DEBUG e
 if not SECRET_KEY:
     raise RuntimeError("Set the SECRET_KEY environment variable (see DEPLOY.md).")
 
-# Vercel: "production", "preview" (pull requests / branches) or "development"; empty elsewhere.
-VERCEL_ENV = os.environ.get("VERCEL_ENV", "")
-
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
-# Vercel exposes the deployment's own hostnames as system environment variables.
-for var in ("VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL", "VERCEL_BRANCH_URL"):
-    if os.environ.get(var):
-        ALLOWED_HOSTS.append(os.environ[var])
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):          # set by Render, e.g. studio-ops.onrender.com
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in ("localhost", "127.0.0.1")]
 
 INSTALLED_APPS = [
@@ -71,29 +66,21 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # Database
-# • Production: Supabase Postgres through its transaction pooler (port 6543), the
-#   mode meant for serverless functions. The pooler can't keep prepared
-#   statements, server-side cursors or long-lived connections, so all are off.
-# • Pull-request previews never touch production data: unless PREVIEW_DATABASE_URL
-#   is set they run on a throwaway demo database (see config/wsgi.py).
+# • Production: Supabase Postgres through its *session* pooler (port 5432). It's
+#   IPv4 (Render has no IPv6) and suits a long-running server: connections are
+#   reused for 60 s and health-checked. TLS is required.
+# • If the transaction pooler (6543) is ever used instead, prepared statements,
+#   server-side cursors and persistent connections are switched off to match it.
 # • Local: SQLite.
-if VERCEL_ENV == "preview":
-    DATABASE_URL = os.environ.get("PREVIEW_DATABASE_URL", "")
-else:
-    DATABASE_URL = os.environ.get("DATABASE_URL", "")
-PREVIEW_DEMO = VERCEL_ENV == "preview" and not DATABASE_URL
-
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 if DATABASE_URL:
-    _db = dj_database_url.parse(DATABASE_URL, conn_max_age=0, ssl_require="sslmode=disable" not in DATABASE_URL
-                                and "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL)
-    if ":6543" in DATABASE_URL:                      # Supabase / PgBouncer transaction mode
+    local = any(h in DATABASE_URL for h in ("localhost", "127.0.0.1"))
+    _db = dj_database_url.parse(DATABASE_URL, conn_max_age=60, conn_health_checks=True,
+                                ssl_require=not local and "sslmode=disable" not in DATABASE_URL)
+    if ":6543" in DATABASE_URL:
         _db.setdefault("OPTIONS", {})["prepare_threshold"] = None
         _db["DISABLE_SERVER_SIDE_CURSORS"] = True
-    else:
-        _db["CONN_MAX_AGE"] = 60
-        _db["CONN_HEALTH_CHECKS"] = True
-elif PREVIEW_DEMO:
-    _db = {"ENGINE": "django.db.backends.sqlite3", "NAME": "/tmp/studio-ops-preview.sqlite3"}
+        _db["CONN_MAX_AGE"] = 0
 else:
     _db = {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}
 DATABASES = {"default": _db}
@@ -148,19 +135,18 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
-    # HSTS preload needs a domain you own; *.vercel.app isn't. Turn on with a custom domain.
+    # HSTS preload needs a domain you own; *.onrender.com isn't. Turn on with a custom domain.
     SECURE_HSTS_PRELOAD = os.environ.get("HSTS_PRELOAD", "0") == "1"
     if not SECURE_HSTS_PRELOAD:
         SILENCED_SYSTEM_CHECKS = ["security.W021"]
 
-# Uploaded photos are compressed and stored in the database (serverless hosts
-# have no disk). Vercel refuses request bodies over 4.5 MB, so the browser
-# shrinks photos before sending (static/app.js) and the server matches that cap.
-DATA_UPLOAD_MAX_MEMORY_SIZE = 4_500_000
-FILE_UPLOAD_MAX_MEMORY_SIZE = 4_500_000
-FILE_UPLOAD_TEMP_DIR = "/tmp" if VERCEL_ENV else None
+# Uploaded photos are compressed and stored in the database (free hosts have no
+# permanent disk). The browser shrinks photos first (static/app.js) so uploads
+# stay fast on mobile data; the server re-checks and re-compresses.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 
-# Vercel Cron calls /cron/daily/ with "Authorization: Bearer <CRON_SECRET>".
+# cron-job.org calls /cron/daily/ with "Authorization: Bearer <CRON_SECRET>".
 CRON_SECRET = os.environ.get("CRON_SECRET", "")
 
 LOGGING = {

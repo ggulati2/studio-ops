@@ -2,27 +2,28 @@
 
 Private web app for running the editing studio: projects, planner, deadlines, daily logs, QC, delivery, hard drives, invoices, payroll, extra work, and Employee of the Month. Founders, team leads, editors, QC and the drive desk each log in and see only what their role allows.
 
-Deploying it (Vercel + Supabase): **[DEPLOY.md](DEPLOY.md)**.
+Deploying it for ₹0 (Render + Supabase): **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
 ## Architecture
 
 ```
- Phones / laptops ──HTTPS──▶  Vercel (Mumbai, bom1)                     Supabase Postgres (Mumbai)
-                              Django 5 as one serverless function ──▶   all records incl. photos
-                              styles/icons served from Vercel's CDN      (transaction pooler, port 6543)
- Vercel Cron, daily ──▶ /cron/daily/   (overdue invoices, expired sessions, keeps Supabase active)
+ Phones / laptops ──HTTPS──▶  Render, Singapore (free web service)      Supabase Postgres, Singapore (free)
+                              Django 5 · gunicorn · WhiteNoise   ──TLS──▶ all records incl. photos
+                                                                           (session pooler, port 5432)
+ cron-job.org ──▶ /health/ every 10 min (keeps Render awake, no DB hit)
+              └─▶ /cron/daily/ 03:00 IST (overdue invoices, expired sessions, keeps Supabase active)
  GitHub Actions ──▶ tests on every push · encrypted pg_dump every Sunday
 ```
 
 | Decision | Choice | Why |
 |---|---|---|
 | Framework | **Django 5** monolith, server-rendered HTML | Login, sessions, CSRF, permissions, database migrations and an admin back office come built in. One deployable unit, no separate frontend to host. Works on any phone browser. |
-| Hosting | **Vercel** (zero-config Django) | Deploys from GitHub on every merge, gives a demo preview per pull request, HTTPS and CDN included, no server to sleep or patch. **Business use needs the Pro plan**; see DEPLOY.md. |
-| Database | **Supabase Postgres** via the transaction pooler (SQLite locally) | Serverless functions open many short connections, which the pooler is built for. Prepared statements and server cursors are switched off to match. Supabase's auto-generated public API is locked out of every table at each deploy. |
-| Previews | **Throwaway demo database** | Branch and pull-request deployments never receive the production `DATABASE_URL`, so unfinished code can't touch real data. |
-| Files / photos | **Shrunk in the browser, re-compressed on the server, stored in the database** | Vercel accepts at most 4.5 MB per request and has no disk. Photos end up at roughly 150–300 KB. |
+| Hosting | **Render free web service** (Starter, about $7/month, when it becomes critical) | ₹0, deploys from GitHub after CI passes, HTTPS included, no credit card. It sleeps after 15 min idle, so a free pinger keeps it awake. |
+| Database | **Supabase Postgres** through the session pooler (SQLite locally) | Free 500 MB that doesn't expire. The pooler is IPv4, which Render needs. Supabase's auto-generated public API is locked out of every table at each deploy. |
+| Region | **Both in Singapore** | Render has no India region. Keeping the database beside the app avoids a cross-region round-trip on every query. |
+| Files / photos | **Shrunk in the browser, re-compressed on the server, stored in the database** | Free hosts have no permanent disk. Photos end up at roughly 150–300 KB. |
 | Film files | **Links to the company Google Drive** | Project files and MP4s stay on Drive. The app stores links, never video. |
 | PDFs | **Print-ready HTML pages** → browser "Save as PDF" | No PDF libraries to break. Invoices, status reports and payslips each have a Download / Print button. |
 | Backups | **Weekly encrypted `pg_dump` in GitHub Actions** + in-app records download | Supabase Free has no backups. |
@@ -82,8 +83,7 @@ static/                app.css (design system) · app.js (no inline scripts anyw
 ops/management/commands/seed_demo.py      demo data (empty databases only)
 ops/management/commands/ensure_founder.py founder login from env vars at deploy
 ops/management/commands/secure_supabase.py locks Supabase's Data API out of all tables
-scripts/vercel_build.py                   production build: migrate, cache table, lockdown, founder, checks
-vercel.json · pyproject.toml              Vercel region, function timeout, daily cron, Python deps
+render.yaml · build.sh                    Render service and deploy steps: migrate, cache table, lockdown, checks, founder
 .github/workflows/ci.yml                  tests on Postgres + deploy checks + dependency audit on every push
 .github/workflows/backup.yml              weekly encrypted database backup
 ```
@@ -99,7 +99,7 @@ vercel.json · pyproject.toml              Vercel region, function timeout, dail
 | Browser | HTTPS-only with HSTS (1 year). Content-Security-Policy with `script-src 'self'` (the templates contain no inline JavaScript), `frame-ancestors 'none'`, Permissions-Policy, nosniff, a same-origin referrer policy, and `no-store` caching on signed-in pages. CSRF protection on every form. |
 | Uploads | Photos are decoded with Pillow to check they're real (JPEG/PNG/WebP/HEIC), limited to 10 MB / 40 MP / 6 per upload, then re-encoded, which strips any embedded payload. They're stored in the database and served only to permitted roles. |
 | Audit log | Append-only: sign-ins, lockouts, blocked pages, people and role changes, backups, and every saved change (who, screen, record, non-secret values, IP). Founders read it at **Settings → Audit log**. Nobody can edit or delete entries, even in the back office. |
-| Database | TLS-only connection. Supabase's REST/GraphQL Data API is denied on every table (row level security on, `anon`/`authenticated` privileges revoked), re-applied on every deploy. Previews never get production credentials. Weekly dumps are AES-256 encrypted before they leave the runner. |
+| Database | TLS-only connection. Supabase's REST/GraphQL Data API is denied on every table (row level security on, `anon`/`authenticated` privileges revoked), re-applied on every deploy. Weekly dumps are AES-256 encrypted before they leave the runner. |
 | Supply chain | Dependabot (weekly) and `pip-audit` in CI. `manage.py check --deploy` must pass before every deploy. |
 
 How to report a problem: see [SECURITY.md](SECURITY.md).
@@ -113,14 +113,14 @@ DEBUG=1 python manage.py test ops
 41 tests in four groups:
 - **Access:** every role opens its own pages and gets 403 on the rest, the menu matches permissions, and every URL has a guard.
 - **Flows:** the day-log hour split, TL review → QC → close (including rejecting a non-Drive link), invoice totals and payment states, the payroll leave deduction, extra pay, holidays reducing capacity, Employee of the Month, drive photos and the send-back guard, client-report overrides, and new projects.
-- **Hosting:** Supabase pooler settings, previews isolated from production data, the cron secret, the backup file, and the Data API lockdown (on Postgres in CI).
+- **Hosting:** Supabase pooler settings, the Render blueprint and build steps, trusted client IPs behind Cloudflare, the cron secret, the backup file, and the Data API lockdown (on Postgres in CI).
 - **Security:** headers and CSP, no inline scripts, lockout, forced password change, weak passwords, founder idle timeout, role-to-back-office sync, the last-founder guard, fake and oversized uploads, photo permissions, and audit entries.
 
 GitHub Actions runs the same suite on Postgres with production settings on every push and pull request.
 
 ### Working on the code (changes and features)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). In short: one branch per change → pull request (Vercel posts a demo preview) → CI must be green → merge to `main` → Vercel deploys to production.
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: one branch per change → pull request → CI must be green → merge to `main` → Render deploys automatically.
 
 ### What it doesn't do (yet)
 

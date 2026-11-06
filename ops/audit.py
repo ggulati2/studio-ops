@@ -10,10 +10,11 @@ log = logging.getLogger("ops.audit")
 def client_ip(request):
     if request is None:
         return None
-    # Vercel sets X-Real-IP itself (clients can't forge it there).
-    real = request.META.get("HTTP_X_REAL_IP", "").strip()
-    if real:
-        return real
+    # Render sits behind Cloudflare, which sets CF-Connecting-IP at its edge (a client can't
+    # forge it). Fallback: Render puts the real client first in X-Forwarded-For.
+    cf = request.META.get("HTTP_CF_CONNECTING_IP", "").strip()
+    if cf:
+        return cf
     fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")
     ip = (fwd.split(",")[0] if fwd else request.META.get("REMOTE_ADDR", "")).strip()
     return ip or None

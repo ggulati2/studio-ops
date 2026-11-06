@@ -49,11 +49,10 @@ jobs:
         env:
           SECURE_SSL_REDIRECT: "0"   # the test client speaks plain HTTP
         run: python manage.py test ops --verbosity 2
-      - name: Production build script (as Vercel runs it)
+      - name: Production build script (as Render runs it, minus pip install)
         env:
-          VERCEL_ENV: production
           FOUNDER_USERNAME: ci-founder
           FOUNDER_PASSWORD: ci-Founder-Pass-2026
-        run: python scripts/vercel_build.py
+        run: sed '/pip install/d' build.sh | bash
       - name: Known vulnerabilities in dependencies
         run: pip-audit -r requirements.txt

@@ -88,10 +88,10 @@
       upd();
     });
 
-    /* Photos: phone pictures are 3–10 MB, the host accepts 4.5 MB per request.
-       Shrink each photo in the browser (longest side 2000 px, JPEG) before it's sent;
-       the server re-checks and re-compresses anyway. */
-    var LIMIT = 4200000;
+    /* Photos: phone pictures are 3–10 MB. Shrink each one in the browser (longest side
+       2000 px, JPEG) so uploads are quick on mobile data; the server re-checks and
+       re-compresses anyway. */
+    var LIMIT = 11500000;
     function shrink(file) {
       return new Promise(function (resolve) {
         if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 700000 || !window.createImageBitmap) return resolve(file);

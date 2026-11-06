@@ -1,18 +1,19 @@
-# Deploy Studio Ops on Vercel + Supabase
+# Deploy Studio Ops for ₹0 (Render + Supabase)
 
-About 30 minutes, once. You need three accounts: GitHub (already done), **Supabase** for the database and **Vercel** to run the app.
+About 30–40 minutes, once. No credit card needed.
 
-| Service | What it does | Limits that matter for the studio |
+| Service | What it does | Free limits that matter |
 |---|---|---|
-| **GitHub** | Holds the code (`ggulati2/studio-ops`), runs the tests on every change, and makes a weekly encrypted backup | Free for private repos |
-| **Supabase** (Free) | Postgres database: all records and photos | **500 MB** database. **Paused after 1 week with no activity**: the app's daily job and the weekly backup both count as activity, so it stays awake. **No automatic backups on Free**, so the weekly GitHub backup covers that. |
-| **Vercel** | Runs the app at `https://<name>.vercel.app` from the Mumbai region, with HTTPS and a global CDN for styles and images | **Hobby (free) is for personal, non-commercial use only.** A business tool like this needs **Pro, $20/month**. See the note below. |
+| **GitHub** | Holds the code (`ggulati2/studio-ops`), runs the tests on every change, makes a weekly encrypted backup | Free private repos |
+| **Supabase** | The Postgres database: all records and photos | **500 MB**. **Paused after 1 week with no activity**: the daily job (step 4) and the weekly backup keep it active. **No automatic backups on Free**: the weekly GitHub backup covers that. |
+| **Render** | Runs the app at `https://<name>.onrender.com` | One app 24/7 fits the free hours. **Sleeps after 15 min with no visits** and takes about 1 minute to wake, so the pinger in step 4 keeps it awake. No permanent disk, which is why data lives on Supabase. |
+| **cron-job.org** | Two free scheduled calls: keep Render awake, and run the daily job | Free |
 
-> **Read before choosing a Vercel plan.** Vercel's fair-use guidelines say Hobby teams are "restricted to non-commercial personal use only" and that "all commercial usage of the platform requires either a Pro or Enterprise plan". Studio Ops runs Red Wed Films' paid work (invoices, payroll), so plan on **Vercel Pro ($20/month)**. If you're unsure, ask Vercel support. Supabase Free has no such rule.
+> **Know what free means on Render.** Its terms don't ban business use (Vercel's free plan does), but Render's docs say free instances are for hobby projects and testing, and "Do not use them for production applications". A free service can be restarted at any time, and it can be suspended if it makes unusually heavy calls to an outside database. A ~12-person studio is light traffic, so free is a reasonable way to start. When the studio relies on it every day, **Render Starter (about $7/month)** removes the sleep and the restart caveats. Nothing in the code changes.
 >
-> Limits checked in November 2026. Free tiers change: check vercel.com/pricing and supabase.com/pricing.
+> Free tiers change. These limits were checked in November 2026: see render.com/docs/free and supabase.com/pricing.
 
-There's no wake-up delay to manage. Vercel starts the app on demand in about 1–2 seconds after a quiet spell, and it's instant once warm.
+Both services run in **Singapore**. Render has no India region, and keeping the database next to the app matters more than either being close to Mumbai. Each page makes many small database queries, and a Mumbai database would add a round-trip to every one.
 
 ---
 
@@ -20,58 +21,58 @@ There's no wake-up delay to manage. Vercel starts the app on demand in about 1�
 
 1. Sign up at **supabase.com** (you can sign in with GitHub) → **New project**.
    - Name: `studio-ops`
-   - Database password: click **Generate** and **save it in your password manager**.
-   - Region: **South Asia (Mumbai)**, the same city as the app.
-2. When it's ready, click **Connect** at the top.
-   - Under **Transaction pooler** copy the URI. It ends in `:6543/postgres`. This is `DATABASE_URL`.
-   - Under **Session pooler** copy the URI. It ends in `:5432/postgres`. This is for backups.
-   - Replace `[YOUR-PASSWORD]` in both with the password from step 1. If the password has symbols like `@ # /`, generate one without them, or URL-encode it.
-3. **Turn off the Data API**, because this app never uses it. Go to **Project Settings → Data API** and switch it off (or, if your dashboard only offers it, remove `public` from *Exposed schemas*).
-   The app also locks every table on each deploy (row level security, API roles removed), but closing the door twice is better.
+   - Database password: click **Generate** and **save it in your password manager**. Generate one without `@ # / ?` so it can go straight into a link.
+   - Region: **Southeast Asia (Singapore)**.
+2. When it's ready, click **Connect** at the top → **Session pooler** → copy the URI. It looks like:
+   `postgresql://postgres.abcd1234:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres`
+   Put your password in place of `[YOUR-PASSWORD]`. This is your **`DATABASE_URL`**.
+   *(Use the Session pooler, not "Direct connection". The direct one needs IPv6, which Render doesn't have.)*
+3. **Turn off the Data API**, because this app never uses it: **Project Settings → Data API** → switch it off (or remove `public` from *Exposed schemas*).
+   Each deploy also locks every table against it (row level security on, API roles removed). This step closes it at the front door too.
 
-## 2. Create the app on Vercel (10 min)
+## 2. Deploy on Render (10 min)
 
-1. Sign up at **vercel.com** **with GitHub** → **Add New → Project** → import `ggulati2/studio-ops`.
-2. Vercel detects Django from `manage.py` and `pyproject.toml`. Leave the build settings as they are.
-3. Before clicking Deploy, open **Environment Variables** and add:
+1. Sign up at **render.com** **with GitHub** and allow access to the `studio-ops` repo.
+2. **New → Blueprint** → pick the repo. Render reads `render.yaml` and asks for three values:
+   - `DATABASE_URL`: the Supabase Session pooler URI from step 1.
+   - `FOUNDER_USERNAME`: your login name, e.g. `ag`.
+   - `FOUNDER_PASSWORD`: a strong password, 12+ characters.
 
-| Name | Value | Environments |
-|---|---|---|
-| `SECRET_KEY` | A long random string: run `python -c "import secrets; print(secrets.token_urlsafe(60))"` or use any 60+ character password generator | Production **and** Preview |
-| `DATABASE_URL` | The **Transaction pooler** URI (`…:6543/postgres`) | **Production only** |
-| `FOUNDER_USERNAME` | Your login, e.g. `ag` | Production |
-| `FOUNDER_PASSWORD` | A strong password (12+ characters) | Production |
-| `CRON_SECRET` | Another long random string (Vercel sends it with the daily job) | Production |
-| `TIME_ZONE` | `Asia/Kolkata` | Production and Preview |
-
-Keep `DATABASE_URL` on **Production only**. Preview deployments (one per branch or pull request) then run on a private demo database with sample data and can never touch real studio records.
-
-4. Click **Deploy**. The build installs everything and then, for production only:
-   - applies the database tables
-   - creates the shared login-lockout table
+   `SECRET_KEY` and `CRON_SECRET` are generated for you.
+3. Click **Apply**. The first build takes about 3–5 minutes. It:
+   - installs everything
+   - creates the database tables and the shared login-lockout table
    - locks Supabase's API out of every table
-   - creates your founder login
    - runs Django's production safety checks
+   - creates your founder login
 
-   If any step fails, the old version stays live.
-5. Open the address Vercel shows (e.g. `https://studio-ops.vercel.app`) and sign in.
+   If any step fails, nothing goes live.
+4. In the service → **Settings → Auto-Deploy**, choose **After CI checks pass**, so a change whose tests fail never goes live.
+5. Open `https://studio-ops.onrender.com` (or whatever name Render shows) and sign in.
 
-*Forgot the founder password?* In Vercel → Settings → Environment Variables, change `FOUNDER_PASSWORD`, add `FOUNDER_RESET_PASSWORD` = `1`, then **Deployments → ⋯ → Redeploy**. Remove `FOUNDER_RESET_PASSWORD` afterwards.
+*Forgot the founder password?* In Render → Environment, change `FOUNDER_PASSWORD`, add `FOUNDER_RESET_PASSWORD` = `1`, then **Manual Deploy**. Remove `FOUNDER_RESET_PASSWORD` afterwards.
 
-## 3. Turn on the safety nets (5 min)
+## 3. Turn on the safety nets in GitHub (5 min)
 
-**In Vercel**
-- **Settings → Deployment Protection:** keep **Vercel Authentication** on for Preview deployments, so only you can open branch previews (they use demo logins).
-- **Settings → Functions:** the region should show **Mumbai (bom1)**, which `vercel.json` sets.
-
-**In GitHub** (repo → Settings)
+In the repo → **Settings**:
 - **Secrets and variables → Actions → New repository secret:**
-  - `SUPABASE_DB_URL` = the **Session pooler** URI (`…:5432/postgres`)
+  - `SUPABASE_DB_URL` = the same Session pooler URI as `DATABASE_URL`.
   - `BACKUP_PASSPHRASE` = a long passphrase. **Also save it in your password manager, because without it the backups can't be opened.**
 - **Actions → Backup → Run workflow** once to test it. After that it runs every Sunday at 02:00 IST and keeps each backup for 90 days (Actions → Backup → a run → *Artifacts*).
-- **Branches → Add rule for `main`:** require a pull request and the **CI / test** check. Vercel deploys whatever lands on `main`, so this is what stops a broken change going live.
+- **Branches → Add rule for `main`:** require a pull request and the **CI / test** check.
 
-## 4. First-time setup inside the app (15 min)
+## 4. Two scheduled calls on cron-job.org (5 min)
+
+Sign up at **cron-job.org** and create two cronjobs:
+
+| Title | URL | Schedule | Extra settings |
+|---|---|---|---|
+| Keep awake | `https://<your-app>.onrender.com/health/` | Every **10 minutes** | none. `/health/` doesn't touch the database. |
+| Daily job | `https://<your-app>.onrender.com/cron/daily/` | Every day at **03:00** (Asia/Kolkata) | **Advanced → Headers:** add `Authorization` = `Bearer <CRON_SECRET>`. Copy the value from Render → Environment → `CRON_SECRET`. |
+
+The daily job marks past-due invoices **Overdue**, clears expired sign-ins and, by touching the database, stops Supabase pausing the project during quiet weeks such as Diwali. Without the right header it returns 401 and does nothing.
+
+## 5. First-time setup inside the app (15 min)
 
 1. **Settings:**
    - Studio details, PAN, bank account, IFSC, bank name, invoice email and GST %.
@@ -89,7 +90,7 @@ Keep `DATABASE_URL` on **Production only**. Preview deployments (one per branch 
 - **Monthly (2 min):**
   - **Settings → Audit log → Sign-ins, access and people:** look for repeated lockouts or blocked pages.
   - Deactivate anyone who has left.
-  - Check Supabase → **Database size** (limit 500 MB).
+  - Glance at Supabase → **Database** size (limit 500 MB) and cron-job.org's history (both jobs green).
 
 ## Restoring a backup
 
@@ -100,13 +101,13 @@ pg_restore --clean --if-exists --no-owner -d "<Session pooler URI>" db.dump
 
 ## Updating the app later
 
-Changes go through GitHub (see CONTRIBUTING.md): a branch, then a pull request with a demo preview link from Vercel, then green tests, then merge. Merging to `main` deploys to production, and database changes are applied during the build.
+Changes go through GitHub (see CONTRIBUTING.md): a branch, then a pull request, then green tests, then merge. Render redeploys after the checks pass, and database changes are applied during the build.
 
 ## When you outgrow free
 
 | Symptom | Upgrade |
 |---|---|
-| Database close to 500 MB, or you want daily backups with point-in-time restore | Supabase **Pro** (from $25/month; more storage and managed daily backups) |
-| More than a few people uploading many drive photos | Same as above; photos are compressed to roughly 150–300 KB each |
+| The rare 1-minute wake-up bothers people, pages feel slow at busy times, or you want production-grade hosting | Render **Starter** (about $7/month: never sleeps, more memory) |
+| Database close to 500 MB, or you want managed daily backups | Supabase **Pro** (from $25/month) |
 
 Nothing in the code changes for either upgrade.

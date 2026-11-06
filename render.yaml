@@ -1,0 +1,30 @@
+# Render Blueprint: one free web service. The database lives on Supabase (free Postgres).
+services:
+  - type: web
+    name: studio-ops
+    runtime: python
+    plan: free
+    region: singapore
+    autoDeploy: true            # every push to main redeploys, but only after CI passes (Render waits for checks)
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi:application --workers 2 --threads 4 --timeout 60 --max-requests 1000 --max-requests-jitter 100
+    healthCheckPath: /health/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL          # Supabase *Session pooler* URI (port 5432), see DEPLOY.md
+        sync: false
+      - key: CRON_SECRET           # shared with the daily cron-job.org call to /cron/daily/
+        generateValue: true
+      - key: FOUNDER_USERNAME
+        sync: false
+      - key: FOUNDER_PASSWORD
+        sync: false
+      - key: ALLOWED_HOSTS
+        value: localhost
+      - key: TIME_ZONE
+        value: Asia/Kolkata
+      - key: ADMIN_IDLE_MINUTES
+        value: "120"

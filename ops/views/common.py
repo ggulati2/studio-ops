@@ -53,7 +53,7 @@ def health(request):
 @csrf_exempt
 @require_GET
 def cron_daily(request):
-    """Called once a day by Vercel Cron (Authorization: Bearer CRON_SECRET).
+    """Called once a day by cron-job.org (Authorization: Bearer CRON_SECRET).
     Touches the database so the free Supabase project never pauses for inactivity,
     turns past-due invoices Overdue, and clears expired sign-in sessions."""
     import hmac

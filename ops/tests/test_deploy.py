@@ -1,10 +1,9 @@
-"""Hosting set-up: Vercel settings, Supabase lockdown, daily cron, backup file."""
+"""Hosting set-up: Render + Supabase settings, Supabase lockdown, daily cron, backup file."""
 import gzip
 import json
 import os
 import subprocess
 import sys
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -27,36 +26,43 @@ def settings_with(env):
     code = ("import json,os;os.environ['DJANGO_SETTINGS_MODULE']='config.settings';"
             "from django.conf import settings as s;d=s.DATABASES['default'];"
             "print(json.dumps({k:str(v) for k,v in d.items()}))")
-    full = {k: v for k, v in os.environ.items() if not k.startswith(("VERCEL", "DATABASE_URL", "PREVIEW_"))}
+    full = {k: v for k, v in os.environ.items() if not k.startswith(("RENDER", "DATABASE_URL"))}
     full.update({"SECRET_KEY": "x" * 50, "DEBUG": "0", **env})
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=full, capture_output=True, text=True, check=True)
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
-class VercelSettings(unittest.TestCase):
-    def test_supabase_pooler_turns_off_what_transaction_mode_cant_do(self):
-        db = settings_with({"DATABASE_URL": "postgresql://postgres.ref:pw@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"})
+class RenderSettings(unittest.TestCase):
+    def test_supabase_session_pooler_keeps_connections_and_requires_tls(self):
+        db = settings_with({"DATABASE_URL": "postgresql://postgres.ref:pw@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"})
         self.assertEqual(db["ENGINE"], "django.db.backends.postgresql")
-        self.assertIn("'prepare_threshold': None", db["OPTIONS"])
         self.assertIn("'sslmode': 'require'", db["OPTIONS"])
+        self.assertEqual(db["CONN_MAX_AGE"], "60")
+        self.assertEqual(db["CONN_HEALTH_CHECKS"], "True")
+
+    def test_transaction_pooler_turns_off_what_it_cant_do(self):
+        db = settings_with({"DATABASE_URL": "postgresql://postgres.ref:pw@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"})
+        self.assertIn("'prepare_threshold': None", db["OPTIONS"])
         self.assertEqual(db["DISABLE_SERVER_SIDE_CURSORS"], "True")
         self.assertEqual(db["CONN_MAX_AGE"], "0")
 
-    def test_previews_never_use_the_production_database(self):
-        db = settings_with({"VERCEL_ENV": "preview",
-                            "DATABASE_URL": "postgresql://postgres.ref:pw@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"})
-        self.assertEqual(db["ENGINE"], "django.db.backends.sqlite3")
-        self.assertTrue(db["NAME"].startswith("/tmp/"))
+    def test_render_blueprint_and_build(self):
+        blueprint = (ROOT / "render.yaml").read_text()
+        for needed in ("plan: free", "healthCheckPath: /health/", "CRON_SECRET", "DATABASE_URL", "gunicorn"):
+            self.assertIn(needed, blueprint)
+        build = (ROOT / "build.sh").read_text()
+        for step in ("migrate", "createcachetable", "secure_supabase", "check --deploy", "ensure_founder"):
+            self.assertIn(step, build)
 
-    def test_dependencies_match(self):
-        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
-        reqs = [l.strip() for l in (ROOT / "requirements.txt").read_text().splitlines() if l.strip() and not l.startswith("#")]
-        self.assertEqual(sorted(pyproject), sorted(reqs))
 
-    def test_vercel_config(self):
-        cfg = json.loads((ROOT / "vercel.json").read_text())
-        self.assertIn("/cron/daily/", [c["path"] for c in cfg["crons"]])
-        self.assertIn("config/wsgi.py", cfg["functions"])
+class ClientIp(unittest.TestCase):
+    def test_cloudflare_header_wins_over_spoofable_forwarded_for(self):
+        from django.test import RequestFactory
+        from ops.audit import client_ip
+        r = RequestFactory().get("/", HTTP_X_FORWARDED_FOR="6.6.6.6, 104.22.17.40", HTTP_CF_CONNECTING_IP="99.61.165.29")
+        self.assertEqual(client_ip(r), "99.61.165.29")
+        r = RequestFactory().get("/", HTTP_X_FORWARDED_FOR="99.61.165.29, 104.22.17.40")
+        self.assertEqual(client_ip(r), "99.61.165.29")
 
 
 class Cron(SeededTestCase):
