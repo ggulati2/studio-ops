@@ -1,19 +1,27 @@
 {% load static %}<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en-IN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2A0B0E"><meta name="robots" content="noindex,nofollow">
 <title>Sign in · {{ studio.brand_name }}</title>
-<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'app.css' %}"></head>
-<body><div class="login"><div class="box">
-  <div><img src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}" style="width:250px;margin-left:-16px;display:block">
-  <span style="font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Studio Ops</span></div>
-  <form method="post" class="card">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'app.css' %}">
+<link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
+<script src="{% static 'app.js' %}" defer></script></head>
+<body><main class="login"><div class="box">
+  <div class="login-brand">
+    <img src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}">
+    <span>Studio Ops</span>
+  </div>
+  <form method="post" class="card" novalidate>
     {% csrf_token %}
-    <h1 style="font-family:Jost;font-weight:700;font-size:22px">Sign in</h1>
-    {% if locked %}<div class="msg error">Too many wrong attempts. Try again in 15 minutes or ask a founder.</div>{% elif form.errors %}<div class="msg error">Login name or password is wrong.</div>{% endif %}
-    <label>Login name<input class="input" name="username" autocomplete="username" autofocus required></label>
+    <h1 class="login-title">Sign in</h1>
+    {% if timed_out %}<div class="msg warning">You were signed out after a while without activity. Sign in again to continue.</div>{% endif %}
+    {% if locked %}<div class="msg error">Too many wrong attempts. Try again in 15 minutes, or ask a founder to reset your password.</div>
+    {% elif form.errors %}<div class="msg error">That login name and password don't match. Check for capital letters and try again.</div>{% endif %}
+    <label>Login name<input class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required value="{{ form.username.value|default:'' }}"></label>
     <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
     <input type="hidden" name="next" value="{{ next }}">
     <button class="btn primary">Sign in</button>
-    <p class="small muted" style="margin:0">Only people added by the founders can sign in. Forgot your password? Ask a founder to reset it.</p>
+    <p class="small muted" style="margin:0">Only people a founder has added can sign in. Forgot your password? A founder can set a new one for you.</p>
   </form>
-</div></div></body></html>
+</div></main></body></html>

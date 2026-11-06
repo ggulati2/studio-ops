@@ -1,50 +1,77 @@
 {% load static %}<!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2A0B0E">
+<meta name="robots" content="noindex,nofollow">
 <title>{% block title %}Studio Ops{% endblock %} · {{ studio.brand_name }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Bodoni+Moda:opsz,wght@6..96,400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'app.css' %}">
 <link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
+<script src="{% static 'app.js' %}" defer></script>
+<noscript><style>@media (max-width:1079.98px){.side{position:static!important;transform:none!important;visibility:visible!important;width:100%!important;height:auto!important;box-shadow:none!important}.shell{flex-direction:column}.topbar .iconbtn{visibility:hidden}}</style></noscript>
 </head>
 <body class="{% if celebrating %}celebrate{% endif %}">
+<a class="skip" href="#main">Skip to content</a>
+{% static 'icons.svg' as ICONS %}
+
+<header class="topbar">
+  <button type="button" class="iconbtn" data-nav-toggle aria-controls="side" aria-expanded="false" aria-label="Open menu">
+    <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#menu"/></svg>
+  </button>
+  <a href="{% url 'home' %}" class="toplogo"><img src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+  <span class="avatar sm" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>
+</header>
+<div class="scrim" aria-hidden="true"></div>
+
 <div class="shell">
-  <aside class="side">
-    <img class="logo" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}">
-    {% if role == 'admin' %}
-      <span class="rolelabel">Admin · Studio Ops</span>
-    {% else %}
-      <div class="who">
-        <span class="avatar" style="background:{{ user.profile.color }};{% if celebrating %}border:2px solid var(--gold){% endif %}">{{ user.profile.initial }}</span>
-        <span><b>{{ user.profile.name }}</b><span>{{ role_label }}{% if user.profile.pod %} · {{ user.profile.pod }}{% endif %}</span></span>
-      </div>
-      {% if celebrating %}<span class="eotm-tag">Employee of the month</span>{% endif %}
-      {% if my_trophies is not None %}
-        {% if my_trophies %}
-        <a class="trophy has" href="{% url 'leaderboard' %}" aria-label="Employee of the month {{ my_trophies }} times. Open leaderboard">{% include "_cup.html" with size=18 %}×{{ my_trophies }} <span style="font-size:11px;font-weight:500;color:var(--faint)">Employee of the month</span></a>
-        {% else %}
-        <a class="trophy none" href="{% url 'leaderboard' %}">{% include "_cup.html" with size=18 empty=1 %}No trophies yet</a>
-        {% endif %}
+  <aside class="side" id="side" aria-label="Menu">
+    <a href="{% url 'home' %}" class="brand"><img class="logo" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+
+    <div class="who">
+      <span class="avatar{% if celebrating %} gold{% endif %}" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>
+      <span class="who-text"><b>{{ user.profile.name|default:user.get_username }}</b><span>{{ role_label }}{% if user.profile.pod %}, {{ user.profile.pod }}{% endif %}</span></span>
+    </div>
+    {% if celebrating %}<span class="eotm-tag">Employee of the month</span>{% endif %}
+    {% if my_trophies is not None %}
+      {% if my_trophies %}
+      <a class="trophy has" href="{% url 'leaderboard' %}" aria-label="Employee of the month {{ my_trophies }} times. Open leaderboard">{% include "_cup.html" with size=18 %}<span>×{{ my_trophies }}</span><small>Employee of the month</small></a>
+      {% else %}
+      <a class="trophy none" href="{% url 'leaderboard' %}">{% include "_cup.html" with size=18 empty=1 %}<small>No trophies yet</small></a>
       {% endif %}
     {% endif %}
+
     <nav aria-label="Main">
-      {% for label, name in nav_items %}
-        {% url name as href %}
-        <a href="{{ href }}" class="{% if request.path == href %}on{% endif %}">{{ label }}</a>
+      {% for label, href, icon, active in nav_items %}
+        <a href="{{ href }}"{% if active %} class="on" aria-current="page"{% endif %}>
+          <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#{{ icon }}"/></svg><span>{{ label }}</span>
+        </a>
       {% endfor %}
     </nav>
+
     <div class="foot">
-      {% if role == 'admin' %}<a href="{% url 'admin:index' %}">Back office (raw data)</a>{% endif %}
-      {% if role == 'tl' or role == 'editor' %}<a href="{% url 'my_payslips' %}">My payslips</a>{% endif %}
-      <a href="{% url 'password_change' %}">Change password</a>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn sm" style="background:transparent;color:var(--faint);border-color:#333">Log out</button></form>
+      {% if is_founder %}
+        <a href="{% url 'audit_log' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#shield"/></svg>Audit log</a>
+        <a href="{% url 'admin:index' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#database"/></svg>Back office</a>
+      {% endif %}
+      {% if 'payslips.view_own' in my_perms %}
+        <a href="{% url 'my_payslips' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payslips</a>
+      {% endif %}
+      <a href="{% url 'password_change' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#key"/></svg>Change password</a>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+        <button class="linkbtn"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#logout"/></svg>Log out</button>
+      </form>
     </div>
   </aside>
-  <main>
-    {% if messages %}<div class="msgs">{% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}</div>{% endif %}
-    {% block content %}{% endblock %}
+
+  <main id="main" tabindex="-1">
+    <div class="wrap">
+      {% if messages %}<div class="msgs" role="status" aria-live="polite">{% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </div>
   </main>
 </div>
 </body>
