@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ d.code }}{% endblock %}
+{% block content %}
+<div class="head"><div><a class="small" href="{% url 'drives' %}">← Drive register</a><h1 class="mono" style="font-family:ui-monospace,Menlo,monospace">{{ d.code }}</h1><p>{{ d.get_status_display }}</p></div></div>
+<div class="row">
+  <form method="post" enctype="multipart/form-data" class="card grow">{% csrf_token %}{% include "_form.html" %}<button class="btn primary">Save</button></form>
+  <aside class="aside">
+    <section class="card"><h2>Photos</h2><div class="grid" style="grid-template-columns:repeat(2,1fr)">{% for ph in d.photos.all %}<a href="{% url 'image' ph.pk %}" target="_blank"><img src="{% url 'image' ph.pk %}" alt="Drive photo" style="width:100%;border-radius:8px"></a>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</div></section>
+    <section class="card"><h2>Jobs on this drive</h2>{% for j in jobs %}<div class="small">{{ j }} · {{ j.get_status_display }}</div>{% empty %}<span class="small muted">No jobs linked.</span>{% endfor %}</section>
+    <section class="card"><h2>History</h2><div class="small">Received {{ d.received_on|date:"j M Y" }} by {{ d.get_received_via_display|lower }}{% if d.damaged_on_arrival %} · arrived damaged{% endif %}</div>{% for r in d.returns.all %}<div class="small">Sent back {{ r.sent_on|date:"j M Y" }} to {{ r.sent_to }} · {{ r.get_method_display }} · {{ r.get_status_display }}</div>{% endfor %}</section>
+  </aside>
+</div>
+{% endblock %}

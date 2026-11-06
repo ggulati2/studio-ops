@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Planner{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Planner</h1><p>Pick a job in any cell; it saves straight away and shows on that editor's Today screen.</p></div>
+  <div class="actions"><a class="btn" href="?start={{ prev|date:'Y-m-d' }}">←</a><b>{{ start|date:"j M" }} – {{ grid.13.d|date:"j M Y" }}</b><a class="btn" href="?start={{ next|date:'Y-m-d' }}">→</a></div>
+</div>
+{% if tray %}<section class="card warn tight" style="flex-direction:row;flex-wrap:wrap;align-items:center"><h3 style="color:var(--warn)">Waiting for an editor</h3>{% for p in tray %}<span class="tag" style="background:#fff;border:1px dashed #EA580C">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>{% endfor %}</section>{% endif %}
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span></div>
+<div class="scroll card" style="padding:0">
+<table class="plan">
+  <thead><tr><th class="day">Day</th>{% for u in people %}<th>{{ u.profile.name }}<div class="small muted" style="font-weight:400">{{ u.profile.pod|default:"" }}</div></th>{% endfor %}</tr></thead>
+  <tbody>{% for row in grid %}<tr>
+    <th class="day" scope="row" style="{% if row.d.weekday == 6 %}background:#FAF8F6{% endif %}">{{ row.d|date:"D j M" }}{% if row.holiday %}<div class="small" style="color:#075985">{{ row.holiday.name }}</div>{% endif %}</th>
+    {% for c in row.cells %}
+    <td class="{% if c.kind %}k-{{ c.kind }}{% elif c.entry %}has{% endif %}">
+      {% if c.kind == 'leave' or c.kind == 'holiday' or c.kind == 'off' %}
+        <span class="small" style="font-weight:700;letter-spacing:.04em">{{ c.kind|upper }}</span>{% if c.entry %}<div class="small">{{ c.entry.text }}</div>{% endif %}
+      {% else %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="user" value="{{ c.u.pk }}"><input type="hidden" name="date" value="{{ row.d|date:'Y-m-d' }}">
+        <select name="value" onchange="this.form.submit()" aria-label="Plan for {{ c.u.profile.name }} on {{ row.d|date:'j M' }}">
+          <option value="">{% if c.kind == 'half' %}HALF DAY{% elif c.kind == 'wfh' %}WFH{% else %}—{% endif %}</option>
+          {% for p in open_projects %}<option value="p:{{ p.pk }}" {% if c.entry.project_id == p.pk %}selected{% endif %}>{{ p }}</option>{% endfor %}
+          <option value="Back-up" {% if c.entry.label == 'Back-up' %}selected{% endif %}>Back-up</option>
+          <option value="SAME DAY" {% if c.entry.label == 'SAME DAY' %}selected{% endif %}>Same day edit</option>
+          <option value="Training" {% if c.entry.label == 'Training' %}selected{% endif %}>Training</option>
+        </select><noscript><button class="btn sm">Save</button></noscript>
+      </form>
+      {% endif %}
+    </td>{% endfor %}
+  </tr>{% endfor %}</tbody>
+</table></div>
+<p class="small muted">Leave and half days come from what editors mark; studio holidays come from Settings. Planning someone doesn't assign the job; assign it in Projects so it reaches their job list.</p>
+{% endblock %}

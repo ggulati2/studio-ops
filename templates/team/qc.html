@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}QC{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Waiting for QC</h1><p>Films land here after the team lead approves them. Pass sends them to the editor to close; fail sends them back with your notes.</p></div>
+  <div class="actions"><div class="kpi"><span>Waiting</span><b>{{ queue|length }}</b></div><div class="kpi"><span>First-time pass (this month)</span><b>{% if first_time is not None %}{{ first_time }}%{% else %}–{% endif %}</b></div></div></div>
+<div class="row">
+  <section class="aside" aria-label="Queue">
+    {% for p in queue %}<a class="card tight" href="?p={{ p.pk }}" style="text-decoration:none;color:inherit;{% if sel.pk == p.pk %}border:2px solid var(--red){% endif %}">
+      <b>{{ p }}</b><span class="small muted">{{ p.agency }} · {{ p.editor.profile.name }} · Tier {{ p.tier }}</span>
+      <span class="small" style="font-weight:600;{% if p.days_left is not None and p.days_left <= 1 %}color:var(--bad){% endif %}">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% endif %}{% if p.reviews.count %} · round {{ p.reviews.count|add:1 }}{% endif %}</span></a>
+    {% empty %}<section class="card"><span class="muted">Queue is empty.</span></section>{% endfor %}
+  </section>
+  {% if sel %}
+  <form method="post" action="{% url 'qc_review' sel.pk %}" class="card grow">{% csrf_token %}
+    <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Tier {{ sel.tier }} · Editor {{ sel.editor.profile.name }}{% if sel.drive %} · Drive {{ sel.drive }}{% endif %}</span></div></div>
+    <div class="card tight" style="background:#FAF8F6">{% if sel.cut_link %}<a href="{{ sel.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open final film ↗</a>{% else %}<span class="small muted">No film link yet. Paste it below.</span>{% endif %}
+      {% if sel.brief %}<span class="small">Brief: {{ sel.brief }}</span>{% endif %}<input class="input" type="url" name="cut_link" value="{{ sel.cut_link }}" placeholder="Film link"></div>
+    <fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px"><legend style="font-weight:600;margin-bottom:8px">QC checklist: tick anything that's an issue</legend>
+      {% for i, item in checklist %}<label class="inline" style="padding:8px 10px;border:1px solid var(--line2);border-radius:8px"><input type="checkbox" name="issue" value="{{ i }}" class="check"> {{ item }}</label>{% endfor %}</fieldset>
+    <label>Comments for the editor<textarea class="input" name="comments" rows="4" placeholder="One per line with a timecode, e.g. 00:12 Groom's name spelled 'Cris'"></textarea></label>
+    <div class="actions" style="justify-content:flex-end"><button class="btn danger" name="decision" value="fail">Fail – send back to {{ sel.editor.profile.name|default:"editor" }}</button><button class="btn good" name="decision" value="pass">Pass – ready to deliver</button></div>
+    {% if history %}<div style="border-top:1px solid var(--line2);padding-top:10px"><h3>History</h3>{% for r in history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

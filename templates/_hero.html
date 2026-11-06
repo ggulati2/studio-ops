@@ -1,0 +1,10 @@
+{% load ops_extras %}<section class="hero">
+  <svg class="confetti" viewBox="0 0 900 220" preserveAspectRatio="none" aria-hidden="true"><rect x="60" y="20" width="10" height="10" rx="2" fill="#C9A227" transform="rotate(25 65 25)"/><rect x="210" y="170" width="8" height="14" rx="2" fill="#A90404" transform="rotate(-20 214 177)"/><circle cx="330" cy="30" r="4" fill="#E9D48A"/><rect x="520" y="14" width="12" height="6" rx="2" fill="#C9A227" transform="rotate(40 526 17)"/><circle cx="610" cy="190" r="5" fill="#FFFFFF" opacity="0.5"/><rect x="700" y="40" width="9" height="9" rx="2" fill="#A90404" transform="rotate(15 704 44)"/><rect x="820" y="150" width="7" height="13" rx="2" fill="#E9D48A" transform="rotate(-35 823 156)"/><circle cx="860" cy="24" r="3" fill="#C9A227"/></svg>
+  {% if award.photo %}<img src="{% url 'image' award.photo_id %}" alt="" style="width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);position:relative">{% else %}<span style="position:relative">{% include "_cup.html" with size=80 %}</span>{% endif %}
+  <div style="flex:1 1 280px;display:flex;flex-direction:column;gap:6px;position:relative">
+    <span class="eyebrow">Employee of the month · {{ award.month|date:"F Y" }}</span>
+    <span class="big">{% if admin %}{{ award.user.profile.name }}{% else %}Congratulations, {{ award.user.profile.name }}{% endif %}</span>
+    <span style="color:#D4D4D4">{{ award.reason }}</span>
+    <div class="actions" style="margin-top:4px"><span class="tag" style="background:var(--gold);color:var(--ink)">₹{{ award.voucher_amount|money }} Amazon voucher card</span>{% if award.congrats.count %}<span class="small" style="color:var(--faint)">{{ award.congrats.count }} people congratulated</span>{% endif %}</div>
+  </div>
+</section>

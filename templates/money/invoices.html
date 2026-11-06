@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Invoices &amp; payments</h1><p>INR and USD tracked separately.</p></div><a class="btn primary" href="{% url 'invoice_new' %}">+ Generate invoice</a></div>
+<div class="grid">
+  <div class="kpi"><span>Invoiced this month</span><b>₹{{ inr.invoiced|money }}</b><small>+ ${{ usd.invoiced|money }}</small></div>
+  <div class="kpi"><span>Received this month</span><b>₹{{ inr.received|money }}</b><small>+ ${{ usd.received|money }}</small></div>
+  <div class="kpi"><span>Outstanding</span><b>₹{{ inr.outstanding|money }}</b><small>+ ${{ usd.outstanding|money }}</small></div>
+  <div class="kpi {% if inr.overdue or usd.overdue %}bad{% endif %}"><span>Overdue</span><b>₹{{ inr.overdue|money }}</b><small>+ ${{ usd.overdue|money }}</small></div>
+</div>
+{% if unbilled %}<section class="card warn"><div class="title"><h2 style="color:var(--warn)">Delivered but not invoiced · {{ unbilled|length }}</h2></div>
+  <div class="chips">{% for p in unbilled %}<a href="{% url 'invoice_new' %}?agency={{ p.agency_id }}" style="background:#fff">{{ p }} · {{ p.agency }} · {{ p.agency.symbol }}{{ p.invoice_amount|money }}</a>{% endfor %}</div></section>{% endif %}
+<section class="card">
+  <div class="title"><h2>Invoices</h2><div class="chips"><a href="?" class="{% if not status %}on{% endif %}">All</a>{% for v, l in statuses %}<a href="?status={{ v }}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}</div></div>
+  <div class="scroll"><table style="min-width:1000px">
+    <thead><tr><th>Invoice</th><th>Agency</th><th>Films</th><th class="right">Total</th><th>Received</th><th>Payment status</th><th class="right">Balance</th><th>Due</th><th></th></tr></thead>
+    <tbody>{% for i in invoices %}<tr>
+      <td class="mono"><b>{{ i.number }}</b><div class="small muted">{{ i.issued_on|date:"j M Y" }}</div></td>
+      <td>{{ i.agency }}</td><td class="small muted">{% for l in i.lines.all|slice:":3" %}{{ l.couple }} {{ l.film }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if i.lines.count > 3 %} …{% endif %}</td>
+      <td class="right">{{ i.symbol }}{{ i.total|money }}</td>
+      <td colspan="2">
+        <form method="post" action="{% url 'invoice_update' i.pk %}" class="actions" style="gap:6px;flex-wrap:nowrap">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <input class="input" name="received" value="{{ i.received }}" aria-label="Amount received for {{ i.number }}" style="width:96px;text-align:right">
+          <select class="input" name="status" aria-label="Payment status for {{ i.number }}" style="width:auto">{% for v, l in statuses %}<option value="{{ v }}" {% if i.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+          <button class="btn sm">Save</button></form>
+        {% if i.received_on %}<span class="small muted">last payment {{ i.received_on|date:"j M" }}</span>{% endif %}
+      </td>
+      <td class="right"><b>{{ i.symbol }}{{ i.balance|money }}</b></td>
+      <td class="nowrap" {% if i.status == 'overdue' %}style="color:var(--bad);font-weight:600"{% endif %}>{{ i.due_on|date:"j M" }}</td>
+      <td><a class="btn sm" href="{% url 'invoice_print' i.pk %}" target="_blank">PDF</a></td>
+    </tr>{% empty %}<tr><td colspan="9" class="muted">No invoices yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <span class="small muted">Change payment right in the row: type what was received and pick the status. Paid fills the full amount; a partial amount becomes Part-paid. Sent invoices past their due date turn Overdue by themselves.</span>
+</section>
+<section class="card"><h2>Who owes what</h2>{% for name, o in owed %}<div style="display:flex;justify-content:space-between;border-top:1px solid var(--line2);padding-top:7px"><b>{{ name }}</b><span>{{ o.symbol }}{{ o.amount|money }}{% if o.overdue %} <span class="tag bad">{{ o.symbol }}{{ o.overdue|money }} overdue</span>{% endif %}</span></div>{% empty %}<span class="small muted">Nothing outstanding.</span>{% endfor %}</section>
+{% endblock %}

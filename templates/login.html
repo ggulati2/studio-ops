@@ -1,0 +1,19 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in · {{ studio.brand_name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'app.css' %}"></head>
+<body><div class="login"><div class="box">
+  <div><img src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}" style="width:250px;margin-left:-16px;display:block">
+  <span style="font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Studio Ops</span></div>
+  <form method="post" class="card">
+    {% csrf_token %}
+    <h1 style="font-family:Jost;font-weight:700;font-size:22px">Sign in</h1>
+    {% if locked %}<div class="msg error">Too many wrong attempts. Try again in 15 minutes or ask a founder.</div>{% elif form.errors %}<div class="msg error">Login name or password is wrong.</div>{% endif %}
+    <label>Login name<input class="input" name="username" autocomplete="username" autofocus required></label>
+    <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn primary">Sign in</button>
+    <p class="small muted" style="margin:0">Only people added by the founders can sign in. Forgot your password? Ask a founder to reset it.</p>
+  </form>
+</div></div></body></html>

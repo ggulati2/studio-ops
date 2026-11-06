@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Extra work{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Extra work</h1><p>Regular films done by full-timers outside working hours, paid extra. They still invoice and deliver like any job.</p></div>
+  <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn primary" href="{% url 'project_new' %}">+ Offer an extra job</a></div>
+</div>
+<div class="grid">
+  <div class="kpi"><span>Extra hours</span><b>{{ total_hours|hours }}</b></div>
+  <div class="kpi"><span>Extra pay due</span><b>₹{{ total_pay|money }}</b><small>Goes into payroll automatically</small></div>
+  <div class="kpi {% if flagged %}warn{% endif %}"><span>Worth a look</span><b>{{ flagged|length }}</b><small>Overlaps office time</small></div>
+</div>
+{% if flagged %}<section class="card warn"><h2 style="color:var(--warn)">Worth a look</h2>
+  {% for e in flagged %}<div class="small">{{ e.user.profile.name }} logged {{ e.hours|hours }} extra hrs on {{ e.project }} ({{ e.date|date:"j M" }}, {{ e.start|time:"g:i A" }}–{{ e.end|time:"g:i A" }}), overlapping their office time. Already counted; edit it in the back office only if it's wrong.</div>{% endfor %}
+</section>{% endif %}
+<section class="card"><h2>By editor</h2><div class="scroll"><table style="min-width:680px">
+  <thead><tr><th>Editor</th><th>Extra jobs</th><th>Extra hrs</th><th>Regular hrs</th><th>Avg total / week</th><th class="right">Extra pay due</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><b>{{ r.u.profile.name }}</b></td><td>{{ r.jobs }}</td><td>{{ r.extra|hours }}</td><td class="muted">{{ r.regular|hours }}</td>
+    <td {% if r.week > 60 %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.week }} h{% if r.week > 60 %} · over 60/week{% endif %}</td><td class="right"><b>₹{{ r.pay|money }}</b></td></tr>{% endfor %}</tbody>
+</table></div><p class="small muted" style="margin:0">Over 60 hours a week (regular + extra) is flagged: quality and revisions usually slip after that.</p></section>
+<section class="card"><h2>Is extra work worth it?</h2><div class="scroll"><table style="min-width:640px">
+  <thead><tr><th>Extra job</th><th>Editor</th><th class="right">We invoice</th><th class="right">Extra pay</th><th class="right">We keep</th></tr></thead>
+  <tbody>{% for m in margins %}<tr><td>{{ m.p }}</td><td>{{ m.p.editor.profile.name|default:"–" }}</td><td class="right">{{ m.p.agency.symbol }}{{ m.p.invoice_amount|money }}</td><td class="right">₹{{ m.cost|money }}</td>
+    <td class="right" style="font-weight:600;color:{% if m.pct is not None and m.pct < 30 %}var(--warn){% else %}var(--ok){% endif %}">{% if m.keep is not None %}₹{{ m.keep|money }} · {{ m.pct }}%{% else %}USD job{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="muted">No extra jobs yet. Tick "Give as extra work" when creating a project.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+{% endblock %}

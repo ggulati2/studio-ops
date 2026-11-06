@@ -1,0 +1,16 @@
+{% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+<div class="fields">
+{% for f in form.visible_fields %}
+  {% if f.widget_type == 'checkbox' %}
+    <div class="field" style="grid-column:1/-1"><label class="inline">{{ f }} {{ f.label }}</label>{% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}</div>
+  {% else %}
+    <div class="field" {% if f.widget_type == 'textarea' or f.widget_type == 'checkboxselectmultiple' or f.widget_type == 'radioselect' %}style="grid-column:1/-1"{% endif %}>
+      <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
+      {{ f }}
+      {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+      {% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}
+    </div>
+  {% endif %}
+{% endfor %}
+{% for f in form.hidden_fields %}{{ f }}{% endfor %}
+</div>

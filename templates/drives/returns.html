@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Send back{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Send a drive back</h1><p>Only drives whose jobs are all closed and backed up can be sent back.</p></div></div>
+<section><h2 class="small muted" style="margin-bottom:8px">Ready to send back · {{ ready|length }}</h2><div class="grid wide">
+  {% for d in ready %}<a class="card tight" href="?d={{ d.pk }}" style="text-decoration:none;color:inherit;gap:3px;{% if sel.pk == d.pk %}border:2px solid var(--red){% endif %}"><b class="mono">{{ d.code }}</b><b class="small">{{ d.agency|default:"Studio drive" }}</b><span class="small muted">{{ d.contents }}</span></a>{% empty %}<span class="muted small">Nothing ready. Drives show here once every job on them is closed.</span>{% endfor %}
+</div></section>
+<div class="row">
+  {% if sel %}
+  <form method="post" enctype="multipart/form-data" class="card grow">{% csrf_token %}
+    <h2 class="mono">{{ sel.code }} · {{ sel.agency|default:"Studio" }}</h2>
+    <span class="small muted">{{ sel.contents }} · received {{ sel.received_on|date:"j M" }} · {{ sel.location }}</span>
+    {% if open_jobs %}<div class="card tight bad"><b class="small" style="color:var(--bad)">Not safe yet: {{ open_jobs|length }} open job{{ open_jobs|pluralize }}</b></div>
+    {% else %}<div class="card tight" style="background:#F6FEF9;border-color:#ABEFC6"><b class="small" style="color:var(--ok)">Safe to send back</b><span class="small">All {{ jobs|length }} job{{ jobs|length|pluralize }} on this drive are closed with project files and final films on the company Drive.</span></div>{% endif %}
+    {% include "_form.html" %}
+    <button class="btn primary">Record send-back</button>
+    <span class="small muted">For hand delivery or pickup, fill in who collected it instead of courier details.</span>
+  </form>{% endif %}
+  <section class="card aside"><h2>Recently sent back</h2>
+    {% for r in recent %}<div style="border-top:1px solid var(--line2);padding-top:7px"><b class="small"><span class="mono">{{ r.drive.code }}</span> · {{ r.drive.agency|default:"Studio" }}</b><div class="small muted">{{ r.sent_on|date:"j M" }} · {{ r.get_method_display }}{% if r.tracking %} · {{ r.tracking }}{% endif %}{% if r.collected_by %} · collected by {{ r.collected_by }}{% endif %}</div>
+      <form method="post" action="{% url 'drive_return_status' r.pk %}" class="actions" style="gap:6px;margin-top:4px">{% csrf_token %}<select class="input" name="status" style="width:auto;padding:5px 8px;font-size:12px" onchange="this.form.submit()" aria-label="Status of {{ r.drive.code }}">{% for v, l in statuses %}<option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form></div>
+    {% empty %}<span class="small muted">None yet.</span>{% endfor %}
+  </section>
+</div>
+{% endblock %}

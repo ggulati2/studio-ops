@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Good {% now "A" as ampm %}{% if ampm == "AM" %}morning{% else %}afternoon{% endif %}</h1><p>{% now "l, j F Y" %}</p></div>
+  <div class="actions"><a class="btn primary" href="{% url 'project_new' %}">+ New project</a><a class="btn" href="{% url 'report_print' %}" target="_blank">Team status PDF</a></div>
+</div>
+
+<div class="grid">
+  <a class="kpi warn" href="{% url 'projects' %}" style="text-decoration:none;color:inherit"><span>Needs an editor</span><b>{{ unassigned }}</b><small>Assign from Projects</small></a>
+  <a class="kpi {% if overdue %}bad{% endif %}" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Overdue</span><b>{{ overdue|length }}</b><small>{% for p in overdue|slice:":1" %}{{ p }}{% empty %}All on time{% endfor %}</small></a>
+  <a class="kpi" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Due in 3 days</span><b>{{ due_soon|length }}</b><small>{% for p in due_soon|slice:":1" %}Next: {{ p }}{% empty %}Nothing close{% endfor %}</small></a>
+  <div class="kpi"><span>Missing logs yesterday</span><b>{{ missing|length }}</b><small>{% for u in missing %}{{ u.profile.name }}{% if not forloop.last %}, {% endif %}{% empty %}Everyone logged{% endfor %}</small></div>
+</div>
+
+<div class="grid">
+  <div class="kpi"><span>Films delivered (this month)</span><b>{{ delivered_count }}</b></div>
+  <div class="kpi"><span>On-time delivery</span><b>{% if on_time_pct is not None %}{{ on_time_pct }}%{% else %}–{% endif %}</b></div>
+  <div class="kpi"><span>Revenue delivered (INR)</span><b>₹{{ revenue|money }}</b></div>
+  <div class="kpi"><span>Outstanding invoices (INR)</span><b>₹{{ outstanding|money }}</b><small><a href="{% url 'invoices' %}">Invoices →</a></small></div>
+</div>
+
+{% if award %}<a class="banner" href="{% url 'eotm' %}" style="text-decoration:none">{% include "_cup.html" with size=26 %}<span><b>Employee of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}</span></a>{% endif %}
+
+<div class="row">
+  <section class="card grow">
+    <div class="title"><h2>Team load this week</h2><a class="small" href="{% url 'team' %}">Team & attendance →</a></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Editor</th><th>Pod</th><th style="width:34%">Booked work vs free hours this week</th><th>Open jobs</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rows %}<tr>
+        <td><b>{{ r.u.profile.name }}</b></td><td class="muted">{{ r.u.profile.pod|default:"–" }}{% if r.u.profile.role == 'tl' %} · TL{% endif %}</td>
+        <td><div style="display:flex;gap:8px;align-items:center"><div class="bar" style="flex:1"><i class="{% if r.util >= 100 %}bad{% elif r.util >= 80 %}warn{% else %}ok{% endif %}" style="width:{% if r.util > 100 %}100{% else %}{{ r.util|default:0 }}{% endif %}%"></i></div><span class="small muted">{{ r.left|hours }} / {{ r.avail|hours }} h</span></div></td>
+        <td>{{ r.open }}</td>
+        <td><span class="tag {% if r.status == 'Overloaded' %}bad{% elif r.status == 'Full' %}warn{% else %}ok{% endif %}">{{ r.status }}</span></td>
+      </tr>{% empty %}<tr><td colspan="5" class="muted">Add your team under Team & attendance.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="small muted" style="margin:0">Booked work = usual hours for each open film (from your own delivered films) minus hours already logged.</p>
+  </section>
+  <section class="card aside">
+    <h2>Agencies this month</h2>
+    {% for a in agencies %}
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;justify-content:space-between;font-size:14px"><b style="font-weight:500">{{ a.name }}</b><span class="muted">₹{{ a.amount|money }}</span></div>
+        <div class="bar"><i style="width:{{ a.share }}%"></i></div>
+        <span class="small" {% if a.share > 30 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ a.share }}% of revenue{% if a.share > 30 %} · over 30%, dependency risk{% endif %}</span>
+      </div>
+    {% empty %}<p class="muted small" style="margin:0">Revenue shows here as films are delivered this month.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

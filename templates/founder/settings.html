@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Settings</h1><p>Studio holidays, working week, leave policy and invoice details.</p></div>
+  <div class="actions"><a class="btn" href="{% url 'backup' %}">Download full backup</a><a class="btn" href="{% url 'team' %}">People &amp; logins</a></div></div>
+<div class="row">
+  <section class="card grow">
+    <h2>Studio holidays</h2>
+    <span class="small muted">Added once here, shown everywhere: your planner, every editor's calendar, capacity and attendance.</span>
+    <div class="scroll"><table><thead><tr><th>Date</th><th>Holiday</th><th>Type</th><th>Impact</th><th></th></tr></thead><tbody>
+      {% for r in holidays %}<tr><td class="nowrap"><b>{{ r.h.date|date:"j M Y" }}</b> <span class="muted small">{{ r.h.date|date:"D" }}</span></td><td>{{ r.h.name }}</td><td><span class="tag">{{ r.h.get_kind_display }}</span></td>
+        <td class="small" style="color:{% if r.clash %}var(--bad){% else %}var(--muted){% endif %}">{% if r.clash %}{{ r.clash }} planned job{{ r.clash|pluralize }} that day need moving{% else %}No clash{% endif %}</td>
+        <td><form method="post" action="{% url 'holiday_delete' r.h.pk %}">{% csrf_token %}<button class="btn sm">Remove</button></form></td></tr>{% empty %}<tr><td colspan="5" class="muted">No upcoming holidays.</td></tr>{% endfor %}
+    </tbody></table></div>
+    <form method="post" class="card tight" style="background:#FAF8F6">{% csrf_token %}{% with form=hform %}{% include "_form.html" %}{% endwith %}
+      <div class="actions"><button class="btn primary" name="add_holiday">Add holiday</button><button class="btn" name="copy_year">Copy last year's list</button></div>
+      <span class="small muted">Optional holidays show on calendars but stay working days unless the person takes leave. Anyone who works on a holiday just logs in/out time.</span>
+    </form>
+  </section>
+  <form method="post" class="card aside">{% csrf_token %}
+    <h2>Studio, leave &amp; invoice details</h2>
+    {% include "_form.html" %}
+    <button class="btn primary" name="save_settings">Save settings</button>
+  </form>
+</div>
+{% endblock %}

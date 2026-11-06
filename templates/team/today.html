@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Today{% endblock %}
+{% block content %}
+{% if award %}
+  {% if award.user_id == user.id %}{% include "_hero.html" %}
+  {% else %}
+  <div class="banner">{% include "_cup.html" with size=26 %}<span style="flex:1"><b>Employee of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}. {{ award.reason|truncatechars:90 }}</span>
+    {% if not congratulated %}<form method="post" action="{% url 'congrats' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn sm" style="background:var(--gold);border-color:var(--gold)">Say congrats</button></form>{% else %}<span class="small" style="color:var(--gold-soft)">You said congrats ✓</span>{% endif %}</div>
+  {% endif %}
+{% endif %}
+
+<div class="head">
+  <div><h1>{% if is_today %}Today · {% endif %}{{ d|date:"l, j M" }}</h1><p>Logging takes under a minute. Hours per job are optional.</p></div>
+  <div class="actions"><a class="btn" href="?date={{ prev|date:'Y-m-d' }}" aria-label="Previous day">←</a>{% if not is_today %}<a class="btn" href="?">Today</a>{% endif %}<a class="btn" href="?date={{ next|date:'Y-m-d' }}" aria-label="Next day">→</a></div>
+</div>
+
+{% if plan %}<section class="card tight" style="background:#FBEDED;border-color:var(--red-line);flex-direction:row;flex-wrap:wrap;align-items:center"><div style="flex:1"><span class="small" style="color:var(--red-dark);font-weight:600">Planned for you</span><div style="font-size:16px;font-weight:600">{{ plan.text }}</div>{% if plan.project.drive %}<span class="small muted">Drive {{ plan.project.drive }}{% if plan.project.deadline %} · due {{ plan.project.deadline|date:"j M" }}{% endif %}</span>{% endif %}</div></section>{% endif %}
+{% if holiday %}<section class="card tight" style="background:#E0F2FE;border-color:#BAE6FD"><b>{{ holiday.name }}</b><span class="small">Studio {{ holiday.get_kind_display|lower }}. Worked anyway? Pick Office and add your times.</span></section>{% endif %}
+
+<div class="row">
+<form method="post" class="grow">{% csrf_token %}
+  <section class="card">
+    <h2>My day</h2>
+    <div><span class="small" style="font-weight:600">Day type</span><div style="margin-top:6px">{{ form.day_type }}</div></div>
+    <div class="fields">
+      <label>In time{{ form.time_in }}</label><label>Out time{{ form.time_out }}</label>
+      <div class="field" style="justify-content:flex-end"><span class="small muted">{% if log.pk %}{{ log.hours|hours }} hrs worked{% if log.is_late %} · <b style="color:var(--warn)">Late</b>{% endif %}{% endif %}</span></div>
+    </div>
+    {% if form.errors %}<div class="msg error">{{ form.errors }}</div>{% endif %}
+  </section>
+  <section class="card" style="margin-top:16px">
+    <h2>What I worked on</h2>
+    {{ formset.management_form }}
+    {% for f in formset %}
+    <div class="fields" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px">
+      <label>Job {{ forloop.counter }}{{ f.project }}</label><label>Stage{{ f.stage }}</label><label>Hours (optional){{ f.hours }}</label>
+      {% if f.errors %}<p class="err" style="grid-column:1/-1">{{ f.errors.stage|join:" " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <label>{{ form.notes.label }}{{ form.notes }}</label>
+    <button class="btn primary">Save {% if is_today %}today{% else %}{{ d|date:"j M" }}{% endif %}</button>
+    <p class="small muted" style="margin:0">Blank hours share whatever is left of your in/out time. Extra (freelance) hours go under Extra work, not here.</p>
+  </section>
+</form>
+<aside class="aside">
+  <section class="card"><h2>My jobs</h2>
+    {% for p in my_jobs %}<div style="border-top:1px solid var(--line2);padding-top:8px"><b>{{ p }}</b><div class="small" {% if p.flag == 'Overdue' %}style="color:var(--bad)"{% endif %}>{{ p.get_status_display }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}{% if p.drive %} · {{ p.drive }}{% endif %}</div></div>{% empty %}<span class="small muted">No open jobs.</span>{% endfor %}
+    <a class="small" href="{% url 'my_jobs' %}">All my jobs →</a>
+  </section>
+  <section class="card"><h2>{% now "F" %} so far</h2>
+    <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="kpi"><span>Days in office</span><b>{{ att.office }}</b></div>
+      <div class="kpi {% if att.leaves_counted > free_leaves %}bad{% endif %}"><span>Leaves · {{ free_leaves|hours }} free</span><b>{{ att.leaves_counted|hours }} of {{ free_leaves|hours }}</b></div>
+      <div class="kpi"><span>Hours worked</span><b>{{ att.hours|hours }}</b></div>
+      <div class="kpi"><span>Late arrivals</span><b>{{ att.late }}</b></div>
+    </div>
+  </section>
+</aside>
+</div>
+{% endblock %}

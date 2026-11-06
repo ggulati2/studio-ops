@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Projects</h1><p>One row per film. Amounts never leave the founder screens.</p></div>
+  <div class="actions">
+    <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Couple, agency or drive" style="width:230px"><input type="hidden" name="status" value="{{ status }}"><button class="btn">Search</button></form>
+    <a class="btn primary" href="{% url 'project_new' %}">+ New project</a>
+  </div>
+</div>
+
+{% if queue %}
+<section class="card warn">
+  <div class="title"><h2 style="color:var(--warn)">Needs an editor · {{ queue|length }}</h2><span class="small" style="color:var(--warn)">Nearest deadline first</span></div>
+  {% for p in queue %}
+  <form method="post" action="{% url 'project_assign' p.pk %}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:#FED7AA">
+    {% csrf_token %}
+    <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }} · {{ p.get_tier_display }}{% if p.drive %} · {{ p.drive }}{% endif %}</div></div>
+    <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}</span>
+    <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+    <button class="btn primary sm">Assign</button>
+  </form>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="title">
+    <h2>Jobs</h2>
+    <div class="chips">
+      <a href="?status=open" class="{% if status == 'open' %}on{% endif %}">Open</a>
+      {% for v, l in statuses %}<a href="?status={{ v }}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}
+      <a href="?status=" class="{% if status == '' %}on{% endif %}">All</a>
+    </div>
+  </div>
+  <div class="scroll"><table style="min-width:920px">
+    <thead><tr><th>Job</th><th>Agency</th><th>Tier</th><th>Editor</th><th>Deadline</th><th>Status</th><th>Drive</th><th>Hrs vs usual</th><th class="right">Invoice</th></tr></thead>
+    <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
+      <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
+      <td class="muted">{{ p.agency }}</td><td>{{ p.tier }}</td>
+      <td>{{ p.editor.profile.name|default:"—" }}</td>
+      <td class="nowrap">{{ p.deadline|date:"j M"|default:"—" }} {% if p.flag %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td>
+      <td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td>
+      <td class="mono">{{ p.drive|default:"" }}</td>
+      <td>{{ j.hours|hours }}{% if j.usual %} / {{ j.usual|hours }}{% endif %}{% if j.over is not None and j.over > 20 %} <span class="tag bad">+{{ j.over }}%</span>{% endif %}</td>
+      <td class="right">{{ p.agency.symbol }}{{ p.invoice_amount|money }}</td>
+    </tr>{% endwith %}{% empty %}<tr><td colspan="9" class="muted">No jobs here.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

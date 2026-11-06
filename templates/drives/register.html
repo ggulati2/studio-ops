@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Drive register{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Drive register</h1><p>Every drive that comes into the studio: what's on it, whose it is, and where it is now.</p></div>
+  <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Drive ID, couple, agency, serial" style="width:250px"><button class="btn">Search</button></form></div>
+<div class="grid">
+  <a class="kpi" href="?" style="text-decoration:none;color:inherit"><span>In studio</span><b>{{ counts.in_studio }}</b></a>
+  <a class="kpi" href="?status=in_use" style="text-decoration:none;color:inherit"><span>In use</span><b>{{ counts.in_use }}</b></a>
+  <a class="kpi warn" href="?status=ready" style="text-decoration:none;color:inherit"><span>Ready to send back</span><b>{{ counts.ready }}</b></a>
+  <a class="kpi {% if counts.damaged %}bad{% endif %}" href="?status=damaged" style="text-decoration:none;color:inherit"><span>Damaged / issue</span><b>{{ counts.damaged }}</b></a>
+  <a class="kpi" href="?status=sent" style="text-decoration:none;color:inherit"><span>Sent back</span><b>{{ counts.sent }}</b></a>
+</div>
+<div class="row">
+  <section class="grow"><div class="grid wide">
+    {% for d in drives %}<a class="card tight" href="{% url 'drive_edit' d.pk %}" style="text-decoration:none;color:inherit;padding:0;overflow:hidden;gap:0">
+      <div style="height:120px;background:#F0EDEA;position:relative;display:flex;align-items:center;justify-content:center">
+        {% with ph=d.photos.all.0 %}{% if ph %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" style="width:100%;height:120px;object-fit:cover">{% else %}<span class="small muted">No photo</span>{% endif %}{% endwith %}
+        <span class="tag {{ d.status|drive_class }}" style="position:absolute;top:10px;left:10px">{{ d.get_status_display }}</span></div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;justify-content:space-between"><b class="mono" style="font-size:15px">{{ d.code }}</b><span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span></div>
+        <b class="small">{% if d.studio_owned %}Studio drive{% else %}{{ d.agency|default:"No agency" }}{% endif %}</b>
+        <span class="small">{{ d.contents }}</span>
+        {% if d.capacity_tb and d.data_tb %}<div class="bar"><i style="width:{% widthratio d.data_tb d.capacity_tb 100 %}%"></i></div><span class="small muted">{{ d.data_tb|hours }} of {{ d.capacity_tb|hours }} TB</span>{% endif %}
+        <span class="small muted">Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
+      </div></a>
+    {% empty %}<span class="muted">No drives here.</span>{% endfor %}
+  </div></section>
+  <form method="post" enctype="multipart/form-data" class="card aside">{% csrf_token %}<h2>Receive a drive</h2>{% include "_form.html" %}<button class="btn primary">Save drive</button></form>
+</div>
+{% endblock %}

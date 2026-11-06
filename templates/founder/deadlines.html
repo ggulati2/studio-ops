@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Deadlines{% endblock %}
+{% block content %}
+<div class="head">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h1>Deadlines</h1>
+    <a class="btn" href="{% qs m=prev|date:'Y-m' %}" aria-label="Previous month">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}" aria-label="Next month">→</a></div>
+  <form method="get" class="actions">
+    <input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
+    <div class="seg"><a href="{% qs view='ours' %}" class="{% if not client %}on{% endif %}">Our deadlines</a><a href="{% qs view='client' %}" class="{% if client %}on{% endif %}">Dates told to clients</a></div>
+    <select class="input" name="agency" onchange="this.form.submit()" style="width:auto"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+    <select class="input" name="editor" onchange="this.form.submit()" style="width:auto"><option value="">Everyone</option>{% for u in editors %}<option value="{{ u.pk }}" {% if editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
+    {% if client %}<input type="hidden" name="view" value="client">{% endif %}
+  </form>
+</div>
+<div class="chips small"><span class="chip st-overdue">Overdue</span><span class="chip st-soon">Due in 3 days</span><span class="chip st-track">On track</span><span class="chip st-qc">In review / QC</span><span class="chip st-noeditor">Needs an editor</span><span class="chip st-done">Delivered</span></div>
+<div class="row">
+  <div class="grow"><div class="scroll"><div class="cal">
+    <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
+    {% for c in cells %}
+    <a class="day {% if not c.in_month %}out{% endif %} {% if c.today %}today{% endif %} {% if c.d == sel %}sel{% endif %} {% if c.holiday %}k-holiday{% elif c.d.weekday == 6 %}k-off{% endif %}" href="{% qs day=c.d|date:'Y-m-d' %}">
+      <span class="n">{{ c.d.day }}<small style="color:{% if c.holiday %}#075985{% elif c.today %}var(--red){% else %}var(--faint){% endif %}">{% if c.holiday %}HOLIDAY{% elif c.today %}TODAY{% endif %}</small></span>
+      {% for p in c.items|slice:":3" %}<span class="chip {{ p|cal_class }}">{{ p.couple }} · {{ p.deliverable }}</span>{% endfor %}
+      {% if c.items|length > 3 %}<span class="small muted">+{{ c.items|length|add:"-3" }} more</span>{% endif %}
+    </a>{% endfor %}
+  </div></div></div>
+  <aside class="aside">
+    <section class="card accent">
+      <h2>{{ sel|date:"l, j F" }}</h2><span class="small muted">{{ sel_items|length }} deliver{{ sel_items|length|pluralize:"y,ies" }} · click any day</span>
+      {% for p in sel_items %}<div class="card tight" style="gap:5px"><div style="display:flex;justify-content:space-between;gap:8px"><b>{{ p }}</b><span class="tag {{ p.flag|flag_class }}">{{ p.flag|default:p.get_status_display }}</span></div>
+        <span class="small muted">{{ p.agency }} · {{ p.editor.profile.name|default:"no editor" }} · Tier {{ p.tier }}{% if p.drive %} · {{ p.drive }}{% endif %}</span>
+        <span class="small">{{ p.get_status_display }}</span><a class="small" href="{% url 'project_edit' p.pk %}">Open job →</a></div>{% endfor %}
+    </section>
+    <section class="card"><h2>Next 7 days</h2>
+      {% for p in week %}<div style="display:flex;gap:10px;font-size:13px;border-top:1px solid var(--line2);padding-top:7px"><b style="width:56px;flex-shrink:0;color:{% if p.days_left < 0 %}var(--bad){% else %}var(--warn){% endif %}">{% if p.days_left < 0 %}Overdue{% else %}{{ p.deadline|date:"D j" }}{% endif %}</b><span>{{ p }}<span class="small muted" style="display:block">{{ p.editor.profile.name|default:"no editor" }} · {{ p.get_status_display }}</span></span></div>{% empty %}<span class="small muted">Nothing due this week.</span>{% endfor %}
+    </section>
+    {% if unassigned_soon %}<section class="card warn tight"><b class="small" style="color:var(--warn)">Heads-up</b><span class="small">{{ unassigned_soon }} film{{ unassigned_soon|pluralize }} due in the next 3 weeks still {{ unassigned_soon|pluralize:"has,have" }} no editor.</span></section>{% endif %}
+  </aside>
+</div>
+{% endblock %}

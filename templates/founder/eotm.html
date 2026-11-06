@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Employee of the month{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Employee of the month</h1><p>Announced on the 1st for the month before; celebrated in the winner's app all month.</p></div></div>
+<div class="row">
+  <div class="grow">
+    {% if current %}{% include "_hero.html" with award=current admin=1 %}{% endif %}
+    <section class="card">
+      <div class="title"><h2>Hall of fame</h2><div class="chips">{% for u, n in tally %}<span class="tag gold">{{ u.profile.name }} × {{ n }}</span>{% endfor %}<a href="{% url 'leaderboard' %}" class="small">Team leaderboard →</a></div></div>
+      {% for a in awards %}<div style="display:flex;gap:14px;align-items:flex-start;border-top:1px solid var(--line2);padding-top:10px">
+        <span class="small muted" style="width:90px;flex-shrink:0;font-weight:600">{{ a.month|date:"M Y" }}</span>
+        <span class="avatar" style="background:{{ a.user.profile.color }}">{{ a.user.profile.initial }}</span>
+        <div><b>{{ a.user.profile.name }}</b><div class="small muted">{{ a.reason }}{% if a.handed_over_on %} · Voucher card given {{ a.handed_over_on|date:"j M" }}{% else %} · Voucher card not handed over yet{% endif %}</div></div>
+      </div>{% empty %}<span class="muted small">No winners yet.</span>{% endfor %}
+    </section>
+  </div>
+  <aside class="aside">
+    <form method="post" enctype="multipart/form-data" class="card">{% csrf_token %}
+      <h2>Choose a winner</h2>
+      <span class="small muted">Numbers for last month, as a starting point. The choice is yours.</span>
+      {% for s in sugg|slice:":5" %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ s.u.profile.name }}</b> · {{ s.films }} film{{ s.films|pluralize }} delivered, {{ s.on_time }} on time{% if s.qc_first is not None %} · QC first-time {{ s.qc_first }}%{% endif %} · {{ s.leaves|hours }} leave</div>{% endfor %}
+      {% include "_form.html" %}
+      <button class="btn primary">Save & announce</button>
+      <span class="small muted">Saving the winner for a month turns on their celebration look and the team banner during the following month. Setting the same month again replaces it.</span>
+    </form>
+  </aside>
+</div>
+{% endblock %}

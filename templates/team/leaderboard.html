@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Leaderboard{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Leaderboard</h1><p>Employee of the month trophies, all time. Ties go to the most recent win.</p></div></div>
+<div class="row">
+  <div class="grow">
+    {% if podium %}<section class="podium" aria-label="Top three">
+      {% for r in podium %}<div class="col" style="order:{% if forloop.counter == 1 %}2{% elif forloop.counter == 2 %}1{% else %}3{% endif %}">
+        <span class="avatar" style="background:{{ r.u.profile.color }};width:{% if forloop.counter == 1 %}80{% else %}62{% endif %}px;height:{% if forloop.counter == 1 %}80{% else %}62{% endif %}px;font-size:24px;border:3px solid {% if forloop.counter == 1 %}#C9A227{% elif forloop.counter == 2 %}#D4D4D4{% else %}#B7793F{% endif %}">{{ r.u.profile.initial }}</span>
+        <b>{{ r.u.profile.name }}</b><span style="color:var(--gold-soft);font-weight:600;display:flex;gap:4px;align-items:center">{% include "_cup.html" with size=16 %}×{{ r.count }}</span>
+        <div class="block" style="height:{% if forloop.counter == 1 %}130{% elif forloop.counter == 2 %}90{% else %}64{% endif %}px;background:{% if forloop.counter == 1 %}#C9A227{% elif forloop.counter == 2 %}#D4D4D4{% else %}#B7793F{% endif %}">{{ forloop.counter }}</div>
+      </div>{% endfor %}
+    </section>{% endif %}
+    <section class="card"><h2>Everyone</h2>
+      {% for r in rows %}<div style="display:flex;align-items:center;gap:12px;padding:8px;border-top:1px solid var(--line2);border-radius:8px;{% if r.u == user %}background:var(--red-soft){% endif %}">
+        <span style="width:22px;text-align:right;font-weight:700" class="muted">{% if r.count %}{{ forloop.counter }}{% else %}–{% endif %}</span>
+        <span class="avatar" style="background:{{ r.u.profile.color }}">{{ r.u.profile.initial }}</span>
+        <div style="flex:1"><b>{{ r.u.profile.name }}</b><div class="small muted">{% for m in r.months %}{{ m|date:"M Y" }}{% if not forloop.last %} · {% endif %}{% empty %}Not yet{% endfor %}</div></div>
+        <span aria-label="{{ r.count }} trophies" style="display:flex;gap:2px">{% for c in r.cups %}{% include "_cup.html" with size=20 %}{% endfor %}</span><b style="width:30px;text-align:right">{{ r.count }}</b>
+      </div>{% endfor %}
+    </section>
+  </div>
+  <aside class="aside">
+    <section class="card" style="border-color:#EADFC0"><h2>Next winner</h2><span style="font-family:var(--serif);font-size:26px">{{ next_announce|date:"j F" }}</span><span class="small muted">{{ days_to }} day{{ days_to|pluralize }} to go</span>
+      <span class="small">What usually wins it: clean QC passes, on-time delivery, low revisions, and helping the team when it's busy.</span></section>
+    <section class="card"><h2>Recent winners</h2>{% for a in recent %}<div style="border-top:1px solid var(--line2);padding-top:7px"><span class="small" style="color:#6B5310;font-weight:600">{{ a.month|date:"F Y" }}</span><div><b>{{ a.user.profile.name }}</b></div><span class="small muted">{{ a.reason }}</span></div>{% empty %}<span class="small muted">First winner coming soon.</span>{% endfor %}</section>
+  </aside>
+</div>
+{% endblock %}

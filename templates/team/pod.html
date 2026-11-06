@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}My pod{% endblock %}
+{% block content %}
+<div class="head"><div><h1>{{ pod|default:"My pod" }}</h1><p>{% for m in members %}{{ m.u.profile.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</p></div></div>
+<section class="card"><h2>Waiting for your review · {{ waiting|length }}</h2>
+  {% for p in waiting %}
+  <form method="post" action="{% url 'tl_review' p.pk %}" class="card tight">{% csrf_token %}
+    <div class="title"><div><b>{{ p }}</b><div class="small muted">{{ p.editor.profile.name }} · {{ p.agency }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</div></div>{% if p.cut_link %}<a href="{{ p.cut_link }}" target="_blank" rel="noopener">Open cut ↗</a>{% endif %}</div>
+    <textarea class="input" name="comments" rows="2" placeholder="Notes for the editor, one per line with a timecode, e.g. 01:05 audio dips"></textarea>
+    <div class="actions"><button class="btn" name="decision" value="fail">Send back with notes</button><button class="btn good" name="decision" value="pass">Approve → QC</button></div>
+  </form>{% empty %}<span class="small muted">Nothing waiting.</span>{% endfor %}
+</section>
+<div class="row">
+  <section class="card aside"><h2>Today</h2>
+    {% for m in members %}<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line2);padding-top:8px">
+      <span class="avatar" style="background:{{ m.u.profile.color }}">{{ m.u.profile.initial }}</span>
+      <div style="flex:1"><b>{{ m.u.profile.name }}</b><div class="small muted">{% if m.log %}{{ m.log.get_day_type_display }}{% if m.log.time_in %} · in {{ m.log.time_in|time:"g:i A" }}{% endif %}{% for t in m.log.tasks.all|slice:":1" %} · {{ t.project }}{% endfor %}{% else %}Not logged yet{% endif %}</div></div>
+      {% if m.log.is_late %}<span class="tag warn">Late</span>{% elif m.log %}<span class="tag ok">Logged</span>{% endif %}</div>{% endfor %}
+  </section>
+  <section class="card grow"><h2>Pod jobs</h2><div class="scroll"><table style="min-width:560px">
+    <thead><tr><th>Job</th><th>Editor</th><th>Status</th><th>Deadline</th></tr></thead>
+    <tbody>{% for p in jobs %}<tr><td><b>{{ p }}</b></td><td>{{ p.editor.profile.name }}</td><td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td><td>{{ p.deadline|date:"j M"|default:"–" }} {% if p.flag == 'Overdue' or p.flag == 'Due soon' %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="muted">No open jobs.</td></tr>{% endfor %}</tbody>
+  </table></div><span class="small muted">Team leads see their pod's jobs and hours, never invoices or salaries.</span></section>
+</div>
+{% endblock %}

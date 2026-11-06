@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Payroll{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Payroll &amp; leave</h1><p>{{ month|date:"F Y" }} · {% if run.finalized %}finalized {{ run.finalized_on|date:"j M" }}{% else %}draft, updates live until you finalize{% endif %}</p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div>
+</div>
+<div class="grid wide">
+  <div class="kpi bad"><span>Over {{ s.free_leaves_per_month|hours }} leaves · salary cut</span><b style="font-size:15px">{% for r in watch_over %}{{ r.u.profile.name }} ({{ r.f.leaves_taken|hours }}){% if not forloop.last %} · {% endif %}{% empty %}Nobody{% endfor %}</b></div>
+  <div class="kpi warn"><span>Close to the limit</span><b style="font-size:15px">{% for r in watch_close %}{{ r.u.profile.name }} ({{ r.f.leaves_taken|hours }}){% if not forloop.last %} · {% endif %}{% empty %}Nobody{% endfor %}</b></div>
+</div>
+<form method="post" action="{% url 'payroll_save' %}" class="card">{% csrf_token %}<input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
+  <h2>Salary for {{ month|date:"F" }}</h2>
+  <div class="scroll"><table style="min-width:1000px">
+    <thead><tr><th>Employee</th><th class="right">Monthly salary</th><th>Leaves taken</th><th>Unpaid leaves</th><th class="right">Leave deduction</th><th class="right">Extra work</th><th>Other adjustment</th><th class="right">Net pay</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr class="{% if r.f.unpaid_leaves > 0 %}hl{% endif %}">
+      <td><b>{{ r.u.profile.name }}</b><div class="small muted">{{ r.u.profile.get_role_display }}</div></td>
+      <td class="right">₹{{ r.f.salary|money }}</td><td>{{ r.f.leaves_taken|hours }}</td>
+      <td {% if r.f.unpaid_leaves > 0 %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.f.unpaid_leaves|hours }}</td>
+      <td class="right" {% if r.f.leave_deduction %}style="color:var(--bad)"{% endif %}>{% if r.f.leave_deduction %}− ₹{{ r.f.leave_deduction|money }}{% else %}—{% endif %}</td>
+      <td class="right">{% if r.f.extra_pay %}+ ₹{{ r.f.extra_pay|money }}{% else %}—{% endif %}</td>
+      <td>{% if run.finalized %}{{ r.other|money }} <span class="small muted">{{ r.other_note }}</span>{% else %}<input class="input" name="other_{{ r.u.pk }}" value="{{ r.other }}" style="width:90px" aria-label="Adjustment for {{ r.u.profile.name }}"> <input class="input" name="note_{{ r.u.pk }}" value="{{ r.other_note }}" placeholder="why" style="width:110px">{% endif %}</td>
+      <td class="right"><b>₹{{ r.f.net|money }}</b></td>
+      <td>{% if r.slip and run.finalized %}<a class="btn sm" href="{% url 'payslip' r.slip.pk %}" target="_blank">Payslip</a>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+    <tfoot><tr><td>Total</td><td class="right">₹{{ totals.salary|money }}</td><td></td><td>{{ totals.unpaid|hours }} days</td><td class="right" style="color:var(--bad)">− ₹{{ totals.leave_deduction|money }}</td><td class="right">+ ₹{{ totals.extra_pay|money }}</td><td>{{ totals.other|money }}</td><td class="right" style="color:var(--red)">₹{{ totals.net|money }}</td><td></td></tr></tfoot>
+  </table></div>
+  {% if not run.finalized %}<div class="actions" style="justify-content:flex-end"><button class="btn">Save adjustments</button><button class="btn primary" name="finalize" value="1" onclick="return confirm('Finalize {{ month|date:"F" }}? Figures get locked and everyone can see their own payslip.')">Finalize {{ month|date:"F" }}</button></div>{% endif %}
+  <span class="small muted">Leave = full leave days + half days × 0.5 (a studio half-day holiday isn't counted). {{ s.free_leaves_per_month|hours }} free per month; beyond that, one day's pay = {{ s.get_day_pay_basis_display|lower }}. Extra work comes from Extra work. Change the policy in Settings.</span>
+</form>
+{% if explain %}<section class="card aside" style="max-width:420px"><h2>How {{ explain.u.profile.name }}'s pay is worked out</h2>
+  {% with f=explain.f %}<div class="small" style="display:grid;grid-template-columns:1fr auto;gap:6px">
+    <span>Monthly salary</span><span>₹{{ f.salary|money }}</span><span>Leaves taken</span><span>{{ f.leaves_taken|hours }} days</span>
+    <span>Free leaves</span><span>− {{ s.free_leaves_per_month|hours }}</span><span>Unpaid leaves</span><span>{{ f.unpaid_leaves|hours }}</span>
+    {% if f.day_pay %}<span>One day's pay</span><span>₹{{ f.day_pay|money }}</span>{% endif %}
+    <span>Leave deduction</span><span style="color:var(--bad)">− ₹{{ f.leave_deduction|money }}</span><span>Extra work</span><span>+ ₹{{ f.extra_pay|money }}</span>
+    {% if explain.other %}<span>Adjustment</span><span>{{ explain.other|money }}</span>{% endif %}
+    <b>Net pay</b><b>₹{{ f.net|money }}</b></div>{% endwith %}
+</section>{% endif %}
+{% endblock %}

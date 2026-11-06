@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}My month{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>{{ month|date:"F Y" }}</h1><p>Click any day to log it, or mark leave in advance.</p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}" aria-label="Previous month">←</a><a class="btn" href="?m={{ next|date:'Y-m' }}" aria-label="Next month">→</a></div>
+</div>
+<div class="grid">
+  <div class="kpi"><span>Days in office</span><b>{{ att.office }}</b></div><div class="kpi"><span>WFH</span><b>{{ att.wfh }}</b></div>
+  <div class="kpi {% if att.leaves_counted > free_leaves %}bad{% endif %}"><span>Leaves · {{ free_leaves|hours }} free</span><b>{{ att.leaves_counted|hours }}</b></div>
+  <div class="kpi"><span>Hours worked</span><b>{{ att.hours|hours }}</b></div><div class="kpi"><span>Late arrivals</span><b>{{ att.late }}</b></div>
+  <div class="kpi"><span>Extra hours</span><b>{{ extra_h|hours }}</b></div>
+</div>
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag k-downtime">Downtime</span></div>
+<div class="scroll"><div class="cal">
+  <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
+  {% for c in cells %}{% if c %}
+  <a class="day {% if c.kind %}k-{{ c.kind }}{% endif %} {% if c.today %}today{% endif %}" href="{% url 'today' %}?date={{ c.d|date:'Y-m-d' }}">
+    <span class="n">{{ c.d.day }}<small>{% if c.holiday %}{{ c.holiday.name|upper|truncatechars:14 }}{% elif c.kind == 'off' %}OFF{% elif c.kind and c.kind != 'office' %}{{ c.kind|upper }}{% endif %}</small></span>
+    {% if c.plan %}<span class="chip" style="background:#FBEDED;color:var(--red-dark)">Plan: {{ c.plan.text }}</span>{% endif %}
+    {% if c.log and c.log.hours %}<span class="small">{{ c.log.hours|hours }} h{% for t in c.log.tasks.all|slice:":2" %} · {{ t.project.couple }}{% endfor %}</span>{% endif %}
+    {% if c.warn %}<span class="small" style="color:var(--bad);font-weight:600">{{ c.warn }}</span>{% endif %}
+  </a>{% else %}<div class="day out"></div>{% endif %}{% endfor %}
+</div></div>
+{% endblock %}

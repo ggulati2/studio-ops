@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Generate invoice{% endblock %}
+{% block content %}
+<div class="head"><div><a class="small" href="{% url 'invoices' %}">← Invoices</a><h1>Generate invoice</h1><p>Issued by {{ studio.legal_name }}. Your bank and PAN come from Settings.</p></div></div>
+<form method="get" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:flex-end">
+  <label style="flex:1 1 280px">Bill to<select class="input" name="agency" onchange="this.form.submit()"><option value="">Choose a client…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+  <a class="btn" href="{% url 'agency_new' %}">+ Add a new client</a>
+</form>
+{% if agency %}
+<form method="post" class="row">{% csrf_token %}<input type="hidden" name="agency" value="{{ agency.pk }}">
+  <section class="card grow">
+    <div class="card tight" style="background:#FAF8F6"><div class="title"><b>Saved client details</b><a class="small" href="{% url 'agency_edit' agency.pk %}">Edit</a></div>
+      <span class="small">{{ agency.name }}{% if agency.billing_address %} · {{ agency.billing_address|linebreaksbr }}{% endif %}</span>
+      <span class="small muted">Bills in {{ agency.currency }} · {{ agency.payment_terms_days }} days{% if agency.gstin %} · GSTIN {{ agency.gstin }}{% endif %}</span>
+      {% if agency.missing_fields %}<span class="small" style="color:var(--warn)">Missing {{ agency.missing_fields|join:", " }}. You can still make the PDF.</span>{% endif %}</div>
+    <h2>Films on this invoice</h2>
+    {% for p in candidates %}<label class="inline" style="padding:8px 10px;border:1px solid var(--line2);border-radius:8px;justify-content:space-between">
+      <span style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="pid" value="{{ p.pk }}" {% if p.status == 'closed' %}checked{% endif %}> <span><b>{{ p.couple }}</b> – {{ p.deliverable }} <span class="small muted">{{ p.get_status_display }}</span></span></span>
+      <input class="input" name="amount_{{ p.pk }}" value="{{ p.invoice_amount }}" style="width:110px;text-align:right" aria-label="Amount for {{ p }}"></label>
+    {% empty %}<span class="small muted">No un-invoiced films for {{ agency }}.</span>{% endfor %}
+    <h3>Extra lines (e.g. Cleanup Shots)</h3>
+    {% for i in "012" %}<div class="fields" style="grid-template-columns:2fr 1.5fr 1fr"><input class="input" name="x_couple_{{ i }}" placeholder="Couple"><input class="input" name="x_film_{{ i }}" placeholder="Film / work"><input class="input" name="x_amount_{{ i }}" placeholder="Amount"></div>{% endfor %}
+  </section>
+  <aside class="aside"><section class="card">
+    <label>Invoice no.<input class="input" name="number" value="{{ number }}"><span class="help">Date-based, like your current invoices. Duplicates are blocked.</span></label>
+    <label class="inline"><input type="checkbox" name="gst" class="check" {% if studio.gst_percent %}{% else %}disabled{% endif %}> Add GST{% if studio.gst_percent %} ({{ studio.gst_percent }}%){% else %} (set the % in Settings first){% endif %}</label>
+    <label>Note on the invoice (optional)<input class="input" name="notes"></label>
+    <button class="btn primary" name="send" value="1">Generate &amp; mark sent</button>
+    <button class="btn">Save as draft</button>
+    <span class="small muted">Next you'll see the invoice PDF with Download / Print. Share it on WhatsApp or email from there.</span>
+  </section></aside>
+</form>
+{% endif %}
+{% endblock %}

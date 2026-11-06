@@ -1,0 +1,22 @@
+{% extends "print/_print_base.html" %}{% load static %}
+{% block title %}{{ agency }} · project status {{ today|date:"j M Y" }}{% endblock %}
+{% block page %}
+<div class="page"><div class="pad">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+    <img src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}" style="width:150px;margin-left:-16mm">
+    <div style="text-align:right"><div class="eyebrow" style="color:#5E5E5E">Project status</div><div style="font-family:'Bodoni Moda',Georgia,serif;font-size:24px">{{ agency }}</div><div style="font-size:11px;color:#5E5E5E">As of {{ today|date:"l, j F Y" }}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div style="border:1px solid #E7E3DF;border-radius:6px;padding:8px 10px"><div class="eyebrow" style="color:#5E5E5E;font-size:9px">In progress</div><b style="font-size:20px">{{ open_rows|length }}</b></div>
+    <div style="border:1px solid #E7E3DF;border-radius:6px;padding:8px 10px"><div class="eyebrow" style="color:#5E5E5E;font-size:9px">Final checks</div><b style="font-size:20px">{{ final_checks }}</b></div>
+    <div style="border:1px solid #E7E3DF;border-radius:6px;padding:8px 10px"><div class="eyebrow" style="color:#5E5E5E;font-size:9px">Delivered ({{ today|date:"M" }})</div><b style="font-size:20px">{{ done|length }}</b></div>
+  </div>
+  <div><div class="eyebrow">Films in progress</div>
+  <table><thead><tr><th>Couple</th><th>Film</th><th>Where it is</th><th>Expected</th></tr></thead><tbody>
+    {% for r in open_rows %}<tr><td><b>{{ r.p.couple }}</b></td><td>{{ r.p.deliverable }}</td><td>{{ r.stage }}</td><td>{{ r.when|date:"j M"|default:"To be confirmed" }}</td></tr>{% empty %}<tr><td colspan="4">Nothing in progress.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if done %}<div><div class="eyebrow">Delivered this month</div><table><tbody>{% for p in done %}<tr><td><b>{{ p.couple }}</b></td><td>{{ p.deliverable }}</td><td>Delivered {{ p.closed_on|date:"j M" }}</td><td>{% if p.final_mp4_link %}<a href="{{ p.final_mp4_link }}" style="color:#A90404;font-weight:600">Watch film</a>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  {% if note %}<div style="font-size:11.5px;padding:10px 12px;border-left:3px solid #A90404;background:#FAF8F6"><b>Note from {{ studio.brand_name }}:</b> {{ note }}</div>{% endif %}
+  <div class="foot"><span>{{ studio.brand_name }} · elevating love stories</span><span>{{ studio.phone }}{% if studio.email %} · {{ studio.email }}{% endif %}</span></div>
+</div></div>
+{% endblock %}

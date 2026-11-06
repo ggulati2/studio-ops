@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Team{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Team &amp; attendance</h1><p>{{ month|date:"F Y" }} so far. Available hours already exclude leave, holidays and half days.</p></div>
+  <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn primary" href="{% url 'person_new' %}">+ Add a person</a></div>
+</div>
+<section class="card"><h2>Attendance</h2><div class="scroll"><table style="min-width:980px">
+  <thead><tr><th>Person</th><th>Role</th><th>Office</th><th>WFH</th><th>Half</th><th>Leave</th><th>Late</th><th>Hours worked</th><th>Available</th><th>Utilization</th><th>Logged to jobs</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><b>{{ r.u.profile.name }}</b>{% if not r.u.profile.active %} <span class="tag">inactive</span>{% endif %}</td>
+    <td class="muted">{{ r.u.profile.get_role_display }}{% if r.u.profile.pod %} · {{ r.u.profile.pod }}{% endif %}</td>
+    <td>{{ r.att.office }}</td><td>{{ r.att.wfh }}</td><td>{{ r.att.half }}</td>
+    <td {% if r.att.leaves_counted > studio.free_leaves_per_month %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.att.leaves_counted|hours }}</td>
+    <td {% if r.att.late >= 2 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ r.att.late }}</td>
+    <td>{{ r.att.hours|hours }}</td><td>{{ r.avail|hours }}</td><td>{% if r.util is not None %}{{ r.util }}%{% else %}–{% endif %}</td>
+    <td {% if r.att.logged_pct is not None and r.att.logged_pct < 80 %}style="color:var(--warn)"{% endif %}>{% if r.att.logged_pct is not None %}{{ r.att.logged_pct }}%{% else %}–{% endif %}</td>
+    <td><a class="btn sm" href="{% url 'person_edit' r.u.pk %}">Edit</a></td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+<p class="small muted" style="margin:0">Logged to jobs under 80% = office time not logged against any job: idle, waiting for footage, or missed logging.</p></section>
+
+<section class="card">
+  <div class="title"><h2>Value of work vs salary</h2><span class="small muted">Only founders see this</span></div>
+  <div class="grid wide">{% for r in rows %}{% if r.u.profile.does_editing %}
+    <div class="card tight" style="gap:7px">
+      <div style="display:flex;justify-content:space-between"><b>{{ r.u.profile.name }}</b>{% if r.multiple is not None %}<span class="tag {% if r.multiple < 1.5 %}bad{% elif r.multiple >= 3 %}info{% else %}ok{% endif %}">{{ r.multiple }}×</span>{% endif %}</div>
+      <div class="small" style="display:flex;justify-content:space-between"><span class="muted">Value of work</span><b>₹{{ r.value|money }}</b></div>
+      <div class="small" style="display:flex;justify-content:space-between"><span class="muted">Salary</span><span>₹{{ r.u.profile.monthly_salary|money }}</span></div>
+    </div>{% endif %}{% endfor %}</div>
+  <p class="small muted" style="margin:0">Value = each INR film's invoice shared by the hours each editor spent on it. Guide: under 1.5× costs more than it brings in, 2–3× is healthy. New juniors start low.</p>
+</section>
+{% endblock %}

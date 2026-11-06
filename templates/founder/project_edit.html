@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}{{ p }}{% endblock %}
+{% block content %}
+<div class="head"><div><a class="small" href="{% url 'projects' %}">← Projects</a><h1>{{ p }}</h1><p>{{ p.agency }} · {{ hours|hours }} hrs logged{% if p.flag %} · <span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</p></div></div>
+<div class="row">
+  <form method="post" class="card grow">{% csrf_token %}{% include "_form.html" %}<div class="actions"><button class="btn primary">Save job</button></div></form>
+  <aside class="aside">
+    <section class="card"><h2>Links</h2>
+      <span class="small">Review link: {% if p.cut_link %}<a href="{{ p.cut_link }}" target="_blank" rel="noopener">open</a>{% else %}—{% endif %}</span>
+      <span class="small">Project file: {% if p.project_file_link %}<a href="{{ p.project_file_link }}" target="_blank" rel="noopener">open</a>{% else %}—{% endif %}</span>
+      <span class="small">Final MP4: {% if p.final_mp4_link %}<a href="{{ p.final_mp4_link }}" target="_blank" rel="noopener">open</a>{% else %}—{% endif %}</span>
+    </section>
+    <section class="card"><h2>Review history</h2>
+      {% for r in reviews %}<div class="small" style="border-top:1px solid var(--line2);padding-top:8px"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} · {% if r.passed %}passed{% else %}sent back{% endif %}</b> <span class="muted">{{ r.created|date:"j M, H:i" }} · {{ r.reviewer.profile.name }}</span>{% if r.issues %}<div>Issues: {{ r.issues|join:", " }}</div>{% endif %}{% if r.comments %}<div style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% empty %}<span class="small muted">No reviews yet.</span>{% endfor %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

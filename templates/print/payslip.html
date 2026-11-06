@@ -1,0 +1,19 @@
+{% extends "print/_print_base.html" %}{% load static ops_extras %}
+{% block title %}Payslip {{ s.payroll.month|date:"F Y" }} · {{ s.user.profile.name }}{% endblock %}
+{% block page %}
+<div class="page" style="min-height:auto"><div class="pad">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start"><img src="{% static 'img/redwed-on-light.png' %}" alt="" style="width:140px;margin-left:-16mm">
+    <div style="text-align:right"><div class="eyebrow" style="color:#5E5E5E">Payslip</div><div style="font-family:'Bodoni Moda',Georgia,serif;font-size:24px">{{ s.payroll.month|date:"F Y" }}</div><div style="font-size:11px;color:#5E5E5E">{{ studio.legal_name }}</div></div></div>
+  <div style="font-size:14px"><b>{{ s.user.profile.name }}</b> · {{ s.user.profile.get_role_display }}</div>
+  <table style="font-size:13px"><tbody>
+    <tr><td>Monthly salary</td><td style="text-align:right">₹{{ s.salary|money }}</td></tr>
+    <tr><td>Leaves taken</td><td style="text-align:right">{{ s.leaves_taken|hours }} days</td></tr>
+    <tr><td>Unpaid leaves</td><td style="text-align:right">{{ s.unpaid_leaves|hours }} days</td></tr>
+    <tr><td>Leave deduction</td><td style="text-align:right">− ₹{{ s.leave_deduction|money }}</td></tr>
+    <tr><td>Extra work</td><td style="text-align:right">+ ₹{{ s.extra_pay|money }}</td></tr>
+    {% if s.other %}<tr><td>Adjustment{% if s.other_note %} ({{ s.other_note }}){% endif %}</td><td style="text-align:right">{{ s.other|money }}</td></tr>{% endif %}
+    <tr><td style="border-top:2px solid #111"><b>Net pay</b></td><td style="text-align:right;border-top:2px solid #111;font-size:16px"><b>₹{{ s.net|money }}</b></td></tr>
+  </tbody></table>
+  <div class="foot"><span>{{ studio.legal_name }} · confidential</span><span>{% if s.payroll.finalized_on %}Finalized {{ s.payroll.finalized_on|date:"j M Y" }}{% endif %}</span></div>
+</div></div>
+{% endblock %}

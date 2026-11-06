@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Status reports{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Status reports</h1><p>Pull today's status as a PDF to share with the team or an agency.</p></div></div>
+<div class="row">
+  <section class="card aside">
+    <h2>Team report</h2>
+    <p class="small muted" style="margin:0">All agencies, editors, stages, deadlines and drives. Never rates or salaries.</p>
+    <form method="get" action="{% url 'report_print' %}" target="_blank" class="card tight" style="border:0;padding:0">
+      <label>Note on the report (optional)<textarea class="input" name="note" rows="2"></textarea></label>
+      <button class="btn dark">Open team PDF</button>
+    </form>
+  </section>
+  <section class="card grow">
+    <h2>Agency report</h2>
+    <form method="get" class="actions"><select class="input" name="agency" onchange="this.form.submit()" style="width:auto"><option value="">Choose an agency…</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency.pk == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></form>
+    {% if agency %}
+    <form method="post" class="card tight" style="border:0;padding:0">{% csrf_token %}
+      <h3>What the client sees</h3>
+      <p class="small muted" style="margin:0">Change how a film's stage or date reads on the report. Your real status and deadline stay as they are. Blank date = your deadline + {{ buffer }} working days (skips holidays). Edits are remembered.</p>
+      {% for r in rows %}
+      <div class="card tight" style="gap:8px;{% if r.edited %}background:#FDF7F7;border-color:var(--red-line){% endif %}">
+        <input type="hidden" name="pid" value="{{ r.p.pk }}">
+        <div style="display:flex;justify-content:space-between;gap:8px"><b>{{ r.p }}</b>{% if r.edited %}<span class="small" style="color:var(--red);font-weight:600">Edited for client</span>{% endif %}</div>
+        <span class="small muted">Actually: {{ r.p.get_status_display }}{% if r.p.deadline %} · deadline {{ r.p.deadline|date:"j M" }}{% endif %}</span>
+        <div class="fields">
+          <label>Show stage as<select class="input" name="stage_{{ r.p.pk }}"><option value="">Automatic ({{ r.stage }})</option>{% for s in stages %}<option {% if r.p.client_stage == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+          <label>Show date as<input class="input" type="date" name="date_{{ r.p.pk }}" value="{{ r.p.client_date|date:'Y-m-d' }}"><span class="help">Now shows {{ r.when|date:"j M"|default:"no date" }}</span></label>
+        </div>
+      </div>
+      {% empty %}<span class="muted small">No open films for {{ agency }}.</span>{% endfor %}
+      <div class="actions"><button class="btn">Save client view</button></div>
+    </form>
+    <form method="get" action="{% url 'report_print' %}" target="_blank" class="actions">
+      <input type="hidden" name="agency" value="{{ agency.pk }}">
+      <input class="input" name="note" placeholder="Note on the report (optional)" style="flex:1 1 260px">
+      <button class="btn primary">Open {{ agency }} PDF</button>
+    </form>
+    <p class="small muted" style="margin:0">The PDF page has Download / Print. Share it on WhatsApp or email from your phone or computer.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

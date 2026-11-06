@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Extra work{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Extra work</h1><p>Jobs you take on outside working hours. Logged straight away and paid with your salary.</p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
+{% for p in offers %}
+<section class="card" style="background:#FBEDED;border-color:var(--red-line);flex-direction:row;flex-wrap:wrap;align-items:center">
+  <div style="flex:1 1 280px"><span class="small" style="color:var(--red-dark);font-weight:600">New extra job offered to you</span><div style="font-size:16px;font-weight:600">{{ p }}</div>
+  <span class="small" style="color:var(--red-dark)">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate|money }}/hr{% else %}Fixed ₹{{ p.extra_rate|money }} for the job{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}{% if p.drive %} · {{ p.drive }}{% endif %}</span></div>
+  <form method="post" action="{% url 'extra_respond' p.pk %}" class="actions">{% csrf_token %}<button class="btn" name="answer" value="no">Decline</button><button class="btn primary" name="answer" value="yes">Accept</button></form>
+</section>{% endfor %}
+<div class="row">
+  <div class="grow">
+    <form method="post" class="card">{% csrf_token %}<h2>Log extra hours</h2>{% include "_form.html" %}<button class="btn primary">Save hours</button>
+      <span class="small muted">If the time overlaps your office in/out time, admin gets a note.</span></form>
+    <section class="card"><h2>My extra hours · {{ month|date:"F" }}</h2><div class="scroll"><table>
+      <thead><tr><th>Date</th><th>Job</th><th>Time</th><th>Hrs</th><th>Pay</th><th></th></tr></thead>
+      <tbody>{% for e in entries %}<tr><td>{{ e.date|date:"j M" }}</td><td>{{ e.project }}</td><td class="muted">{{ e.start|time:"g:i A" }} – {{ e.end|time:"g:i A" }}</td><td>{{ e.hours|hours }}</td>
+        <td>{% if e.project.extra_basis == 'hourly' %}₹{{ e.pay|money }}{% else %}<span class="tag">Fixed job</span>{% endif %}</td>
+        <td><form method="post" action="{% url 'extra_delete' e.pk %}">{% csrf_token %}<button class="btn sm" aria-label="Remove entry">✕</button></form></td></tr>{% empty %}<tr><td colspan="6" class="muted">Nothing logged this month.</td></tr>{% endfor %}</tbody>
+    </table></div></section>
+  </div>
+  <aside class="aside">
+    <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="font-family:var(--serif);font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · fixed jobs count when the job is closed · paid with your salary on the 1st</span></section>
+    <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate }}/hr{% else %}Fixed ₹{{ p.extra_rate|money }}{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
+  </aside>
+</div>
+{% endblock %}

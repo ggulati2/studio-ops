@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Close job{% endblock %}
+{% block content %}
+<div class="head"><div><a class="small" href="{% url 'my_jobs' %}">← My jobs</a><h1>Close job: {{ p }}</h1><p>{{ p.agency }} · Tier {{ p.tier }}{% if p.drive %} · Drive {{ p.drive }}{% endif %}</p></div></div>
+<div class="row">
+<form method="post" class="card grow">{% csrf_token %}
+  <h2>Before you can close this job</h2>
+  <div class="card tight {% if qc_ok %}{% else %}warn{% endif %}"><b>{% if qc_ok %}✓ QC passed{% else %}QC hasn't passed this film yet{% endif %}</b></div>
+  {% include "_form.html" %}
+  <button class="btn primary" {% if not qc_ok %}disabled{% endif %}>Mark job as closed</button>
+</form>
+<aside class="aside"><section class="card"><h2>Where to upload</h2>
+  <span class="small">Company Drive › {{ p.agency }} › {% now "Y" %} ›</span>
+  <span class="mono" style="background:#FAF8F6;border-radius:6px;padding:8px;line-height:1.6">{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_PROJECT/<br>{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_FINAL.mp4</span>
+  <span class="small muted">Premiere: File → Project Manager → Collect files and copy to new location, then upload that folder.</span>
+</section></aside>
+</div>
+{% endblock %}
