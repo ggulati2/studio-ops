@@ -10,6 +10,10 @@ log = logging.getLogger("ops.audit")
 def client_ip(request):
     if request is None:
         return None
+    # Vercel sets X-Real-IP itself (clients can't forge it there).
+    real = request.META.get("HTTP_X_REAL_IP", "").strip()
+    if real:
+        return real
     fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")
     ip = (fwd.split(",")[0] if fwd else request.META.get("REMOTE_ADDR", "")).strip()
     return ip or None

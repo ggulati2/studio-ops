@@ -5,8 +5,8 @@
 ```
 main (always deployable, protected)
   └─ feature/invoice-gst-split     ← one branch per change
-       └─ pull request → CI (tests on Postgres, deploy checks, dependency audit) → review → merge
-                                                                                     └─ Render deploys
+       └─ pull request → Vercel demo preview + CI (tests on Postgres, deploy checks, dependency audit) → review → merge
+                                                                                                         └─ Vercel deploys production
 ```
 
 1. **Start from an issue.** Use the *Feature request* or *Bug* template in GitHub → Issues, so changes are tracked against what the studio asked for.
@@ -21,7 +21,7 @@ main (always deployable, protected)
    ```
 4. **Test:** `DEBUG=1 python manage.py test ops`. Add a test for any new rule or page.
 5. **Model change?** Run `python manage.py makemigrations` and commit the migration. CI fails if you forget.
-6. **Open a pull request.** The template asks for the role/permission impact. Merge only when CI is green.
+6. **Open a pull request.** Vercel comments with a preview link that runs your branch on demo data (logins as above). The template asks for the role/permission impact. Merge only when CI is green.
 
 ## Rules that keep it safe
 

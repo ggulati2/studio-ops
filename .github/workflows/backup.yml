@@ -1,0 +1,54 @@
+# Weekly full backup of the Supabase database (Supabase's free plan has no backups).
+# The dump is encrypted with BACKUP_PASSPHRASE before it leaves the runner and kept
+# as a workflow artifact for 90 days. Running it also counts as database activity.
+#
+# Repo secrets needed (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL     Session pooler connection string (port 5432), see DEPLOY.md
+#   BACKUP_PASSPHRASE   A long passphrase. Store it in your password manager too.
+#
+# Restore: gpg -d studio-ops-YYYY-MM-DD.dump.gpg > db.dump && pg_restore --clean --no-owner -d "<url>" db.dump
+name: Backup
+
+on:
+  schedule:
+    - cron: "30 20 * * 0"     # Sundays 02:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets
+        env:
+          URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          [ -n "$URL" ] || { echo "::error::Add the SUPABASE_DB_URL secret (see DEPLOY.md)"; exit 1; }
+          [ -n "$PASS" ] || { echo "::error::Add the BACKUP_PASSPHRASE secret (see DEPLOY.md)"; exit 1; }
+      - name: Install Postgres 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Dump and encrypt
+        env:
+          URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          f="studio-ops-$(date -u +%F).dump.gpg"
+          /usr/lib/postgresql/17/bin/pg_dump "$URL" --format=custom --no-owner --no-privileges --schema=public \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 -o "$f" 3<<<"$PASS"
+          ls -lh "$f"
+          echo "FILE=$f" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 90
+          if-no-files-found: error

@@ -88,6 +88,59 @@
       upd();
     });
 
+    /* Photos: phone pictures are 3–10 MB, the host accepts 4.5 MB per request.
+       Shrink each photo in the browser (longest side 2000 px, JPEG) before it's sent;
+       the server re-checks and re-compresses anyway. */
+    var LIMIT = 4200000;
+    function shrink(file) {
+      return new Promise(function (resolve) {
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 700000 || !window.createImageBitmap) return resolve(file);
+        createImageBitmap(file).then(function (bmp) {
+          var max = 2000, s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+          var c = doc.createElement("canvas");
+          c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+          c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+          c.toBlob(function (blob) {
+            if (!blob || blob.size >= file.size) return resolve(file);
+            resolve(new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }));
+          }, "image/jpeg", 0.85);
+        }).catch(function () { resolve(file); });
+      });
+    }
+    function formBytes(form) {
+      var total = 0;
+      Array.prototype.forEach.call(form.querySelectorAll("input[type=file]"), function (i) {
+        Array.prototype.forEach.call(i.files || [], function (f) { total += f.size; });
+      });
+      return total;
+    }
+    doc.addEventListener("change", function (e) {
+      var input = e.target;
+      if (!input.matches || !input.matches("input[type=file][accept^='image']") || !input.files.length || !window.DataTransfer) return;
+      var form = input.form;
+      if (form) form.classList.add("is-saving");
+      Promise.all(Array.prototype.map.call(input.files, shrink)).then(function (files) {
+        var dt = new DataTransfer();
+        files.forEach(function (f) { dt.items.add(f); });
+        input.files = dt.files;
+        if (form) form.classList.remove("is-saving");
+        var hint = input.parentNode.querySelector(".upload-note") || doc.createElement("span");
+        hint.className = "help upload-note";
+        var mb = form ? formBytes(form) / 1e6 : 0;
+        hint.textContent = files.length + " photo" + (files.length > 1 ? "s" : "") + " ready (" + mb.toFixed(1) + " MB)" +
+          (mb * 1e6 > LIMIT ? ". Too large to send in one go: pick fewer photos." : "");
+        hint.style.color = mb * 1e6 > LIMIT ? "var(--bad)" : "";
+        input.insertAdjacentElement("afterend", hint);
+      });
+    });
+    doc.addEventListener("submit", function (e) {
+      if (e.target.querySelector("input[type=file]") && formBytes(e.target) > LIMIT) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        e.target.dataset.sent = "";
+        window.alert("These photos are too large to send together. Remove a few and try again.");
+      }
+    }, true);
+
     /* Messages fade after a while (errors stay) */
     Array.prototype.forEach.call(doc.querySelectorAll(".msg:not(.error)"), function (m) {
       setTimeout(function () { m.classList.add("gone"); }, 6000);

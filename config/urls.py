@@ -9,6 +9,7 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("password/", v.PasswordChange.as_view(), name="password_change"),
     path("health/", v.health, name="health"),
+    path("cron/daily/", v.cron_daily, name="cron_daily"),
     path("img/<int:pk>/", v.image, name="image"),
     path("", v.home, name="home"),
     # admin (founders)

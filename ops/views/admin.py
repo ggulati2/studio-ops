@@ -491,9 +491,18 @@ def backup(request):
     from django.core.management import call_command
     from django.http import HttpResponse
     buf = io.StringIO()
-    call_command("dumpdata", "ops", "auth.user", natural_foreign=True, indent=1, stdout=buf)
-    resp = HttpResponse(buf.getvalue(), content_type="application/json")
-    resp["Content-Disposition"] = f'attachment; filename="studio-ops-backup-{timezone.localdate():%Y-%m-%d}.json"'
+    # Records only: photos and the audit trail are left out to stay under the host's
+    # 4.5 MB response limit. The weekly GitHub backup (full database) has everything.
+    call_command("dumpdata", "ops", "auth.user", natural_foreign=True, stdout=buf,
+                 exclude=["ops.storedimage", "ops.auditevent"])
+    import gzip
+    import json
+    rows = json.loads(buf.getvalue())
+    for r in rows:                       # drop links to the photos left out, so the file restores cleanly
+        for f in ("photos", "photo"):
+            r["fields"].pop(f, None)
+    resp = HttpResponse(gzip.compress(json.dumps(rows, indent=1).encode()), content_type="application/gzip")
+    resp["Content-Disposition"] = f'attachment; filename="studio-ops-backup-{timezone.localdate():%Y-%m-%d}.json.gz"'
     return resp
 
 

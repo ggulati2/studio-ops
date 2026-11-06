@@ -1,0 +1,19 @@
+# Vercel reads this file: Python version, dependencies and the build step.
+# Keep `dependencies` identical to requirements.txt (a test checks this).
+[project]
+name = "studio-ops"
+version = "1.2.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "Django>=5.2,<5.3",
+    "dj-database-url>=2.2",
+    "psycopg[binary]>=3.2",
+    "whitenoise>=6.7",
+    "Pillow>=11.0",
+]
+
+[tool.vercel]
+entrypoint = "config.wsgi:application"
+
+[tool.vercel.scripts]
+build = "python scripts/vercel_build.py"

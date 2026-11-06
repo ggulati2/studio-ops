@@ -5,12 +5,14 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 
 from ..audit import client_ip, record
 from ..models import StoredImage
 from ..rbac import ADMIN, DRIVE, EDITOR, QC, TL, has_perm, role_of
 
-__all__ = ["home", "image", "health", "ThrottledLogin", "PasswordChange", "no_access"]
+__all__ = ["home", "image", "health", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
 
 HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", QC: "qc_queue", DRIVE: "drives"}
 
@@ -46,6 +48,27 @@ def image(request, pk):
 def health(request):
     """For a free uptime pinger: no login, no database, keeps the host awake."""
     return HttpResponse("ok", content_type="text/plain")
+
+
+@csrf_exempt
+@require_GET
+def cron_daily(request):
+    """Called once a day by Vercel Cron (Authorization: Bearer CRON_SECRET).
+    Touches the database so the free Supabase project never pauses for inactivity,
+    turns past-due invoices Overdue, and clears expired sign-in sessions."""
+    import hmac
+
+    from django.conf import settings
+    from django.contrib.sessions.models import Session
+    from django.utils import timezone
+
+    from ..services import refresh_overdue
+    expected = f"Bearer {settings.CRON_SECRET}"
+    if not settings.CRON_SECRET or not hmac.compare_digest(request.headers.get("Authorization", ""), expected):
+        return HttpResponse(status=401)
+    refresh_overdue()
+    removed, _ = Session.objects.filter(expire_date__lt=timezone.now()).delete()
+    return HttpResponse(f"ok, {removed} expired sessions removed", content_type="text/plain")
 
 
 class ThrottledLogin(auth_views.LoginView):
