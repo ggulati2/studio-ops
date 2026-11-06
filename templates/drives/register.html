@@ -13,7 +13,7 @@
 <div class="row">
   <section class="grow"><div class="grid wide">
     {% for d in drives %}<a class="card tight" href="{% url 'drive_edit' d.pk %}" style="text-decoration:none;color:inherit;padding:0;overflow:hidden;gap:0">
-      <div style="height:120px;background:#F0EDEA;position:relative;display:flex;align-items:center;justify-content:center">
+      <div style="height:120px;background:var(--line2);position:relative;display:flex;align-items:center;justify-content:center">
         {% with ph=d.photos.all.0 %}{% if ph %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" style="width:100%;height:120px;object-fit:cover">{% else %}<span class="small muted">No photo</span>{% endif %}{% endwith %}
         <span class="tag {{ d.status|drive_class }}" style="position:absolute;top:10px;left:10px">{{ d.get_status_display }}</span></div>
       <div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px">

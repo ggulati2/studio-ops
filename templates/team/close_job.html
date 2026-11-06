@@ -11,7 +11,7 @@
 </form>
 <aside class="aside"><section class="card"><h2>Where to upload</h2>
   <span class="small">Company Drive › {{ p.agency }} › {% now "Y" %} ›</span>
-  <span class="mono" style="background:#FAF8F6;border-radius:6px;padding:8px;line-height:1.6">{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_PROJECT/<br>{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_FINAL.mp4</span>
+  <span class="mono" style="background:var(--sunk);border-radius:6px;padding:8px;line-height:1.6">{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_PROJECT/<br>{{ p.agency.name|cut:" " }}_{{ p.couple|cut:" "|cut:"&" }}_{{ p.deliverable|cut:" " }}_FINAL.mp4</span>
   <span class="small muted">Premiere: File → Project Manager → Collect files and copy to new location, then upload that folder.</span>
 </section></aside>
 </div>

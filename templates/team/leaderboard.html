@@ -21,9 +21,9 @@
     </section>
   </div>
   <aside class="aside">
-    <section class="card" style="border-color:#EADFC0"><h2>Next winner</h2><span style="letter-spacing:-.03em;font-size:26px">{{ next_announce|date:"j F" }}</span><span class="small muted">{{ days_to }} day{{ days_to|pluralize }} to go</span>
+    <section class="card" style="border-color:var(--gold-soft)"><h2>Next winner</h2><span style="letter-spacing:-.03em;font-size:26px">{{ next_announce|date:"j F" }}</span><span class="small muted">{{ days_to }} day{{ days_to|pluralize }} to go</span>
       <span class="small">What usually wins it: clean QC passes, on-time delivery, low revisions, and helping the team when it's busy.</span></section>
-    <section class="card"><h2>Recent winners</h2>{% for a in recent %}<div style="border-top:1px solid var(--line2);padding-top:7px"><span class="small" style="color:#6B5310;font-weight:600">{{ a.month|date:"F Y" }}</span><div><b>{{ a.user.profile.name }}</b></div><span class="small muted">{{ a.reason }}</span></div>{% empty %}<span class="small muted">First winner coming soon.</span>{% endfor %}</section>
+    <section class="card"><h2>Recent winners</h2>{% for a in recent %}<div style="border-top:1px solid var(--line2);padding-top:7px"><span class="small" style="color:var(--gold);font-weight:600">{{ a.month|date:"F Y" }}</span><div><b>{{ a.user.profile.name }}</b></div><span class="small muted">{{ a.reason }}</span></div>{% empty %}<span class="small muted">First winner coming soon.</span>{% endfor %}</section>
   </aside>
 </div>
 {% endblock %}

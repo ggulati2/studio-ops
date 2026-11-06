@@ -4,7 +4,7 @@
   <div style="flex:1 1 280px;display:flex;flex-direction:column;gap:6px;position:relative">
     <span class="eyebrow">Employee of the month · {{ award.month|date:"F Y" }}</span>
     <span class="big">{% if admin %}{{ award.user.profile.name }}{% else %}Congratulations, {{ award.user.profile.name }}{% endif %}</span>
-    <span style="color:#D4D4D4">{{ award.reason }}</span>
+    <span style="color:var(--faint)">{{ award.reason }}</span>
     <div class="actions" style="margin-top:4px"><span class="tag" style="background:var(--gold);color:var(--ink)">₹{{ award.voucher_amount|money }} Amazon voucher card</span>{% if award.congrats.count %}<span class="small" style="color:var(--faint)">{{ award.congrats.count }} people congratulated</span>{% endif %}</div>
   </div>
 </section>

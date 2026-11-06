@@ -9,7 +9,7 @@
   <div class="kpi {% if inr.overdue or usd.overdue %}bad{% endif %}"><span>Overdue</span><b>₹{{ inr.overdue|money }}</b><small>+ ${{ usd.overdue|money }}</small></div>
 </div>
 {% if unbilled %}<section class="card warn"><div class="title"><h2 style="color:var(--warn)">Delivered but not invoiced · {{ unbilled|length }}</h2></div>
-  <div class="chips">{% for p in unbilled %}<a href="{% url 'invoice_new' %}?agency={{ p.agency_id }}" style="background:#fff">{{ p }} · {{ p.agency }} · {{ p.agency.symbol }}{{ p.invoice_amount|money }}</a>{% endfor %}</div></section>{% endif %}
+  <div class="chips">{% for p in unbilled %}<a href="{% url 'invoice_new' %}?agency={{ p.agency_id }}" style="background:var(--card)">{{ p }} · {{ p.agency }} · {{ p.agency.symbol }}{{ p.invoice_amount|money }}</a>{% endfor %}</div></section>{% endif %}
 <section class="card">
   <div class="title"><h2>Invoices</h2><div class="chips"><a href="?" class="{% if not status %}on{% endif %}">All</a>{% for v, l in statuses %}<a href="?status={{ v }}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}</div></div>
   <div class="scroll"><table style="min-width:1000px">

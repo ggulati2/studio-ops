@@ -19,7 +19,7 @@
       <h3>What the client sees</h3>
       <p class="small muted" style="margin:0">Change how a film's stage or date reads on the report. Your real status and deadline stay as they are. Blank date = your deadline + {{ buffer }} working days (skips holidays). Edits are remembered.</p>
       {% for r in rows %}
-      <div class="card tight" style="gap:8px;{% if r.edited %}background:#FDF7F7;border-color:var(--red-line){% endif %}">
+      <div class="card tight" style="gap:8px;{% if r.edited %}background:var(--red-soft);border-color:var(--red-line){% endif %}">
         <input type="hidden" name="pid" value="{{ r.p.pk }}">
         <div style="display:flex;justify-content:space-between;gap:8px"><b>{{ r.p }}</b>{% if r.edited %}<span class="small" style="color:var(--red);font-weight:600">Edited for client</span>{% endif %}</div>
         <span class="small muted">Actually: {{ r.p.get_status_display }}{% if r.p.deadline %} · deadline {{ r.p.deadline|date:"j M" }}{% endif %}</span>

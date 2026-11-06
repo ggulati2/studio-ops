@@ -9,7 +9,7 @@
 {% if agency %}
 <form method="post" class="row">{% csrf_token %}<input type="hidden" name="agency" value="{{ agency.pk }}">
   <section class="card grow">
-    <div class="card tight" style="background:#FAF8F6"><div class="title"><b>Saved client details</b><a class="small" href="{% url 'agency_edit' agency.pk %}">Edit</a></div>
+    <div class="card tight" style="background:var(--sunk)"><div class="title"><b>Saved client details</b><a class="small" href="{% url 'agency_edit' agency.pk %}">Edit</a></div>
       <span class="small">{{ agency.name }}{% if agency.billing_address %} · {{ agency.billing_address|linebreaksbr }}{% endif %}</span>
       <span class="small muted">Bills in {{ agency.currency }} · {{ agency.payment_terms_days }} days{% if agency.gstin %} · GSTIN {{ agency.gstin }}{% endif %}</span>
       {% if agency.missing_fields %}<span class="small" style="color:var(--warn)">Missing {{ agency.missing_fields|join:", " }}. You can still make the PDF.</span>{% endif %}</div>

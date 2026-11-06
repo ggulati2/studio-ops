@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'app.css' %}">
 <link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
+<script src="{% static 'theme.js' %}"></script>
 <script src="{% static 'app.js' %}" defer></script>
 <noscript><style>@media (max-width:1079.98px){.side{position:static!important;transform:none!important;visibility:visible!important;width:100%!important;height:auto!important;box-shadow:none!important}.shell{flex-direction:column}.topbar .iconbtn{visibility:hidden}}</style></noscript>
 </head>
@@ -22,14 +23,22 @@
   <button type="button" class="iconbtn" data-nav-toggle aria-controls="side" aria-expanded="false" aria-label="Open menu">
     <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#menu"/></svg>
   </button>
-  <a href="{% url 'home' %}" class="toplogo"><img src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"></a>
+  <a href="{% url 'home' %}" class="toplogo"><img class="logo-light" src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"><img class="logo-dark" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+  <button type="button" class="theme-switch" data-theme-toggle role="switch" aria-checked="false" aria-label="Dark mode">
+      <span class="track"><span class="knob"><svg class="ico sun" aria-hidden="true"><use href="{{ ICONS }}#sun"/></svg><svg class="ico moon" aria-hidden="true"><use href="{{ ICONS }}#moon"/></svg></span></span>
+    </button>
   <span class="avatar sm" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>
 </header>
 <div class="scrim" aria-hidden="true"></div>
 
 <div class="shell">
   <aside class="side" id="side" aria-label="Menu">
-    <a href="{% url 'home' %}" class="brand"><img class="logo" src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"></a>
+    <div class="side-top">
+      <a href="{% url 'home' %}" class="brand"><img class="logo logo-light" src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}"><img class="logo logo-dark" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}"></a>
+      <button type="button" class="theme-switch" data-theme-toggle role="switch" aria-checked="false" aria-label="Dark mode">
+        <span class="track"><span class="knob"><svg class="ico sun" aria-hidden="true"><use href="{{ ICONS }}#sun"/></svg><svg class="ico moon" aria-hidden="true"><use href="{{ ICONS }}#moon"/></svg></span></span>
+      </button>
+    </div>
 
     <div class="who">
       <span class="avatar{% if celebrating %} gold{% endif %}" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>

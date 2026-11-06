@@ -12,6 +12,36 @@
   ready(function () {
     doc.documentElement.classList.add("js");
 
+    /* Light / dark switch */
+    function syncSwitches() {
+      var dark = doc.documentElement.getAttribute("data-theme") === "dark";
+      Array.prototype.forEach.call(doc.querySelectorAll("[data-theme-toggle]"), function (b) {
+        b.setAttribute("aria-checked", dark ? "true" : "false");
+        b.setAttribute("title", dark ? "Switch to light mode" : "Switch to dark mode");
+      });
+      var meta = doc.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", dark ? "#16161A" : "#FFFFFF");
+    }
+    syncSwitches();
+    doc.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-theme-toggle]");
+      if (!b) return;
+      var next = doc.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      doc.documentElement.classList.add("theme-anim");
+      doc.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch (err) {}
+      syncSwitches();
+      setTimeout(function () { doc.documentElement.classList.remove("theme-anim"); }, 350);
+    });
+    /* Follow the device if it changes and nobody has picked a theme on this device */
+    if (window.matchMedia) {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (m) {
+        var saved = null;
+        try { saved = localStorage.getItem("theme"); } catch (err) {}
+        if (!saved) { doc.documentElement.setAttribute("data-theme", m.matches ? "dark" : "light"); syncSwitches(); }
+      });
+    }
+
     /* Select boxes that apply as soon as you pick something */
     doc.addEventListener("change", function (e) {
       var el = e.target.closest("[data-autosubmit]");

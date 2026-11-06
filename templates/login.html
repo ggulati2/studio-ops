@@ -6,10 +6,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'app.css' %}">
 <link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
+<script src="{% static 'theme.js' %}"></script>
 <script src="{% static 'app.js' %}" defer></script></head>
-<body><main class="login"><div class="box">
+<body>{% static 'icons.svg' as ICONS %}
+<div class="login-tools"><button type="button" class="theme-switch" data-theme-toggle role="switch" aria-checked="false" aria-label="Dark mode">
+      <span class="track"><span class="knob"><svg class="ico sun" aria-hidden="true"><use href="{{ ICONS }}#sun"/></svg><svg class="ico moon" aria-hidden="true"><use href="{{ ICONS }}#moon"/></svg></span></span>
+    </button></div>
+<main class="login"><div class="box">
   <div class="login-brand">
-    <img src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}">
+    <img class="logo-light" src="{% static 'img/redwed-on-light.png' %}" alt="{{ studio.brand_name }}">
+    <img class="logo-dark" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}">
     <span>Studio Ops</span>
   </div>
   <form method="post" class="card" novalidate>

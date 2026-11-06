@@ -11,7 +11,7 @@
     <h2 class="mono">{{ sel.code }} · {{ sel.agency|default:"Studio" }}</h2>
     <span class="small muted">{{ sel.contents }} · received {{ sel.received_on|date:"j M" }} · {{ sel.location }}</span>
     {% if open_jobs %}<div class="card tight bad"><b class="small" style="color:var(--bad)">Not safe yet: {{ open_jobs|length }} open job{{ open_jobs|pluralize }}</b></div>
-    {% else %}<div class="card tight" style="background:#F6FEF9;border-color:#ABEFC6"><b class="small" style="color:var(--ok)">Safe to send back</b><span class="small">All {{ jobs|length }} job{{ jobs|length|pluralize }} on this drive are closed with project files and final films on the company Drive.</span></div>{% endif %}
+    {% else %}<div class="card tight" style="background:var(--ok-bg);border-color:var(--ok-line)"><b class="small" style="color:var(--ok)">Safe to send back</b><span class="small">All {{ jobs|length }} job{{ jobs|length|pluralize }} on this drive are closed with project files and final films on the company Drive.</span></div>{% endif %}
     {% include "_form.html" %}
     <button class="btn primary">Record send-back</button>
     <span class="small muted">For hand delivery or pickup, fill in who collected it instead of courier details.</span>

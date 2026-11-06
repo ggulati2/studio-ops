@@ -5,13 +5,13 @@
   <div><h1>Planner</h1><p>Pick a job in any cell; it saves straight away and shows on that editor's Today screen.</p></div>
   <div class="actions"><a class="btn" href="?start={{ prev|date:'Y-m-d' }}">←</a><b>{{ start|date:"j M" }} – {{ grid.13.d|date:"j M Y" }}</b><a class="btn" href="?start={{ next|date:'Y-m-d' }}">→</a></div>
 </div>
-{% if tray %}<section class="card warn tight" style="flex-direction:row;flex-wrap:wrap;align-items:center"><h3 style="color:var(--warn)">Waiting for an editor</h3>{% for p in tray %}<span class="tag" style="background:#fff;border:1px dashed #EA580C">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>{% endfor %}</section>{% endif %}
+{% if tray %}<section class="card warn tight" style="flex-direction:row;flex-wrap:wrap;align-items:center"><h3 style="color:var(--warn)">Waiting for an editor</h3>{% for p in tray %}<span class="tag" style="background:var(--card);border:1px dashed #EA580C">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>{% endfor %}</section>{% endif %}
 <div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span></div>
 <div class="scroll card" style="padding:0">
 <table class="plan">
   <thead><tr><th class="day">Day</th>{% for u in people %}<th>{{ u.profile.name }}<div class="small muted" style="font-weight:400">{{ u.profile.pod|default:"" }}</div></th>{% endfor %}</tr></thead>
   <tbody>{% for row in grid %}<tr>
-    <th class="day" scope="row" style="{% if row.d.weekday == 6 %}background:#FAF8F6{% endif %}">{{ row.d|date:"D j M" }}{% if row.holiday %}<div class="small" style="color:#075985">{{ row.holiday.name }}</div>{% endif %}</th>
+    <th class="day" scope="row" style="{% if row.d.weekday == 6 %}background:var(--sunk){% endif %}">{{ row.d|date:"D j M" }}{% if row.holiday %}<div class="small" style="color:var(--info)">{{ row.holiday.name }}</div>{% endif %}</th>
     {% for c in row.cells %}
     <td class="{% if c.kind %}k-{{ c.kind }}{% elif c.entry %}has{% endif %}">
       {% if c.kind == 'leave' or c.kind == 'holiday' or c.kind == 'off' %}

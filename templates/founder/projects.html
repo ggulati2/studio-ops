@@ -13,7 +13,7 @@
 <section class="card warn">
   <div class="title"><h2 style="color:var(--warn)">Needs an editor · {{ queue|length }}</h2><span class="small" style="color:var(--warn)">Nearest deadline first</span></div>
   {% for p in queue %}
-  <form method="post" action="{% url 'project_assign' p.pk %}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:#FED7AA">
+  <form method="post" action="{% url 'project_assign' p.pk %}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:var(--warn-line)">
     {% csrf_token %}
     <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }} · {{ p.get_tier_display }}{% if p.drive %} · {{ p.drive }}{% endif %}</div></div>
     <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}</span>

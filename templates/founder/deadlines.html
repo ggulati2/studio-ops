@@ -18,7 +18,7 @@
     <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
     {% for c in cells %}
     <a class="day {% if not c.in_month %}out{% endif %} {% if c.today %}today{% endif %} {% if c.d == sel %}sel{% endif %} {% if c.holiday %}k-holiday{% elif c.d.weekday == 6 %}k-off{% endif %}" href="{% qs day=c.d|date:'Y-m-d' %}">
-      <span class="n">{{ c.d.day }}<small style="color:{% if c.holiday %}#075985{% elif c.today %}var(--red){% else %}var(--faint){% endif %}">{% if c.holiday %}HOLIDAY{% elif c.today %}TODAY{% endif %}</small></span>
+      <span class="n">{{ c.d.day }}<small style="color:{% if c.holiday %}var(--info){% elif c.today %}var(--red){% else %}var(--faint){% endif %}">{% if c.holiday %}HOLIDAY{% elif c.today %}TODAY{% endif %}</small></span>
       {% for p in c.items|slice:":3" %}<span class="chip {{ p|cal_class }}">{{ p.couple }} · {{ p.deliverable }}</span>{% endfor %}
       {% if c.items|length > 3 %}<span class="small muted">+{{ c.items|length|add:"-3" }} more</span>{% endif %}
     </a>{% endfor %}
