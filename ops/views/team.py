@@ -1,5 +1,6 @@
 """Screens for team leads, editors and QC. Each person only ever sees their
 own work (TLs: their pod). No money except their own extra pay and payslips."""
+from collections import defaultdict
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -13,7 +14,7 @@ from django.utils import timezone
 from ..rbac import ADMIN, EDITOR, QC, TL, can_review_in_pod, has_perm, requires
 from ..forms import CloseJobForm, DayForm, ExtraEntryForm, ReviewForm, TaskFormSet
 from ..models import (QC_CHECKLIST, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
-                      Project, Review, StudioSettings, TaskEntry)
+                      Project, Review, StudioSettings, TaskEntry, TaskStage)
 from .. import services as S
 from ..services import (add_months, attendance, celebrated_award, day_kind, extra_hours, extra_pay, holidays_between,
                         leave_count, month_end, month_start, parse_month, project_hours, split_hours, team,
@@ -45,9 +46,16 @@ def today(request):
         task_entries__daylog=log) if log.pk else Project.objects.filter(editor=user).exclude(status=Project.CLOSED)
     workable = workable.distinct().select_related("agency")
     initial = [{"project": t.project, "stage": t.stage, "hours": t.hours} for t in log.tasks.all()] if log.pk else []
-    plan = PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive").first()
-    if not initial and plan and plan.project_id:
-        initial = [{"project": plan.project, "stage": "Edit"}]
+    plans = list(PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive"))
+    plan = plans[0] if plans else None
+    # Revisions planned on a delivered film must be pickable in the job list too
+    revision_ids = [e.project_id for e in plans if e.is_revision]
+    if revision_ids:
+        from django.db.models import Q
+        workable = Project.objects.filter(Q(pk__in=workable.values("pk")) | Q(pk__in=revision_ids)).select_related("agency")
+    if not initial:
+        initial = [{"project": e.project, "stage": TaskStage.REVISIONS if e.is_revision else TaskStage.EDIT}
+                   for e in plans if e.project_id]
     while len(initial) < 3:
         initial.append({})
     form = DayForm(request.POST or None, instance=log)
@@ -67,7 +75,7 @@ def today(request):
         messages.success(request, f"Saved {d:%a %d %b}.")
         return redirect(f"{request.path}?date={d.isoformat()}")
     month = month_start(d)
-    ctx = {"form": form, "formset": formset, "d": d, "log": log, "plan": plan,
+    ctx = {"form": form, "formset": formset, "d": d, "log": log, "plan": plan, "plans": plans,
            "prev": d - timedelta(days=1), "next": d + timedelta(days=1), "is_today": d == timezone.localdate(),
            "split": split_hours(log) if log.pk else {}, "my_jobs": _my_projects(user)[:6],
            "att": attendance(user, month), "free_leaves": StudioSettings.get().free_leaves_per_month,
@@ -84,7 +92,9 @@ def my_month(request):
     month = parse_month(request.GET.get("m"))
     a, b = month_start(month), month_end(month)
     logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(a, b)).prefetch_related("tasks__project")}
-    plans = {p.date: p for p in PlanEntry.objects.filter(user=user, date__range=(a, b)).select_related("project")}
+    plans = defaultdict(list)
+    for e in PlanEntry.objects.filter(user=user, date__range=(a, b)).select_related("project"):
+        plans[e.date].append(e)
     hols = holidays_between(a, b)
     due = S.deliveries_between(a, b, user=user)
     lead = (a.weekday() + 1) % 7
@@ -97,7 +107,7 @@ def my_month(request):
         warn = ""
         if d < today and not log and kind == "":
             warn = "Not logged"
-        cells.append({"d": d, "kind": kind, "log": log, "plan": plans.get(d), "holiday": hols.get(d),
+        cells.append({"d": d, "kind": kind, "log": log, "plans": plans.get(d, []), "holiday": hols.get(d),
                       "today": d == today, "warn": warn, "due": due.get(d, [])})
         d += timedelta(days=1)
     while len(cells) % 7:

@@ -15,6 +15,7 @@
   <div class="card tight" style="box-shadow:none">
     <div class="title"><div><b>{{ d.project }}</b> <span class="small muted">· {{ d.project.agency }} · {{ d.project.editor.profile.name|default:"—" }}</span></div>
       <span class="tag warn">{{ d.deadline_then|date:"j M" }} → {{ d.proposed_date|date:"j M" }} (+{{ d.days_slip }} days)</span></div>
+    {% if d.project.agency_deadline %}<div class="small">{% if d.proposed_date > d.project.agency_deadline %}<span class="tag bad">Misses the agency's deadline ({{ d.project.agency_deadline|date:"j M" }})</span>{% else %}<span class="tag ok">Still before the agency's deadline ({{ d.project.agency_deadline|date:"j M" }})</span>{% endif %}</div>{% endif %}
     <div class="small"><b>{{ d.get_reason_display }}</b>{% if d.note %}: {{ d.note }}{% endif %}</div>
     <div class="small muted">Reported {{ d.reported_on|date:"j M, H:i" }} by {{ d.reported_by.profile.name|default:"—" }}</div>
     <form method="post" action="{% url 'delay_decide' d.pk %}" class="actions">{% csrf_token %}

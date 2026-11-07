@@ -18,7 +18,7 @@
   <a class="day {% if c.kind %}k-{{ c.kind }}{% endif %} {% if c.today %}today{% endif %} {% if c.due %}due{% endif %}" href="{% url 'today' %}?date={{ c.d|date:'Y-m-d' }}">
     <span class="n">{{ c.d.day }}<small>{% if c.holiday %}{{ c.holiday.name|upper|truncatechars:14 }}{% elif c.kind == 'off' %}OFF{% elif c.kind and c.kind != 'office' %}{{ c.kind|upper }}{% endif %}</small></span>
     {% for p in c.due %}<span class="chip {{ p|cal_class }}">Due: {{ p }}</span>{% endfor %}
-    {% if c.plan %}<span class="chip" style="background:var(--red-soft);color:var(--red-dark)">Plan: {{ c.plan.text }}</span>{% endif %}
+    {% for e in c.plans %}<span class="chip" style="background:{% if e.slot == 2 %}var(--qc-bg);color:var(--qc){% else %}var(--red-soft);color:var(--red-dark){% endif %}">{% if e.slot == 2 %}+ {% else %}Plan: {% endif %}{{ e.text }}</span>{% endfor %}
     {% if c.log and c.log.hours %}<span class="small">{{ c.log.hours|hours }} h{% for t in c.log.tasks.all|slice:":2" %} · {{ t.project.couple }}{% endfor %}</span>{% endif %}
     {% if c.warn %}<span class="small" style="color:var(--bad);font-weight:600">{{ c.warn }}</span>{% endif %}
   </a>{% else %}<div class="day out"></div>{% endif %}{% endfor %}

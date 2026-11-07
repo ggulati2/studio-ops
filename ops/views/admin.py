@@ -102,30 +102,36 @@ def projects(request):
 
 @requires("projects.manage")
 def project_new(request):
+    from ..forms import apply_source
     form = NewProjectForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         c = form.cleaned_data
         editor = User.objects.filter(pk=c["editor"]).first() if c["editor"] else None
         rates = {r.deliverable: r.amount for r in c["agency"].rates.all()}
-        made, short = 0, 0
+        made, short, jobs = 0, 0, []
         with transaction.atomic():
-            for d in c["deliverables"]:
-                job = Project.objects.create(
+            for d, editor_deadline, agency_deadline, amount in form.films():
+                job = Project(
                     couple=c["couple"], deliverable=d, agency=c["agency"], tier=c["tier"], editor=editor,
-                    deadline=c["deadline"], drive=c["drive"], brief=c["brief"],
-                    invoice_amount=c["invoice_amount"] if c["invoice_amount"] is not None else rates.get(d, 0),
+                    deadline=editor_deadline, agency_deadline=agency_deadline, brief=c["brief"],
+                    invoice_amount=amount if amount is not None else rates.get(d, 0),
                     is_extra=c["is_extra"] and bool(editor), extra_basis=c["extra_basis"] or "fixed",
                     extra_rate=c["extra_rate"] or 0)
+                apply_source(job, c["source"], c["cloud_link"])
+                job.save()
+                jobs.append(job)
+            for job in sorted(jobs, key=lambda j: (j.deadline or date.max)):   # earliest deadline gets planned first
                 m, sh = S.auto_plan(job)
                 made, short = made + m, short + sh
-        messages.success(request, f"Created {len(c['deliverables'])} job(s) for {c['couple']}."
+        messages.success(request, f"Created {len(jobs)} job(s) for {c['couple']}."
                          + (f" Planned {made} day(s) for {editor.profile.name} in the Planner." if made else ""))
         if short:
             messages.warning(request, f"{editor.profile.name}'s planner is full before the deadline: {short} more day(s) "
                                       "of work didn't fit. Check the Planner.")
         return redirect("projects")
-    return render(request, "form_page.html", {"form": form, "title": "New project", "back": "projects",
-                                              "submit": "Create jobs"})
+    import json
+    rates = {a.pk: {r.deliverable: r.amount for r in a.rates.all()} for a in Agency.objects.filter(active=True)}
+    return render(request, "founder/project_new.html", {"form": form, "rates_json": json.dumps(rates)})
 
 
 @requires("projects.manage")
@@ -178,22 +184,21 @@ def planner(request):
         u = get_object_or_404(User, pk=request.POST["user"])
         d = date.fromisoformat(request.POST["date"])
         val = request.POST.get("value", "")
-        try:
-            repeat = max(0, min(int(request.POST.get("repeat", "0") or 0), 60))
+        try:  # only when the Copy button itself was pressed (not when the select auto-saves)
+            repeat = max(0, min(int(request.POST.get("repeat", "0") or 0), 60)) if request.POST.get("repeat_go") else 0
         except ValueError:
             repeat = 0
+        slot = request.POST.get("slot", "1")
         if repeat and val.strip():
-            done, last = S.repeat_plan(u, d, val.strip(), repeat)
+            done, last = S.repeat_plan(u, d, val.strip(), repeat, slot)
             messages.success(request, f"Copied to {done} more working day(s) for {u.profile.name}, up to {last:%-d %b} "
                                       "(weekly offs, holidays and leave skipped).")
             return redirect(f"{request.path}?start={start.isoformat()}")
-        PlanEntry.objects.filter(user=u, date=d).delete()
-        if val.startswith("p:"):
-            PlanEntry.objects.create(user=u, date=d, project_id=int(val[2:]))
-        elif val.strip():
-            PlanEntry.objects.create(user=u, date=d, label=val.strip()[:80])
+        S.set_plan(u, d, val, slot)
         return redirect(f"{request.path}?start={start.isoformat()}")
-    plan = {(e.user_id, e.date): e for e in PlanEntry.objects.filter(date__range=(days[0], days[-1])).select_related("project")}
+    plan = defaultdict(dict)
+    for e in PlanEntry.objects.filter(date__range=(days[0], days[-1])).select_related("project"):
+        plan[(e.user_id, e.date)][e.slot] = e
     logs = {(l.user_id, l.date): l for l in DayLog.objects.filter(date__range=(days[0], days[-1]))}
     hols = holidays_between(days[0], days[-1])
     weekdays = StudioSettings.get().weekdays
@@ -209,10 +214,14 @@ def planner(request):
             if not kind and d.weekday() not in weekdays:
                 kind = "off"
             mine = [p for p in due.get(d, []) if p.editor_id == u.id]
-            cells.append({"u": u, "entry": plan.get((u.id, d)), "kind": kind, "due": mine})
+            slots = plan.get((u.id, d), {})
+            cells.append({"u": u, "entry": slots.get(1), "also": slots.get(2), "kind": kind, "due": mine})
         grid.append({"d": d, "cells": cells, "holiday": hols.get(d), "due": due.get(d, [])})
     open_projects = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency")
+    delivered = (Project.objects.filter(status=Project.CLOSED, closed_on__gte=timezone.localdate() - timedelta(days=120))
+                 .order_by("-closed_on"))
     return render(request, "founder/planner.html", {
+        "delivered": delivered,
         "grid": grid, "people": people, "start": start, "prev": start - timedelta(days=14),
         "next": start + timedelta(days=14), "open_projects": open_projects,
         "tray": open_projects.filter(editor__isnull=True)})

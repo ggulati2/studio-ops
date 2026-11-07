@@ -261,10 +261,16 @@ class Project(models.Model):
     tier = models.PositiveSmallIntegerField(choices=TIERS, default=2)
     editor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
     received_on = models.DateField(default=date.today)
-    deadline = models.DateField(null=True, blank=True)
+    deadline = models.DateField("Editor's deadline", null=True, blank=True,
+                                help_text="The date the editor works to. Editors see only this date.")
+    agency_deadline = models.DateField("Agency's deadline", null=True, blank=True,
+                                       help_text="The date promised to the agency. Founders only; never shown to editors.")
     status = models.CharField(max_length=12, choices=STATUSES, default=NOT_STARTED)
     invoice_amount = models.PositiveIntegerField(default=0, help_text="In the agency's currency")
     drive = models.ForeignKey(HardDrive, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
+    received_online = models.BooleanField("Footage received online (cloud)", default=False)
+    cloud_link = models.URLField("Download link (cloud)", blank=True,
+                                 help_text="WeTransfer / Google Drive / Dropbox link the agency sent")
     brief = models.TextField(blank=True)
     cut_link = models.URLField("Final film / review link", blank=True)
     project_file_link = models.URLField(blank=True)
@@ -294,6 +300,13 @@ class Project(models.Model):
     @property
     def is_open(self):
         return self.status not in (self.CLOSED, self.ON_HOLD)
+
+    @property
+    def source_label(self):
+        """Where the footage is: a hard drive code, 'Cloud', or ''."""
+        if self.drive_id:
+            return str(self.drive)
+        return "Cloud" if self.received_online else ""
 
     @property
     def days_left(self):
@@ -421,15 +434,32 @@ class PlanEntry(models.Model):
     """One cell of the planner: what someone is planned to do on a day."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="plan_entries")
     date = models.DateField()
+    slot = models.PositiveSmallIntegerField(default=1, help_text="1 = main work, 2 = alongside (second film or revisions)")
     project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.CASCADE)
-    label = models.CharField(max_length=80, blank=True, help_text="Free text when not a project, e.g. Back-up")
+    label = models.CharField(max_length=80, blank=True,
+                             help_text="Free text when not a project (e.g. Back-up), or 'Revisions' with a delivered film")
+    MAX_SLOTS = 2
 
     class Meta:
-        unique_together = ("user", "date")
+        unique_together = ("user", "date", "slot")
+        ordering = ["date", "slot"]
+
+    @property
+    def is_revision(self):
+        return bool(self.project_id and self.label == "Revisions")
 
     @property
     def text(self):
-        return str(self.project) if self.project_id else self.label
+        if self.project_id:
+            return f"Revisions: {self.project}" if self.is_revision else str(self.project)
+        return self.label
+
+    @property
+    def value(self):
+        """The planner select value for this entry."""
+        if self.project_id:
+            return f"r:{self.project_id}" if self.is_revision else f"p:{self.project_id}"
+        return self.label
 
 
 # --------------------------------------------------------------------------

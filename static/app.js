@@ -267,6 +267,32 @@
       });
     });
 
+    /* New project: per-film rows follow the ticked films; show the agency's usual rate */
+    var np = doc.querySelector("[data-new-project]");
+    if (np) {
+      var rates = {};
+      try { rates = JSON.parse(np.getAttribute("data-rates") || "{}"); } catch (err) {}
+      var agencySel = np.querySelector("#id_agency"), perFilm = np.querySelector("[data-per-film]");
+      var sourceSel = np.querySelector("#id_source"), linkRow = np.querySelector('[data-field="cloud_link"]');
+      function syncFilms() {
+        var ticked = Array.prototype.map.call(np.querySelectorAll('input[name="deliverables"]:checked'), function (i) { return i.value; });
+        var r = rates[agencySel && agencySel.value] || {}, any = false;
+        Array.prototype.forEach.call(np.querySelectorAll("tr[data-film]"), function (tr) {
+          var on = ticked.indexOf(tr.getAttribute("data-film")) >= 0;
+          tr.hidden = !on; any = any || on;
+          var amt = tr.querySelector('input[name$="_amount"]');
+          if (amt) amt.placeholder = r[tr.getAttribute("data-film")] ? "usual " + r[tr.getAttribute("data-film")] : "amount";
+        });
+        if (perFilm) perFilm.hidden = !any;
+      }
+      function syncSource() { if (linkRow) linkRow.hidden = !(sourceSel && sourceSel.value === "cloud"); }
+      np.addEventListener("change", function (e) {
+        if (e.target.name === "deliverables" || e.target === agencySel) syncFilms();
+        if (e.target === sourceSel) syncSource();
+      });
+      syncFilms(); syncSource();
+    }
+
     /* Copy buttons */
     doc.addEventListener("click", function (e) {
       var b = e.target.closest("[data-copy]");

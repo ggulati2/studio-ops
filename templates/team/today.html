@@ -14,7 +14,9 @@
   <div class="actions"><a class="btn" href="?date={{ prev|date:'Y-m-d' }}" aria-label="Previous day">←</a>{% if not is_today %}<a class="btn" href="?">Today</a>{% endif %}<a class="btn" href="?date={{ next|date:'Y-m-d' }}" aria-label="Next day">→</a></div>
 </div>
 
-{% if plan %}<section class="card tight" style="background:var(--red-soft);border-color:var(--red-line);flex-direction:row;flex-wrap:wrap;align-items:center"><div style="flex:1"><span class="small" style="color:var(--red-dark);font-weight:600">Planned for you</span><div style="font-size:16px;font-weight:600">{{ plan.text }}</div>{% if plan.project.drive %}<span class="small muted">Drive {{ plan.project.drive }}{% if plan.project.deadline %} · due {{ plan.project.deadline|date:"j M" }}{% endif %}</span>{% endif %}</div></section>{% endif %}
+{% if plans %}<section class="card tight" style="background:var(--red-soft);border-color:var(--red-line)"><span class="small" style="color:var(--red-dark);font-weight:600">Planned for you{% if plans|length > 1 %} · {{ plans|length }} things today{% endif %}</span>
+  {% for e in plans %}<div><div style="font-size:16px;font-weight:600">{% if forloop.counter == 2 %}<span class="tag qc" style="margin-right:6px">alongside</span>{% endif %}{{ e.text }}</div>{% if e.project %}<span class="small muted">{% if e.project.source_label %}{% if e.project.received_online %}Cloud{% else %}Drive {{ e.project.drive }}{% endif %}{% endif %}{% if e.project.deadline and not e.is_revision %} · due {{ e.project.deadline|date:"j M" }}{% endif %}</span>{% endif %}</div>{% endfor %}
+</section>{% endif %}
 {% if holiday %}<section class="card tight" style="background:var(--info-bg);border-color:var(--info-line)"><b>{{ holiday.name }}</b><span class="small">Studio {{ holiday.get_kind_display|lower }}. Worked anyway? Pick Office and add your times.</span></section>{% endif %}
 
 <div class="row">
@@ -45,7 +47,7 @@
 </form>
 <aside class="aside">
   <section class="card"><h2>My jobs</h2>
-    {% for p in my_jobs %}<div style="border-top:1px solid var(--line2);padding-top:8px"><b>{{ p }}</b><div class="small" {% if p.flag == 'Overdue' %}style="color:var(--bad)"{% endif %}>{{ p.get_status_display }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}{% if p.drive %} · {{ p.drive }}{% endif %}</div></div>{% empty %}<span class="small muted">No open jobs.</span>{% endfor %}
+    {% for p in my_jobs %}<div style="border-top:1px solid var(--line2);padding-top:8px"><b>{{ p }}</b><div class="small" {% if p.flag == 'Overdue' %}style="color:var(--bad)"{% endif %}>{{ p.get_status_display }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>{% empty %}<span class="small muted">No open jobs.</span>{% endfor %}
     <a class="small" href="{% url 'my_jobs' %}">All my jobs →</a>
   </section>
   <section class="card"><h2>{% now "F" %} so far</h2>

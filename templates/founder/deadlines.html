@@ -6,7 +6,7 @@
     <a class="btn" href="{% qs m=prev|date:'Y-m' %}" aria-label="Previous month">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}" aria-label="Next month">→</a></div>
   <form method="get" class="actions">
     <input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
-    <div class="seg"><a href="{% qs view='ours' %}" class="{% if not client %}on{% endif %}">Our deadlines</a><a href="{% qs view='client' %}" class="{% if client %}on{% endif %}">Dates told to clients</a></div>
+    <div class="seg"><a href="{% qs view='ours' %}" class="{% if not client %}on{% endif %}">Our deadlines</a><a href="{% qs view='client' %}" class="{% if client %}on{% endif %}">Agency / client dates</a></div>
     <select class="input" name="agency" data-autosubmit style="width:auto"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
     <select class="input" name="editor" data-autosubmit style="width:auto"><option value="">Everyone</option>{% for u in editors %}<option value="{{ u.pk }}" {% if editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
     {% if client %}<input type="hidden" name="view" value="client">{% endif %}
@@ -27,7 +27,7 @@
     <section class="card accent">
       <h2>{{ sel|date:"l, j F" }}</h2><span class="small muted">{{ sel_items|length }} deliver{{ sel_items|length|pluralize:"y,ies" }} · click any day</span>
       {% for p in sel_items %}<div class="card tight" style="gap:5px"><div style="display:flex;justify-content:space-between;gap:8px"><b>{{ p }}</b><span class="tag {{ p.flag|flag_class }}">{{ p.flag|default:p.get_status_display }}</span></div>
-        <span class="small muted">{{ p.agency }} · {{ p.editor.profile.name|default:"no editor" }} · Tier {{ p.tier }}{% if p.drive %} · {{ p.drive }}{% endif %}</span>
+        <span class="small muted">{{ p.agency }} · {{ p.editor.profile.name|default:"no editor" }} · Tier {{ p.tier }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</span>
         <span class="small">{{ p.get_status_display }}</span><a class="small" href="{% url 'project_edit' p.pk %}">Open job →</a></div>{% endfor %}
     </section>
     <section class="card"><h2>Next 7 days</h2>

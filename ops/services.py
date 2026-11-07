@@ -246,8 +246,11 @@ def next_working_day(d, n):
 
 
 def client_view(project, buffer_days):
+    """What the agency is told: your override, else the agency's deadline, else the
+    editor's deadline plus the buffer."""
     stage = project.client_stage or CLIENT_STAGE.get(project.status, "Editing")
-    when = project.client_date or (next_working_day(project.deadline, buffer_days) if project.deadline else None)
+    when = project.client_date or project.agency_deadline or (
+        next_working_day(project.deadline, buffer_days) if project.deadline else None)
     return stage, when
 
 
@@ -304,11 +307,31 @@ def is_workday_for(user, d, logs=None, hols=None):
     return day_kind(user, d, logs, hols) not in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF)
 
 
+def plan_fields(value):
+    """Planner select value -> PlanEntry fields. 'p:12' a film, 'r:12' revisions on a delivered film, else a label."""
+    value = (value or "").strip()
+    if value[:2] in ("p:", "r:") and value[2:].isdigit():
+        return {"project_id": int(value[2:]), "label": "Revisions" if value[:2] == "r:" else ""}
+    return {"project_id": None, "label": value[:80]}
+
+
+def set_plan(user, d, value, slot=1):
+    """Put `value` in one slot of a planner cell ('' clears it). Slot 2 can't exist without slot 1."""
+    from .models import PlanEntry
+    slot = 2 if str(slot) == "2" else 1
+    PlanEntry.objects.filter(user=user, date=d, slot=slot).delete()
+    if value and value.strip():
+        PlanEntry.objects.create(user=user, date=d, slot=slot, **plan_fields(value))
+    elif slot == 1:  # clearing the main slot promotes the second one
+        PlanEntry.objects.filter(user=user, date=d, slot=2).update(slot=1)
+
+
 def auto_plan(project, start=None):
     """Put a job on its editor's planner: enough working days (from its usual hours)
-    between `start` (default today) and the deadline, using only empty days so
-    nothing already planned is overwritten. Days already planned for this job count.
-    Planned days left on another person (after a reassignment) are removed.
+    between `start` (default today) and the deadline. Empty days are used first;
+    if that's not enough, the job goes *alongside* other work (second slot) on busy
+    days. Nothing already planned is overwritten. Days already planned for this job
+    count. Planned days left on another person (after a reassignment) are removed.
     Returns (days_planned_now, days_short)."""
     import math
     from .models import PlanEntry
@@ -321,28 +344,32 @@ def auto_plan(project, start=None):
     start = max(start or today, project.received_on or today, today)
     if start > project.deadline:
         return 0, 0
-    s = StudioSettings.get()
-    per_day = float(s.hours_per_day or 8)
-    need = max(1, math.ceil(hours_remaining(project) / per_day)) if hours_remaining(project) else 1
+    per_day = float(StudioSettings.get().hours_per_day or 8)
+    left = hours_remaining(project)
+    need = max(1, math.ceil(left / per_day)) if left else 1
     user = project.editor
     logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(start, project.deadline))}
     hols = holidays_between(start, project.deadline)
-    taken = {e.date: e for e in PlanEntry.objects.filter(user=user, date__range=(start, project.deadline))}
-    have = sum(1 for e in taken.values() if e.project_id == project.pk)
+    cells = defaultdict(dict)
+    for e in PlanEntry.objects.filter(user=user, date__range=(start, project.deadline)):
+        cells[e.date][e.slot] = e
+    have = len({d for d, c in cells.items() if any(e.project_id == project.pk and not e.is_revision for e in c.values())})
     made = 0
-    d = start
-    while d <= project.deadline and have + made < need:
-        if d not in taken and is_workday_for(user, d, logs, hols):
-            PlanEntry.objects.create(user=user, date=d, project=project)
-            made += 1
-        d += timedelta(days=1)
+    for wanted_slot in (1, 2):          # empty days first, then alongside other work
+        d = start
+        while d <= project.deadline and have + made < need:
+            c = cells.get(d, {})
+            mine = any(e.project_id == project.pk for e in c.values())
+            if not mine and wanted_slot not in c and (wanted_slot == 1 or 1 in c) and is_workday_for(user, d, logs, hols):
+                cells[d][wanted_slot] = PlanEntry.objects.create(user=user, date=d, slot=wanted_slot, project=project)
+                made += 1
+            d += timedelta(days=1)
     return made, max(need - have - made, 0)
 
 
-def repeat_plan(user, start, value, days):
-    """Copy a planner cell down to the next `days` working days for this person
-    (skips weekly offs, holidays and leave; replaces what was planned there)."""
-    from .models import PlanEntry
+def repeat_plan(user, start, value, days, slot=1):
+    """Copy a planner cell slot down to the next `days` working days for this person
+    (skips weekly offs, holidays and leave; replaces what was in that slot)."""
     done, d, guard = 0, start, 0
     end = start + timedelta(days=days * 3 + 14)
     logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(start, end))}
@@ -352,11 +379,13 @@ def repeat_plan(user, start, value, days):
         guard += 1
         if not is_workday_for(user, d, logs, hols):
             continue
-        PlanEntry.objects.filter(user=user, date=d).delete()
-        if value.startswith("p:"):
-            PlanEntry.objects.create(user=user, date=d, project_id=int(value[2:]))
-        else:
-            PlanEntry.objects.create(user=user, date=d, label=value[:80])
+        if str(slot) == "2":
+            from .models import PlanEntry
+            if not PlanEntry.objects.filter(user=user, date=d, slot=1).exists():
+                set_plan(user, d, value, 1)   # nothing main that day: it becomes the main work
+                done += 1
+                continue
+        set_plan(user, d, value, slot)
         done += 1
     return done, d
 

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}New project{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% url 'projects' %}" class="small">← Projects</a><h1>New project</h1>
+<p>Tick every film for this couple. Each one becomes its own job. Dates and amounts can differ per film.</p></div></div>
+<form method="post" class="card new-project" style="max-width:960px" data-new-project data-rates="{{ rates_json }}">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+  <div class="fields">
+  {% for f in form.main_fields %}
+    {% if f.widget_type == 'checkbox' %}
+      <div class="field" data-field="{{ f.name }}" style="grid-column:1/-1"><label class="inline">{{ f }} {{ f.label }}</label></div>
+    {% else %}
+      <div class="field" data-field="{{ f.name }}" {% if f.name == 'deliverables' or f.name == 'brief' %}style="grid-column:1/-1"{% endif %}>
+        <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}{% if f.name == 'agency_deadline' %} <span class="tag gold">founders only</span>{% endif %}</label>
+        {{ f }}
+        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+        {% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+
+  <section class="per-film" data-per-film>
+    <div class="title"><h2>Per film</h2><span class="small muted">Leave a box blank to use the value above.</span></div>
+    <div class="scroll"><table class="per-film-table">
+      <thead><tr><th>Film</th><th>Editor's deadline</th><th>Agency's deadline <span class="tag gold">founders only</span></th><th>Invoice amount</th></tr></thead>
+      <tbody>{% for r in form.film_rows %}
+        <tr data-film="{{ r.name }}" hidden>
+          <td><b>{{ r.name }}</b></td>
+          <td>{{ r.deadline }}{% if r.deadline.errors %}<p class="err">{{ r.deadline.errors|join:" " }}</p>{% endif %}</td>
+          <td>{{ r.agency_deadline }}</td>
+          <td>{{ r.amount }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+
+  <div class="actions"><button class="btn primary">Create jobs</button><a class="btn" href="{% url 'projects' %}">Cancel</a></div>
+</form>
+{% endblock %}

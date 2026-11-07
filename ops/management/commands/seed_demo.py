@@ -173,6 +173,18 @@ class Command(BaseCommand):
         Project.objects.create(couple="Sana & Imran", deliverable="Highlight", agency=ag["Happy Frames"], tier=2, editor=kabir,
                                deadline=today + timedelta(days=12), status=Project.IN_PROGRESS, invoice_amount=16000, contractor_fee=7000)
         ContractPayment.objects.create(user=kabir, paid_on=today - timedelta(days=2), amount=2500, method="upi", reference="UPI 4471")
+        # Agency deadlines a few days after the editors' deadlines; one film that came online
+        for p in Project.objects.exclude(status=Project.CLOSED).filter(deadline__isnull=False):
+            p.agency_deadline = p.deadline + timedelta(days=4)
+            p.save(update_fields=["agency_deadline"])
+        Project.objects.filter(couple="Sana & Imran").update(received_online=True, drive=None,
+                                                             cloud_link="https://wetransfer.com/downloads/demo")
+        # Pratik works on revisions to a delivered film alongside his main job for two days
+        old = Project.objects.filter(status=Project.CLOSED).order_by("-closed_on").first()
+        for k in (1, 2):
+            d = today + timedelta(days=k)
+            if PlanEntry.objects.filter(user=pratik, date=d, slot=1).exists() and old:
+                PlanEntry.objects.get_or_create(user=pratik, date=d, slot=2, defaults={"project": old, "label": "Revisions"})
         # A delay waiting for a founder's decision
         late = Project.objects.filter(editor=himanshu).exclude(status=Project.CLOSED).filter(deadline__isnull=False).first()
         if late:

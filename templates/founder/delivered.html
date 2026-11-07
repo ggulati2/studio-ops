@@ -18,7 +18,7 @@
     <td>{{ r.qc_rounds }}</td>
     <td>{% if p.project_file_link %}<a href="{{ p.project_file_link }}" target="_blank" rel="noopener">Project folder</a>{% endif %}</td>
     <td>{% if p.final_mp4_link %}<a href="{{ p.final_mp4_link }}" target="_blank" rel="noopener">Play MP4</a>{% endif %}</td>
-    <td class="mono">{{ p.drive|default:"" }}</td>
+    <td class="mono">{{ p.source_label }}</td>
     <td>{% if r.invoice %}<a class="tag {{ r.invoice.status|inv_class }}" href="{% url 'invoice_print' r.invoice.pk %}">{{ r.invoice.get_status_display }}</a>{% else %}<a class="tag warn" href="{% url 'invoice_new' %}?agency={{ p.agency_id }}">Not invoiced</a>{% endif %}</td>
   </tr>{% endwith %}{% empty %}<tr><td colspan="10" class="muted">Nothing closed this month yet.</td></tr>{% endfor %}</tbody>
 </table></div></section>

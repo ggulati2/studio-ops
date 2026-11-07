@@ -6,7 +6,7 @@
     <div style="text-align:right"><div class="eyebrow" style="color:#5E5E5E">Team status</div><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">All open films</div><div style="font-size:11px;color:#5E5E5E">{{ today|date:"l, j F Y" }}</div></div></div>
   {% if note %}<div style="font-size:11.5px;padding:10px 12px;border-left:3px solid #A90404;background:#FAF8F6">{{ note }}</div>{% endif %}
   {% for name, projects in groups %}<div><div class="eyebrow">{{ name }}</div><table><thead><tr><th>Film</th><th>Editor</th><th>Status</th><th>Deadline</th><th>Drive</th></tr></thead><tbody>
-    {% for p in projects %}<tr><td><b>{{ p.couple }}</b> – {{ p.deliverable }}</td><td>{{ p.editor.profile.name|default:"Needs an editor" }}</td><td>{{ p.get_status_display }}</td><td style="{% if p.flag == 'Overdue' %}color:#B42318;font-weight:600{% endif %}">{{ p.deadline|date:"j M"|default:"–" }}{% if p.flag == 'Overdue' %} · overdue{% endif %}</td><td>{{ p.drive|default:"" }}</td></tr>{% endfor %}
+    {% for p in projects %}<tr><td><b>{{ p.couple }}</b> – {{ p.deliverable }}</td><td>{{ p.editor.profile.name|default:"Needs an editor" }}</td><td>{{ p.get_status_display }}</td><td style="{% if p.flag == 'Overdue' %}color:#B42318;font-weight:600{% endif %}">{{ p.deadline|date:"j M"|default:"–" }}{% if p.flag == 'Overdue' %} · overdue{% endif %}</td><td>{{ p.source_label }}</td></tr>{% endfor %}
   </tbody></table></div>{% empty %}<p>No open films.</p>{% endfor %}
   <div class="foot"><span>{{ studio.brand_name }} · internal</span><span>Generated {{ today|date:"j M Y" }}</span></div>
 </div></div>

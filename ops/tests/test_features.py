@@ -52,7 +52,7 @@ class AutoPlanner(SeededTestCase):
 
     def test_planner_copy_down_skips_days_off(self):
         d = next_workday(self.today + timedelta(days=1), self.harsh)
-        self.login("ag").post("/planner/", {"user": self.harsh.pk, "date": d.isoformat(), "value": "Training", "repeat": "5"})
+        self.login("ag").post("/planner/", {"user": self.harsh.pk, "date": d.isoformat(), "value": "Training", "repeat": "5", "repeat_go": "1"})
         days = list(PlanEntry.objects.filter(user=self.harsh, date__gt=d, label="Training").order_by("date"))
         self.assertEqual(len(days), 5)
         self.assertTrue(all(S.is_workday_for(self.harsh, e.date) for e in days))
@@ -170,3 +170,99 @@ class ContractEditors(SeededTestCase):
 class CopyDown(SeededTestCase):
     def test_today_rows_have_copy_down(self):
         self.assertContains(self.login("pratik").get("/today/"), "data-copy-down")
+
+
+class PlannerTwoThings(SeededTestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.pratik = U.objects.get(username="pratik")
+        self.d = next_workday(self.today + timedelta(days=5), self.pratik)
+        PlanEntry.objects.filter(user=self.pratik, date=self.d).delete()
+
+    def test_second_slot_and_revisions(self):
+        ag = self.login("ag")
+        job = Project.objects.filter(editor=self.pratik).exclude(status="closed").first()
+        delivered = Project.objects.filter(status="closed").first()
+        ag.post("/planner/", {"user": self.pratik.pk, "date": self.d, "value": f"p:{job.pk}", "slot": "1"})
+        ag.post("/planner/", {"user": self.pratik.pk, "date": self.d, "value": f"r:{delivered.pk}", "slot": "2"})
+        cell = list(PlanEntry.objects.filter(user=self.pratik, date=self.d))
+        self.assertEqual([(e.slot, e.text) for e in cell], [(1, str(job)), (2, f"Revisions: {delivered}")])
+        r = self.login("pratik").get(f"/today/?date={self.d}")
+        self.assertContains(r, "2 things today")
+        self.assertContains(r, "alongside")
+        self.assertContains(r, f'value="{delivered.pk}"')               # delivered film is pickable for logging
+        # clearing the main slot promotes the second
+        ag.post("/planner/", {"user": self.pratik.pk, "date": self.d, "value": "", "slot": "1"})
+        self.assertEqual([(e.slot, e.is_revision) for e in PlanEntry.objects.filter(user=self.pratik, date=self.d)], [(1, True)])
+
+    def test_select_change_does_not_copy_down(self):
+        ag = self.login("ag")
+        ag.post("/planner/", {"user": self.pratik.pk, "date": self.d, "value": "Training", "slot": "1", "repeat": "3"})
+        self.assertFalse(PlanEntry.objects.filter(user=self.pratik, date__gt=self.d, label="Training").exists())
+
+    def test_auto_plan_goes_alongside_when_days_are_full(self):
+        from ops.models import Agency
+        harsh = U.objects.get(username="harsh")
+        dl = next_workday(self.today + timedelta(days=2), harsh)
+        d = self.today
+        while d <= dl:                                     # fill every day with other work
+            PlanEntry.objects.update_or_create(user=harsh, date=d, slot=1, defaults={"label": "Back-up", "project": None})
+            d += timedelta(days=1)
+        self.login("ag").post("/projects/new/", {"couple": "Busy Test", "agency": Agency.objects.first().pk,
+                                                 "deliverables": ["Reels"], "tier": 1, "deadline": dl, "editor": harsh.pk})
+        job = Project.objects.get(couple="Busy Test")
+        self.assertTrue(PlanEntry.objects.filter(project=job, slot=2).exists())
+        self.assertFalse(PlanEntry.objects.filter(project=job, slot=1).exists())
+
+
+class NewProjectOptions(SeededTestCase):
+    def setUp(self):
+        from ops.models import Agency
+        self.today = timezone.localdate()
+        self.agency = Agency.objects.get(name="BadalRaja Company")
+
+    def test_per_film_dates_and_amounts(self):
+        from ops.forms import film_key
+        t, f = film_key("Trailer"), film_key("Full Film")
+        base = self.today + timedelta(days=10)
+        r = self.login("ag").post("/projects/new/", {
+            "couple": "Two Films", "agency": self.agency.pk, "deliverables": ["Trailer", "Full Film"], "tier": 2,
+            "deadline": base, "agency_deadline": base + timedelta(days=3),
+            f"f{f}_deadline": base + timedelta(days=12), f"f{f}_agency_deadline": base + timedelta(days=16), f"f{f}_amount": 52000})
+        self.assertEqual(r.status_code, 302)
+        tr, ff = Project.objects.get(couple="Two Films", deliverable="Trailer"), Project.objects.get(couple="Two Films", deliverable="Full Film")
+        self.assertEqual((tr.deadline, tr.agency_deadline, tr.invoice_amount), (base, base + timedelta(days=3), 18000))
+        self.assertEqual((ff.deadline, ff.agency_deadline, ff.invoice_amount), (base + timedelta(days=12), base + timedelta(days=16), 52000))
+
+    def test_editor_deadline_must_not_pass_agency_deadline(self):
+        r = self.login("ag").post("/projects/new/", {"couple": "Bad Dates", "agency": self.agency.pk, "deliverables": ["Teaser"],
+                                                     "tier": 2, "deadline": self.today + timedelta(days=9),
+                                                     "agency_deadline": self.today + timedelta(days=5)})
+        self.assertContains(r, "is after the agency")
+        self.assertFalse(Project.objects.filter(couple="Bad Dates").exists())
+
+    def test_cloud_source(self):
+        self.login("ag").post("/projects/new/", {"couple": "Online Couple", "agency": self.agency.pk, "deliverables": ["Teaser"],
+                                                 "tier": 2, "source": "cloud", "cloud_link": "https://wetransfer.com/x",
+                                                 "editor": U.objects.get(username="pratik").pk})
+        p = Project.objects.get(couple="Online Couple")
+        self.assertEqual((p.received_online, p.drive_id, p.source_label), (True, None, "Cloud"))
+        self.assertContains(self.login("pratik").get("/my-jobs/"), "https://wetransfer.com/x")
+        self.assertContains(self.login("ag").get("/projects/new/"), "Cloud / online")
+
+    def test_agency_deadline_never_shown_to_editors(self):
+        p = Project.objects.filter(editor__username="pratik").exclude(status="closed").filter(deadline__isnull=False).first()
+        secret = self.today + timedelta(days=200)
+        p.agency_deadline = secret; p.save()
+        for url in ("/my-jobs/", "/today/", f"/my-month/?m={secret:%Y-%m}", f"/my-jobs/{p.pk}/delay/"):
+            with self.subTest(url=url):
+                body = self.login("pratik").get(url).content.decode()
+                self.assertNotIn(secret.strftime("%-d %b"), body)
+                self.assertNotIn("agency's deadline", body.lower().replace("&#x27;", "'"))
+                if "my-month" in url:      # the calendar links every day, but must not mark this one as due
+                    self.assertNotIn(" due\"", body)
+                else:
+                    self.assertNotIn(secret.isoformat(), body)
+        nikhil_pod = self.login("nikhil").get("/pod/").content.decode()
+        self.assertNotIn(secret.strftime("%-d %b"), nikhil_pod)
+        self.assertContains(self.login("ag").get("/projects/?status="), secret.strftime("%-d %b"))

@@ -81,35 +81,90 @@ class ProjectForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Project
-        fields = ["couple", "deliverable", "agency", "tier", "editor", "received_on", "deadline", "status",
-                  "invoice_amount", "drive", "brief", "cut_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee"]
-        widgets = {"received_on": DATE, "deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
+        fields = ["couple", "deliverable", "agency", "tier", "editor", "received_on", "deadline", "agency_deadline", "status",
+                  "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee"]
+        widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
+
+    source = forms.ChoiceField(label="Footage on", required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["editor"].choices = editor_choices()
         self.fields["agency"].queryset = Agency.objects.filter(active=True)
-        self.fields["drive"].queryset = HardDrive.objects.exclude(status="sent")
+        self.fields["source"].choices = source_choices()
+        if self.instance.pk:
+            self.initial["source"] = source_value(self.instance)
+            if self.instance.drive_id and str(self.instance.drive_id) not in dict(self.fields["source"].choices):
+                self.fields["source"].choices += [(str(self.instance.drive_id), str(self.instance.drive))]
+        # keep the order: source right after the agency's deadline
+        order = list(self.fields)
+        order.remove("source")
+        order.insert(order.index("agency_deadline") + 1, "source")
+        self.order_fields(order)
         if self.instance.pk and self.instance.editor_id:
             self.initial["editor"] = self.instance.editor_id
+
+    def clean(self):
+        data = super().clean()
+        ed, ad = data.get("deadline"), data.get("agency_deadline")
+        if ed and ad and ed > ad:
+            self.add_error("deadline", f"The editor's deadline ({ed:%-d %b}) is after the agency's ({ad:%-d %b}).")
+        return data
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        apply_source(obj, self.cleaned_data.get("source", ""), self.cleaned_data.get("cloud_link", ""))
+        if commit:
+            obj.save()
+        return obj
 
     def clean_editor(self):
         v = self.cleaned_data.get("editor")
         return User.objects.get(pk=v) if v else None
 
 
+CLOUD = "cloud"
+
+
+def source_choices():
+    """Footage source: a hard drive, or Cloud / online."""
+    return ([("", "— Not received yet —"), (CLOUD, "☁ Cloud / online (link or transfer)")]
+            + [(str(d.pk), str(d)) for d in HardDrive.objects.exclude(status="sent").order_by("code")])
+
+
+def apply_source(project, value, link=""):
+    project.drive_id = int(value) if value and value.isdigit() else None
+    project.received_online = value == CLOUD
+    project.cloud_link = (link or "") if value == CLOUD else ""
+
+
+def source_value(project):
+    return str(project.drive_id) if project.drive_id else (CLOUD if project.received_online else "")
+
+
+def film_key(deliverable):
+    return Project.DELIVERABLES.index(deliverable)
+
+
 class NewProjectForm(StyledMixin, forms.Form):
-    """Creates one job per ticked deliverable for the same couple."""
+    """Creates one job per ticked film for the same couple. Each film can have its own
+    editor's deadline, agency's deadline and invoice amount (blank = the defaults)."""
     couple = forms.CharField(label="Couple / project name", max_length=120)
     agency = forms.ModelChoiceField(queryset=Agency.objects.filter(active=True))
-    deliverables = forms.MultipleChoiceField(choices=[(d, d) for d in Project.DELIVERABLES],
+    deliverables = forms.MultipleChoiceField(label="Films", choices=[(d, d) for d in Project.DELIVERABLES],
                                              widget=forms.CheckboxSelectMultiple)
     tier = forms.TypedChoiceField(choices=Project.TIERS, coerce=int, initial=2)
-    deadline = forms.DateField(widget=DATE, required=False)
-    invoice_amount = forms.IntegerField(min_value=0, required=False, help_text="Per deliverable. Blank = agency's usual rate.")
-    drive = forms.ModelChoiceField(queryset=HardDrive.objects.exclude(status="sent"), required=False)
     editor = forms.TypedChoiceField(required=False, coerce=int, empty_value=None,
                                     help_text="Leave unassigned to put it in the 'Needs an editor' queue")
+    deadline = forms.DateField(label="Editor's deadline", widget=DATE, required=False,
+                               help_text="For all films, unless you set one per film below. Editors see only this date.")
+    agency_deadline = forms.DateField(label="Agency's deadline", widget=DATE, required=False,
+                                      help_text="Promised to the agency. Founders only, never shown to editors.")
+    invoice_amount = forms.IntegerField(min_value=0, required=False, label="Invoice amount per film",
+                                        help_text="Blank = the agency's usual rate for each film.")
+    source = forms.ChoiceField(label="Footage on", required=False)
+    cloud_link = forms.URLField(label="Download link (cloud)", required=False,
+                                help_text="WeTransfer / Google Drive / Dropbox link, if the footage came online")
     is_extra = forms.BooleanField(required=False, label="Give as extra work (outside working hours, paid extra)")
     extra_basis = forms.ChoiceField(choices=[("fixed", "Fixed per job"), ("hourly", "Per hour")], required=False)
     extra_rate = forms.IntegerField(min_value=0, required=False, label="Extra pay (₹)")
@@ -118,9 +173,54 @@ class NewProjectForm(StyledMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["editor"].choices = editor_choices()
+        self.fields["source"].choices = source_choices()
         for f in self.fields.values():
             if isinstance(f.widget, forms.CheckboxSelectMultiple):
                 f.widget.attrs["class"] = "pills"
+        # Per-film overrides (shown in a table under the films you tick)
+        for d in Project.DELIVERABLES:
+            k = film_key(d)
+            self.fields[f"f{k}_deadline"] = forms.DateField(required=False, widget=DATE, label=f"{d}: editor's deadline")
+            self.fields[f"f{k}_agency_deadline"] = forms.DateField(required=False, widget=DATE, label=f"{d}: agency's deadline")
+            self.fields[f"f{k}_amount"] = forms.IntegerField(required=False, min_value=0, label=f"{d}: invoice amount",
+                                                             widget=forms.NumberInput(attrs={"inputmode": "numeric"}))
+            for n in ("deadline", "agency_deadline", "amount"):
+                self.fields[f"f{k}_{n}"].widget.attrs["class"] = "input"
+
+    MAIN = ["couple", "agency", "deliverables", "tier", "editor", "deadline", "agency_deadline", "invoice_amount",
+            "source", "cloud_link", "is_extra", "extra_basis", "extra_rate", "brief"]
+
+    def main_fields(self):
+        return [self[n] for n in self.MAIN]
+
+    def film_rows(self):
+        return [{"name": d, "key": film_key(d), "deadline": self[f"f{film_key(d)}_deadline"],
+                 "agency_deadline": self[f"f{film_key(d)}_agency_deadline"], "amount": self[f"f{film_key(d)}_amount"]}
+                for d in Project.DELIVERABLES]
+
+    def films(self):
+        """[(deliverable, editor_deadline, agency_deadline, amount_or_None)] for ticked films."""
+        c = self.cleaned_data
+        out = []
+        for d in c.get("deliverables", []):
+            k = film_key(d)
+            amount = c.get(f"f{k}_amount")
+            out.append((d, c.get(f"f{k}_deadline") or c.get("deadline"),
+                        c.get(f"f{k}_agency_deadline") or c.get("agency_deadline"),
+                        amount if amount is not None else c.get("invoice_amount")))
+        return out
+
+    def clean(self):
+        data = super().clean()
+        if data.get("source") == CLOUD and not data.get("cloud_link"):
+            pass  # a link is helpful but optional (it may have come by WhatsApp)
+        if "deliverables" in data:
+            for d, ed, ad, _ in self.films():
+                if ed and ad and ed > ad:
+                    k = film_key(d)
+                    field = f"f{k}_deadline" if self.cleaned_data.get(f"f{k}_deadline") else "deadline"
+                    self.add_error(field, f"{d}: the editor's deadline ({ed:%-d %b}) is after the agency's ({ad:%-d %b}).")
+        return data
 
 
 class AssignForm(forms.Form):

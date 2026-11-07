@@ -466,3 +466,15 @@ a.day:hover{background:var(--row-hover);text-decoration:none}
 /* person form: employment */
 .person-form [hidden]{display:none!important}
 .task-row.flash{box-shadow:0 0 0 2px var(--ok-line);transition:box-shadow .3s}
+/* planner: a second piece of work on the same day */
+.plan-also{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line)}
+.plan-also select{color:var(--qc)}
+details.also>summary{list-style:none;cursor:pointer;font-size:.6875rem;font-weight:500;color:var(--faint);padding:2px 4px;border-radius:5px;display:inline-block;margin-top:2px}
+details.also>summary::-webkit-details-marker{display:none}
+details.also>summary:hover{color:var(--ink);background:var(--hover)}
+details.also[open]>summary{display:none}
+/* new project: per-film dates and amounts */
+.per-film{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.per-film[hidden],.per-film-table tr[hidden],.new-project [hidden]{display:none!important}
+.per-film-table td{vertical-align:middle;background:var(--card)}
+.per-film-table .input{min-width:140px}
