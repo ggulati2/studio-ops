@@ -266,3 +266,76 @@ class NewProjectOptions(SeededTestCase):
         nikhil_pod = self.login("nikhil").get("/pod/").content.decode()
         self.assertNotIn(secret.strftime("%-d %b"), nikhil_pod)
         self.assertContains(self.login("ag").get("/projects/?status="), secret.strftime("%-d %b"))
+
+
+class RevisionsAndTags(SeededTestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.p = Project.objects.filter(status="closed", editor__username="pratik").first()
+        self.p.deadline = self.p.closed_on            # delivered exactly on time
+        self.p.first_delivered_on = self.p.closed_on
+        self.p.deadline_at_delivery = self.p.closed_on
+        self.p.save()
+
+    def test_statuses(self):
+        names = dict(Project.STATUSES)
+        self.assertEqual((names["tl_revisions"], names["revisions"], names["client_rev"]),
+                         ("TL revisions", "QC revisions", "Client revision"))
+
+    def test_tl_sends_back_to_tl_revisions_and_editor_can_resubmit(self):
+        job = Project.objects.get(couple="Riya & Arjun", deliverable="Teaser")
+        job.status = "tl_review"; job.save()
+        self.login("soham").post(f"/review/{job.pk}/", {"decision": "fail", "comments": "Tighten the intro"})
+        job.refresh_from_db(); self.assertEqual(job.status, "tl_revisions")
+        self.login("himanshu").post(f"/my-jobs/{job.pk}/submit/", {"cut_link": "https://drive.google.com/x"})
+        job.refresh_from_db(); self.assertEqual(job.status, "tl_review")
+
+    def test_client_revision_reopens_without_making_it_late(self):
+        first = self.p.closed_on
+        due = self.today + timedelta(days=4)
+        r = self.login("ag").post(f"/projects/{self.p.pk}/client-revision/", {
+            "requested_on": self.today, "changes": "New end song", "due_date": due, "editor": self.p.editor_id})
+        self.assertEqual(r.status_code, 302)
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.status, self.p.deadline, self.p.closed_on), ("client_rev", due, first))
+        self.assertIn(self.p, [j["p"] for j in self.login("pratik").get("/my-jobs/").context["jobs"]])
+        # back through QC and closed again, weeks after the original deadline
+        self.p.status = "qc_passed"; self.p.save()
+        self.login("pratik").post(f"/my-jobs/{self.p.pk}/close/", {"project_file_link": "https://drive.google.com/drive/folders/a",
+                                                                   "final_mp4_link": "https://drive.google.com/file/d/b", "confirm": "on"})
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.status, self.p.closed_on, self.p.first_delivered_on), ("closed", first, first))
+        self.assertFalse(self.p.delivered_late)
+        self.assertEqual(self.p.timing_label, "Delivered on time")
+        self.assertIsNotNone(self.p.client_revisions.get().completed_on)
+
+    def test_delivery_tag_can_be_changed(self):
+        self.p.deadline_at_delivery = self.p.first_delivered_on - timedelta(days=3)   # really late by dates
+        self.p.save()
+        self.assertTrue(self.p.delivered_late)
+        m = self.p.closed_on.strftime("%Y-%m")
+        self.login("ag").post(f"/delivered/?m={m}", {"project": self.p.pk, "timing_override": "client_delay",
+                                                     "timing_note": "Waited 4 days for song approval"})
+        self.p.refresh_from_db()
+        self.assertFalse(self.p.delivered_late)
+        self.assertEqual(self.p.timing_label, "Late – client approval")
+        self.assertContains(self.login("ag").get(f"/delivered/?m={m}"), "Waited 4 days for song approval")
+
+
+class AgencyNickname(SeededTestCase):
+    def test_code_added_to_project_names(self):
+        from ops.models import Agency
+        a = Agency.objects.get(name="BadalRaja Company")
+        r = self.login("ag").post(f"/agencies/{a.pk}/", {"name": a.name, "code": "brc", "currency": "INR",
+                                                         "payment_terms_days": 15, "active": "on", "rates": "Trailer = 18000"})
+        self.assertEqual(r.status_code, 302)
+        a.refresh_from_db(); self.assertEqual(a.code, "BRC")
+        p = Project.objects.filter(agency=a).first()
+        self.assertTrue(str(p).endswith(f"{p.deliverable} – BRC"))
+        b = Agency.objects.exclude(pk=a.pk).first()
+        r = self.login("ag").post(f"/agencies/{b.pk}/", {"name": b.name, "code": "BRC", "currency": "INR",
+                                                         "payment_terms_days": 15, "active": "on"})
+        self.assertContains(r, "already used")
+        r = self.login("ag").post(f"/agencies/{b.pk}/", {"name": b.name, "code": "AB1", "currency": "INR",
+                                                         "payment_terms_days": 15, "active": "on"})
+        self.assertContains(r, "1 to 3 letters")

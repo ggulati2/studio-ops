@@ -132,7 +132,7 @@ def my_jobs(request):
 def job_submit(request, pk):
     """Editor says the cut is ready → goes to their TL (or straight to QC if they are a TL)."""
     p = get_object_or_404(Project, pk=pk, editor=request.user)
-    if request.method == "POST":
+    if request.method == "POST" and p.status in Project.WORKABLE:
         link = request.POST.get("cut_link", "").strip()
         if link:
             p.cut_link = link
@@ -151,7 +151,7 @@ def close_job(request, pk):
     if request.method == "POST" and qc_ok and form.is_valid():
         p.project_file_link = form.cleaned_data["project_file_link"]
         p.final_mp4_link = form.cleaned_data["final_mp4_link"]
-        p.status, p.closed_on = Project.CLOSED, timezone.localdate()
+        p.status = Project.CLOSED      # first delivery date is kept if this was a client revision
         p.save()
         if p.drive and not p.drive.open_jobs.exists() and p.drive.status == "in_use":
             p.drive.status = "backup_done" if p.drive.studio_owned else "ready"
@@ -255,7 +255,7 @@ def _review(request, p, kind):
     if form.cleaned_data.get("cut_link"):
         p.cut_link = form.cleaned_data["cut_link"]
     if kind == Review.TL:
-        p.status = Project.QC if passed else Project.REVISIONS
+        p.status = Project.QC if passed else Project.TL_REVISIONS
     else:
         p.status = Project.QC_PASSED if passed else Project.REVISIONS
     p.save(update_fields=["status", "cut_link"])

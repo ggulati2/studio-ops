@@ -15,7 +15,7 @@
   {% if j.last and not j.last.passed %}<div class="card tight warn"><b class="small" style="color:var(--warn)">{{ j.last.get_kind_display }} sent it back · {{ j.last.created|date:"j M" }}</b>{% if j.last.issues %}<span class="small">Issues: {{ j.last.issues|join:", " }}</span>{% endif %}{% if j.last.comments %}<span class="small" style="white-space:pre-line">{{ j.last.comments }}</span>{% endif %}</div>{% endif %}
   {% if p.status == 'qc_passed' %}
     <a class="btn primary" href="{% url 'close_job' p.pk %}">Upload files &amp; close job</a>
-  {% elif p.status == 'not_started' or p.status == 'in_progress' or p.status == 'revisions' %}
+  {% elif p.can_submit %}
     <form method="post" action="{% url 'job_submit' p.pk %}" class="actions">{% csrf_token %}
       <input class="input" type="url" name="cut_link" value="{{ p.cut_link }}" placeholder="Link to the cut for review" style="flex:1 1 280px">
       <button class="btn dark">Send for {% if role == 'tl' %}QC{% else %}TL review{% endif %}</button></form>

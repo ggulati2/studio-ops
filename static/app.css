@@ -478,3 +478,6 @@ details.also[open]>summary{display:none}
 .per-film[hidden],.per-film-table tr[hidden],.new-project [hidden]{display:none!important}
 .per-film-table td{vertical-align:middle;background:var(--card)}
 .per-film-table .input{min-width:140px}
+/* delivered: editable delivery tag */
+.tag-edit{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.tag-edit select.input{min-height:32px;padding:4px 30px 4px 8px;font-size:var(--t-xs);width:auto}

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from .models import (Agency, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
+from .models import (Agency, ClientRevision, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
                      Profile, Project, StudioSettings, TaskStage)
 from .services import is_company_drive_link, team
 
@@ -82,7 +82,8 @@ class ProjectForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = Project
         fields = ["couple", "deliverable", "agency", "tier", "editor", "received_on", "deadline", "agency_deadline", "status",
-                  "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee"]
+                  "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
+                  "timing_override", "timing_note"]
         widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
 
     source = forms.ChoiceField(label="Footage on", required=False)
@@ -304,7 +305,7 @@ class AgencyForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Agency
-        fields = ["name", "city", "contact_person", "phone", "invoice_emails", "billing_address", "currency",
+        fields = ["name", "code", "city", "contact_person", "phone", "invoice_emails", "billing_address", "currency",
                   "payment_terms_days", "gstin", "pan", "notes", "active"]
         widgets = {"billing_address": forms.Textarea(attrs={"rows": 2}), "notes": forms.Textarea(attrs={"rows": 2})}
 
@@ -312,6 +313,17 @@ class AgencyForm(StyledMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             self.initial["rates"] = "\n".join(f"{r.deliverable} = {r.amount}" for r in self.instance.rates.all())
+
+    def clean_code(self):
+        import re
+        c = (self.cleaned_data.get("code") or "").strip().upper()
+        if not c:
+            return None
+        if not re.fullmatch(r"[A-Z]{1,3}", c):
+            raise forms.ValidationError("Use 1 to 3 letters (A–Z), e.g. BRC.")
+        if Agency.objects.filter(code__iexact=c).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError(f"{c} is already used by another agency.")
+        return c
 
     def clean_rates(self):
         out = {}
@@ -505,3 +517,26 @@ class ContractPaymentForm(StyledMixin, forms.ModelForm):
         if not a:
             raise forms.ValidationError("Enter the amount paid.")
         return a
+
+
+class ClientRevisionForm(StyledMixin, forms.ModelForm):
+    class Meta:
+        model = ClientRevision
+        fields = ["requested_on", "changes", "due_date", "editor"]
+        widgets = {"requested_on": DATE, "due_date": DATE,
+                   "changes": forms.Textarea(attrs={"rows": 4, "placeholder": "e.g. Change the song at 02:10; add the haldi shots; spell the groom's name 'Kartik'."})}
+
+    def __init__(self, *args, project=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["editor"].queryset = User.objects.filter(pk__in=[u.pk for u in team()])
+        self.fields["editor"].label_from_instance = lambda u: u.profile.name
+        self.fields["editor"].label = "Editor for the revision"
+        if project and not self.is_bound:
+            self.initial.setdefault("editor", project.editor_id)
+
+    def clean_due_date(self):
+        from django.utils import timezone
+        d = self.cleaned_data["due_date"]
+        if d < timezone.localdate():
+            raise forms.ValidationError("Pick today or a later date.")
+        return d

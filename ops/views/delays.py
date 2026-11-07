@@ -14,7 +14,7 @@ from ..forms import DelayForm
 from ..models import DelayReport, Project
 from ..rbac import requires
 
-__all__ = ["job_delay", "delays", "delay_decide", "delay_log"]
+__all__ = ["job_delay", "delays", "delay_decide", "delay_log", "client_revision"]
 
 
 @requires("work.log_own")
@@ -50,7 +50,8 @@ def delays(request):
     by_editor = Counter(d.project.editor.profile.name for d in recent if d.project.editor_id)
     slipped = [d.days_slip for d in recent if d.status == DelayReport.APPROVED]
     closed = Project.objects.filter(status=Project.CLOSED, closed_on__gte=since, deadline__isnull=False)
-    on_time_orig = sum(1 for p in closed if p.closed_on <= (p.original_deadline or p.deadline))
+    on_time_orig = sum(1 for p in closed if p.timing_override in ("on_time", "client_delay")
+                       or (not p.timing_override and (p.first_delivered_on or p.closed_on) <= (p.original_deadline or p.deadline)))
     stats = {"count": recent.count(), "approved": len(slipped), "avg_slip": round(sum(slipped) / len(slipped), 1) if slipped else 0,
              "on_time_pct": round(100 * on_time_orig / closed.count()) if closed.count() else None,
              "silent": silent.count()}
@@ -108,3 +109,28 @@ def delay_log(request, pk):
         messages.success(request, f"Deadline moved to {p.deadline:%-d %b} and the delay is on record.")
         return redirect("project_edit", pk=p.pk)
     return render(request, "team/delay_form.html", {"form": form, "p": p, "founder": True, "history": p.delays.all()})
+
+
+@requires("projects.manage")
+def client_revision(request, pk):
+    """Reopen a delivered film because the client asked for changes. The first delivery
+    date (and whether it was on time) is kept; the revision gets its own due date."""
+    from ..forms import ClientRevisionForm
+    from ..models import ClientRevision
+    p = get_object_or_404(Project, pk=pk, status=Project.CLOSED)
+    form = ClientRevisionForm(request.POST or None, project=p)
+    if request.method == "POST" and form.is_valid():
+        r = form.save(commit=False)
+        r.project, r.created_by = p, request.user
+        r.round = (p.client_revisions.count() or 0) + 1
+        r.save()
+        p.status, p.deadline = Project.CLIENT_REV, r.due_date
+        if r.editor_id:
+            p.editor_id = r.editor_id
+        p.save(update_fields=["status", "deadline", "editor"])
+        made, _ = S.auto_plan(p)
+        record(request, "project.client_revision", str(p), f"round {r.round}, due {r.due_date}")
+        messages.success(request, f"{p} reopened for client revision {r.round}, due {r.due_date:%-d %b}. "
+                                  "It still counts as delivered on its first date." + (f" {made} day(s) planned." if made else ""))
+        return redirect("project_edit", pk=p.pk)
+    return render(request, "founder/client_revision.html", {"form": form, "p": p})

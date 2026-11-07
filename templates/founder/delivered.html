@@ -11,10 +11,16 @@
   <div class="kpi {% if pending_close %}warn{% endif %}"><span>QC passed, not closed</span><b>{{ pending_close|length }}</b><small>{% for p in pending_close %}{{ p.editor.profile.name }}{% if not forloop.last %}, {% endif %}{% empty %}All closed{% endfor %}</small></div>
 </div>
 <section class="card"><div class="scroll"><table style="min-width:980px">
-  <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Closed</th><th>On time</th><th>QC rounds</th><th>Project file</th><th>Final MP4</th><th>Drive</th><th>Payment</th></tr></thead>
+  <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Delivered</th><th>Delivery tag</th><th>QC rounds</th><th>Project file</th><th>Final MP4</th><th>Drive</th><th>Payment</th></tr></thead>
   <tbody>{% for r in rows %}{% with p=r.p %}<tr>
-    <td><b>{{ p }}</b></td><td class="muted">{{ p.agency }}</td><td>{{ p.editor.profile.name }}</td><td>{{ p.closed_on|date:"j M" }}</td>
-    <td>{% if p.deadline %}{% if p.closed_on <= p.deadline %}<span class="tag ok">Yes</span>{% else %}<span class="tag bad">Late</span>{% endif %}{% else %}–{% endif %}</td>
+    <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.status == 'client_rev' %} <span class="tag gold">in client revision</span>{% elif r.revisions %} <span class="tag">{{ r.revisions }} client revision{{ r.revisions|pluralize }}</span>{% endif %}
+      {% if p.status == 'closed' %}<div><a class="small" href="{% url 'client_revision' p.pk %}">Reopen for client revisions</a></div>{% endif %}</td>
+    <td class="muted">{{ p.agency }}</td><td>{{ p.editor.profile.name }}</td><td>{{ p.closed_on|date:"j M" }}</td>
+    <td><form method="post" class="tag-edit">{% csrf_token %}<input type="hidden" name="project" value="{{ p.pk }}">
+      <span class="tag {{ p.timing_label|flag_class }}">{{ p.timing_label|default:"–" }}</span>
+      <select name="timing_override" class="input" data-autosubmit aria-label="Delivery tag for {{ p }}">
+        {% for v, l in timing_choices %}<option value="{{ v }}" {% if p.timing_override == v %}selected{% endif %}>{% if v %}{{ l }}{% else %}Automatic{% endif %}</option>{% endfor %}
+      </select>{% if p.timing_note %}<div class="small muted">{{ p.timing_note }}</div>{% endif %}<noscript><button class="btn sm">Save</button></noscript></form></td>
     <td>{{ r.qc_rounds }}</td>
     <td>{% if p.project_file_link %}<a href="{{ p.project_file_link }}" target="_blank" rel="noopener">Project folder</a>{% endif %}</td>
     <td>{% if p.final_mp4_link %}<a href="{{ p.final_mp4_link }}" target="_blank" rel="noopener">Play MP4</a>{% endif %}</td>

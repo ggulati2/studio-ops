@@ -53,7 +53,7 @@ def dashboard(request):
     logged = set(DayLog.objects.filter(date=yesterday).values_list("user_id", flat=True))
     missing = [u for u in team() if u.id not in logged and yesterday.weekday() in StudioSettings.get().weekdays
                and yesterday not in holidays_between(yesterday, yesterday)]
-    delivered = Project.objects.filter(status=Project.CLOSED, closed_on__gte=month)
+    delivered = Project.objects.filter(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__gte=month)
     on_time = [p for p in delivered if p.deadline]
     rev_by_agency = defaultdict(int)
     for p in delivered.select_related("agency"):
@@ -66,7 +66,7 @@ def dashboard(request):
         "due_soon": [p for p in open_jobs if p.days_left is not None and 0 <= p.days_left <= 3],
         "missing": missing,
         "delivered_count": delivered.count(),
-        "on_time_pct": round(sum(1 for p in on_time if p.closed_on <= p.deadline) / len(on_time) * 100) if on_time else None,
+        "on_time_pct": round(sum(1 for p in on_time if not p.delivered_late) / len(on_time) * 100) if on_time else None,
         "revenue": total_rev,
         "agencies": sorted(({"name": k, "amount": v, "share": round(v / total_rev * 100) if total_rev else 0}
                             for k, v in rev_by_agency.items()), key=lambda x: -x["amount"]),
@@ -273,7 +273,14 @@ def deadlines(request):
 @requires("delivered.view")
 def delivered(request):
     month = parse_month(request.GET.get("m"))
-    qs = (Project.objects.filter(status=Project.CLOSED, closed_on__range=(month_start(month), month_end(month)))
+    if request.method == "POST":           # change a delivery tag inline
+        p = get_object_or_404(Project, pk=request.POST.get("project"))
+        p.timing_override = request.POST.get("timing_override", "") if request.POST.get("timing_override", "") in dict(Project.TIMING) else ""
+        p.timing_note = request.POST.get("timing_note", p.timing_note)[:200]
+        p.save(update_fields=["timing_override", "timing_note"])
+        messages.success(request, f"{p}: {p.timing_label}.")
+        return redirect(request.get_full_path())
+    qs = (Project.objects.filter(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__range=(month_start(month), month_end(month)))
           .select_related("agency", "editor__profile", "drive").order_by("-closed_on"))
     q = request.GET.get("q", "").strip()
     if q:
@@ -284,7 +291,8 @@ def delivered(request):
             inv = p.invoice_line.invoice
         except Exception:
             inv = None
-        rows.append({"p": p, "qc_rounds": p.reviews.filter(kind="qc").count(), "invoice": inv})
+        rows.append({"p": p, "qc_rounds": p.reviews.filter(kind="qc").count(), "invoice": inv,
+                     "revisions": p.client_revisions.count()})
     pending_close = Project.objects.filter(status=Project.QC_PASSED).select_related("editor__profile")
     from ..models import HardDrive
     drives = []
@@ -293,7 +301,7 @@ def delivered(request):
         if jobs:
             open_ = [j for j in jobs if j.status != Project.CLOSED]
             drives.append({"d": d, "jobs": len(jobs), "open": open_, "safe": not open_})
-    return render(request, "founder/delivered.html", {"rows": rows, "month": month, "prev": add_months(month, -1),
+    return render(request, "founder/delivered.html", {"rows": rows, "timing_choices": Project.TIMING, "month": month, "prev": add_months(month, -1),
                                                     "next": add_months(month, 1), "q": q, "pending_close": pending_close,
                                                     "drives": drives})
 
@@ -456,7 +464,7 @@ def eotm(request):
     sugg = []
     for u in team():
         closed = Project.objects.filter(editor=u, status=Project.CLOSED, closed_on__range=(last, month_end(last)))
-        on_time = [p for p in closed if p.deadline and p.closed_on <= p.deadline]
+        on_time = [p for p in closed if p.deadline and not p.delivered_late]
         qc = Project.objects.filter(editor=u, reviews__kind="qc", reviews__created__date__range=(last, month_end(last))).distinct()
         first_pass = [p for p in qc if not p.reviews.filter(kind="qc", passed=False).exists()]
         sugg.append({"u": u, "films": closed.count(), "on_time": len(on_time),

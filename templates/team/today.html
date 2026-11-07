@@ -26,7 +26,7 @@
     <div><span class="small" style="font-weight:600">Day type</span><div style="margin-top:6px">{{ form.day_type }}</div></div>
     <div class="fields">
       <label>In time{{ form.time_in }}</label><label>Out time{{ form.time_out }}</label>
-      <div class="field" style="justify-content:flex-end"><span class="small muted">{% if log.pk %}{{ log.hours|hours }} hrs worked{% if log.is_late %} · <b style="color:var(--warn)">Late</b>{% endif %}{% endif %}</span></div>
+      <div class="field" style="justify-content:flex-end"><span class="small muted">{% if log.pk %}{{ log.office_hours|hours }} h in office · <b>{{ log.hours|hours }} h productive</b>{% if log.break_hours %} (after {{ log.break_hours|hours }} h break){% endif %}{% if log.is_late %} · <b style="color:var(--warn)">Late</b>{% endif %}{% endif %}</span></div>
     </div>
     {% if form.errors %}<div class="msg error">{{ form.errors }}</div>{% endif %}
   </section>
@@ -42,7 +42,7 @@
     {% endfor %}
     <label>{{ form.notes.label }}{{ form.notes }}</label>
     <button class="btn primary">Save {% if is_today %}today{% else %}{{ d|date:"j M" }}{% endif %}</button>
-    <p class="small muted" style="margin:0">Blank hours share whatever is left of your in/out time. Extra (freelance) hours go under Extra work, not here.</p>
+    <p class="small muted" style="margin:0">Blank hours share your productive time (in/out time minus the {{ studio.break_minutes }}-minute break). Extra (freelance) hours go under Extra work, not here.</p>
   </section>
 </form>
 <aside class="aside">
@@ -54,7 +54,7 @@
     <div class="grid" style="grid-template-columns:repeat(2,1fr)">
       <div class="kpi"><span>Days in office</span><b>{{ att.office }}</b></div>
       <div class="kpi {% if att.leaves_counted > free_leaves %}bad{% endif %}"><span>Leaves · {{ free_leaves|hours }} free</span><b>{{ att.leaves_counted|hours }} of {{ free_leaves|hours }}</b></div>
-      <div class="kpi"><span>Hours worked</span><b>{{ att.hours|hours }}</b></div>
+      <div class="kpi"><span>Productive hours</span><b>{{ att.hours|hours }}</b></div>
       <div class="kpi"><span>Late arrivals</span><b>{{ att.late }}</b></div>
     </div>
   </section>

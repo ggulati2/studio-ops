@@ -42,12 +42,13 @@ class Flows(SeededTestCase):
                                          "form-1-project": p2.pk, "form-1-stage": "Color", "form-1-hours": ""})
         log = DayLog.objects.get(user=self.pratik, date=d)
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(log.hours, 9.5)
-        self.assertEqual(sorted(S.split_hours(log).values()), [3.5, 6.0])
+        self.assertEqual((log.office_hours, log.hours), (9.5, 8.5))      # 1-hour break taken off
+        self.assertEqual(sorted(S.split_hours(log).values()), [2.5, 6.0])
         r = c.post(f"/today/?date={d}", {"day_type": "office", "time_in": "10:00", "time_out": "19:30", **mgmt,
                                          "form-TOTAL_FORMS": "1", "form-0-project": p1.pk, "form-0-stage": "", "form-0-hours": ""})
         self.assertContains(r, "Pick a stage")
-        self.assertEqual(DayLog(user=self.pratik, date=d, time_in=time(21), time_out=time(1, 30)).hours, 4.5)
+        self.assertEqual(DayLog(user=self.pratik, date=d, time_in=time(21), time_out=time(1, 30)).hours, 4.5)   # short day: no break
+        self.assertEqual(DayLog(user=self.pratik, date=d, time_in=time(9), time_out=time(18)).hours, 8.0)       # 9 h office = 8 h
 
     def test_review_qc_and_close(self):
         job = Project.objects.get(couple="Riya & Arjun", deliverable="Teaser")   # Himanshu, Soham's pod

@@ -5,7 +5,7 @@
 <section class="card"><div class="scroll"><table style="min-width:760px">
   <thead><tr><th>Agency</th><th>Contact</th><th>Billing</th><th class="right">Billed this year</th><th class="right">Outstanding</th><th>Details</th></tr></thead>
   <tbody>{% for r in rows %}<tr>
-    <td><a href="{% url 'agency_edit' r.a.pk %}"><b>{{ r.a.name }}</b></a><div class="small muted">{{ r.a.city }}</div></td>
+    <td><a href="{% url 'agency_edit' r.a.pk %}"><b>{{ r.a.name }}</b></a>{% if r.a.code %} <span class="tag mono">{{ r.a.code }}</span>{% else %} <span class="tag warn">no nickname</span>{% endif %}<div class="small muted">{{ r.a.city }}</div></td>
     <td>{{ r.a.contact_person|default:"–" }}</td><td class="muted">{{ r.a.currency }} · {{ r.a.payment_terms_days }} days</td>
     <td class="right">{{ r.a.symbol }}{{ r.billed|money }}</td><td class="right"><b>{{ r.a.symbol }}{{ r.owed|money }}</b></td>
     <td>{% if r.a.missing_fields %}<span class="tag warn">Missing {{ r.a.missing_fields|join:", " }}</span>{% else %}<span class="tag ok">Complete</span>{% endif %}</td>

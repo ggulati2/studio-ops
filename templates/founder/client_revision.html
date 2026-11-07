@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Client revision · {{ p }}{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% url 'project_edit' p.pk %}" class="small">← {{ p }}</a><h1>Reopen for client revisions</h1>
+<p>{{ p }} was delivered on {% with d=p.first_delivered_on|default:p.closed_on %}{{ d|date:"j M" }}{% endwith %} ({{ p.timing_label|lower }}). Reopening sends it back to the editor with a new due date. It still counts as delivered on its first date and is never marked late because of a revision.</p></div></div>
+<form method="post" class="card" style="max-width:720px">{% csrf_token %}
+  {% include "_form.html" %}
+  <div class="actions"><button class="btn primary">Reopen and send to editor</button><a class="btn" href="{% url 'project_edit' p.pk %}">Cancel</a></div>
+</form>
+{% endblock %}

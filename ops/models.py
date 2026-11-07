@@ -40,7 +40,12 @@ class StudioSettings(models.Model):
         choices=[("calendar", "Salary ÷ days in month"), ("26", "Salary ÷ 26 working days")])
     shift_start = models.TimeField(default="10:00")
     late_after_minutes = models.PositiveSmallIntegerField(default=15)
-    hours_per_day = models.DecimalField(max_digits=4, decimal_places=1, default=8)
+    hours_per_day = models.DecimalField("Productive hours per day", max_digits=4, decimal_places=1, default=8,
+                                        help_text="Used for planning and capacity.")
+    office_hours_per_day = models.DecimalField("Office hours per day", max_digits=4, decimal_places=1, default=9,
+                                               help_text="Time in office including breaks.")
+    break_minutes = models.PositiveSmallIntegerField("Break (lunch etc.) minutes", default=60,
+                                                     help_text="Taken off each day longer than 5 hours to get productive hours.")
     working_weekdays = models.CharField(max_length=20, default="0,1,2,3,4,5",
                                         help_text="Mon=0 … Sun=6, comma separated")
     eotm_voucher_amount = models.PositiveIntegerField(default=1000)
@@ -143,6 +148,8 @@ class Holiday(models.Model):
 # --------------------------------------------------------------------------
 class Agency(models.Model):
     name = models.CharField(max_length=120, unique=True)
+    code = models.CharField("Nickname", max_length=3, unique=True, null=True, blank=True,
+                            help_text="Up to 3 letters, e.g. BRC. Added to the end of every project name.")
     city = models.CharField(max_length=80, blank=True)
     contact_person = models.CharField(max_length=80, blank=True)
     phone = models.CharField(max_length=40, blank=True)
@@ -247,9 +254,14 @@ class DriveReturn(models.Model):
 class Project(models.Model):
     NOT_STARTED, IN_PROGRESS, TL_REVIEW, QC, REVISIONS, QC_PASSED, CLOSED, ON_HOLD = (
         "not_started", "in_progress", "tl_review", "qc", "revisions", "qc_passed", "closed", "on_hold")
+    TL_REVISIONS, CLIENT_REV = "tl_revisions", "client_rev"
+    QC_REVISIONS = REVISIONS            # stored as "revisions" (existing data), shown as "QC revisions"
     STATUSES = [(NOT_STARTED, "Not started"), (IN_PROGRESS, "In progress"), (TL_REVIEW, "TL review"),
-                (QC, "In QC"), (REVISIONS, "Revisions / QC fixes"), (QC_PASSED, "QC passed"),
-                (CLOSED, "Delivered"), (ON_HOLD, "On hold")]
+                (TL_REVISIONS, "TL revisions"), (QC, "In QC"), (REVISIONS, "QC revisions"), (QC_PASSED, "QC passed"),
+                (CLOSED, "Delivered"), (CLIENT_REV, "Client revision"), (ON_HOLD, "On hold")]
+    WORKABLE = (NOT_STARTED, IN_PROGRESS, TL_REVISIONS, REVISIONS, CLIENT_REV)   # editor can send these for review
+    TIMING = [("", "Automatic (from dates)"), ("on_time", "On time"), ("late", "Delivered late"),
+              ("client_delay", "Late due to client approval (not our delay)")]
     DELIVERABLES = ["Teaser", "Highlight", "Trailer", "Full Film", "Traditional Film", "Reels",
                     "Same Day Edit", "Event Video", "Ad / Corporate", "Cleanup Shots", "Other"]
     TIERS = [(1, "Tier 1 – Simple"), (2, "Tier 2 – Cinematic"), (3, "Tier 3 – Premium")]
@@ -289,13 +301,58 @@ class Project(models.Model):
                                                  help_text="Only for contract editors paid per film.")
     # First deadline, kept when a delay moves it
     original_deadline = models.DateField(null=True, blank=True)
+    # First delivery, kept through client revisions (revisions never make a film "late")
+    first_delivered_on = models.DateField(null=True, blank=True)
+    deadline_at_delivery = models.DateField(null=True, blank=True)
+    timing_override = models.CharField("Delivery tag", max_length=12, choices=TIMING, blank=True,
+                                       help_text="Change if the dates don't tell the real story, e.g. waiting on client approval.")
+    timing_note = models.CharField("Why", max_length=200, blank=True)
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["deadline", "couple"]
 
     def __str__(self):
-        return f"{self.couple} – {self.deliverable}"
+        code = self.agency.code if self.agency_id and self.agency.code else ""
+        return f"{self.couple} – {self.deliverable}" + (f" – {code}" if code else "")
+
+    def save(self, *args, **kwargs):
+        from django.utils import timezone as tz
+        if self.status == self.CLOSED:
+            self.closed_on = self.closed_on or tz.localdate()
+            if not self.first_delivered_on:
+                self.first_delivered_on, self.deadline_at_delivery = self.closed_on, self.deadline
+            if "update_fields" in kwargs and kwargs["update_fields"] is not None:
+                kwargs["update_fields"] = list(set(kwargs["update_fields"]) | {"closed_on", "first_delivered_on",
+                                                                                "deadline_at_delivery"})
+        super().save(*args, **kwargs)
+        if self.status == self.CLOSED and self.pk:      # a client revision just went back out
+            self.client_revisions.filter(completed_on__isnull=True).update(completed_on=tz.localdate())
+
+    @property
+    def can_submit(self):
+        return self.status in self.WORKABLE
+
+    @property
+    def delivered_late(self):
+        """True / False for delivered films (first delivery vs the deadline then; client
+        revisions don't count; your tag wins). None if not delivered or no deadline."""
+        if self.timing_override:
+            return self.timing_override == "late"
+        first = self.first_delivered_on or (self.closed_on if self.status == self.CLOSED else None)
+        due = self.deadline_at_delivery or self.deadline
+        if not (first and due):
+            return None
+        return first > due
+
+    @property
+    def timing_label(self):
+        if self.timing_override == "client_delay":
+            return "Late – client approval"
+        late = self.delivered_late
+        if late is None:
+            return "Delivered" if (self.first_delivered_on or self.status == self.CLOSED) else ""
+        return "Delivered late" if late else "Delivered on time"
 
     @property
     def is_open(self):
@@ -318,9 +375,7 @@ class Project(models.Model):
     def flag(self):
         d = self.days_left
         if self.status == self.CLOSED:
-            if self.closed_on and self.deadline:
-                return "Delivered on time" if self.closed_on <= self.deadline else "Delivered late"
-            return "Delivered"
+            return self.timing_label or "Delivered"
         if not self.editor_id and self.is_open:
             return "Needs an editor"
         if d is None:
@@ -368,8 +423,11 @@ class DayLog(models.Model):
     def __str__(self):
         return f"{self.user} {self.date}"
 
+    BREAK_AFTER_HOURS = 5   # the break is only taken off days longer than this
+
     @property
-    def hours(self):
+    def office_hours(self):
+        """Time between in and out (past midnight handled)."""
         if not (self.time_in and self.time_out):
             return 0.0
         start = datetime.combine(self.date, self.time_in)
@@ -377,6 +435,15 @@ class DayLog(models.Model):
         if end <= start:  # worked past midnight
             end += timedelta(days=1)
         return round((end - start).total_seconds() / 3600, 2)
+
+    @property
+    def break_hours(self):
+        return (StudioSettings.get().break_minutes / 60) if self.office_hours > self.BREAK_AFTER_HOURS else 0.0
+
+    @property
+    def hours(self):
+        """Productive hours: office time minus the break (e.g. 10:00–19:00 = 9 h office = 8 h productive)."""
+        return round(max(self.office_hours - self.break_hours, 0.0), 2)
 
     @property
     def is_late(self):
@@ -676,3 +743,20 @@ class DelayReport(models.Model):
     def days_slip(self):
         target = self.approved_date or self.proposed_date
         return (target - self.deadline_then).days if target and self.deadline_then else 0
+
+
+# --------------------------------------------------------------------------
+# Client revisions: a delivered film reopened because the client asked for changes
+# --------------------------------------------------------------------------
+class ClientRevision(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="client_revisions")
+    round = models.PositiveSmallIntegerField(default=1)
+    requested_on = models.DateField(default=date.today)
+    changes = models.TextField("What the client wants changed")
+    due_date = models.DateField("Revision due (editor)")
+    editor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    completed_on = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["-round"]

@@ -68,6 +68,7 @@ urlpatterns = [
     path("delays/", v.delays, name="delays"),
     path("delays/<int:pk>/decide/", v.delay_decide, name="delay_decide"),
     path("projects/<int:pk>/delay/", v.delay_log, name="delay_log"),
+    path("projects/<int:pk>/client-revision/", v.client_revision, name="client_revision"),
     path("my-jobs/<int:pk>/delay/", v.job_delay, name="job_delay"),
     path("contract-editors/", v.contractors, name="contractors"),
     path("contract-editors/<int:pk>/", v.contractor_detail, name="contractor_detail"),

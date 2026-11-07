@@ -161,6 +161,19 @@ class Command(BaseCommand):
                                        handed_over_on=month_start(today))
         EmployeeOfMonth.objects.create(month=add_months(last, -1), user=soham, reason="Delivered the Elysia destination wedding two days early.")
         EmployeeOfMonth.objects.create(month=add_months(last, -2), user=shabnam, reason="Highest client rating from BadalRaja this season.")
+        # 3-letter nicknames shown at the end of every project name
+        for name, code in {"BadalRaja Company": "BRC", "Weddings By Shooting Star": "WSS", "Elysia Films": "ELY",
+                           "Happy Frames": "HFM", "Cheesecake Films": "CCF", "Qurbat Films": "QBT",
+                           "Shutter Magik Films": "SMF", "Dream Diaries": "DRD"}.items():
+            Agency.objects.filter(name=name).update(code=code)
+        # One delivered film back with the editor for client changes
+        back = Project.objects.filter(status=Project.CLOSED, editor=harsh).order_by("-closed_on").first()
+        if back:
+            from ops.models import ClientRevision
+            ClientRevision.objects.create(project=back, changes="Client wants the haldi section shorter and a new end song.",
+                                          due_date=today + timedelta(days=3), editor=harsh, round=1)
+            back.status, back.deadline = Project.CLIENT_REV, today + timedelta(days=3)
+            back.save(update_fields=["status", "deadline"])
         # A contract editor paid per film, with one delivered film and a part payment
         from ops.models import ContractPayment, DelayReport
         kabir = person("kabir", "Kabir", Profile.EDITOR, pods[2], 0)

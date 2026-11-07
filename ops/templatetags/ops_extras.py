@@ -40,9 +40,9 @@ def qs(context, **kwargs):
 
 
 FLAG = {"Overdue": "bad", "Due soon": "warn", "On track": "info", "Needs an editor": "warn",
-        "Delivered on time": "ok", "Delivered late": "bad", "Delivered": "ok"}
-STATUS = {"in_progress": "info", "tl_review": "qc", "qc": "qc", "revisions": "warn", "qc_passed": "ok",
-          "closed": "ok", "not_started": "", "on_hold": ""}
+        "Delivered on time": "ok", "Delivered late": "bad", "Delivered": "ok", "Late – client approval": "gold"}
+STATUS = {"in_progress": "info", "tl_review": "qc", "tl_revisions": "warn", "qc": "qc", "revisions": "warn", "qc_passed": "ok",
+          "closed": "ok", "client_rev": "gold", "not_started": "", "on_hold": ""}
 INV = {"draft": "", "sent": "info", "part": "info", "paid": "ok", "overdue": "bad"}
 DRIVE = {"in_use": "info", "backup_done": "ok", "ready": "warn", "sent": "", "damaged": "bad"}
 
