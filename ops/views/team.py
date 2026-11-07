@@ -14,6 +14,7 @@ from ..rbac import ADMIN, EDITOR, QC, TL, can_review_in_pod, has_perm, requires
 from ..forms import CloseJobForm, DayForm, ExtraEntryForm, ReviewForm, TaskFormSet
 from ..models import (QC_CHECKLIST, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
                       Project, Review, StudioSettings, TaskEntry)
+from .. import services as S
 from ..services import (add_months, attendance, celebrated_award, day_kind, extra_hours, extra_pay, holidays_between,
                         leave_count, month_end, month_start, parse_month, project_hours, split_hours, team,
                         trophy_counts)
@@ -85,6 +86,7 @@ def my_month(request):
     logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(a, b)).prefetch_related("tasks__project")}
     plans = {p.date: p for p in PlanEntry.objects.filter(user=user, date__range=(a, b)).select_related("project")}
     hols = holidays_between(a, b)
+    due = S.deliveries_between(a, b, user=user)
     lead = (a.weekday() + 1) % 7
     cells = [None] * lead
     d = a
@@ -96,7 +98,7 @@ def my_month(request):
         if d < today and not log and kind == "":
             warn = "Not logged"
         cells.append({"d": d, "kind": kind, "log": log, "plan": plans.get(d), "holiday": hols.get(d),
-                      "today": d == today, "warn": warn})
+                      "today": d == today, "warn": warn, "due": due.get(d, [])})
         d += timedelta(days=1)
     while len(cells) % 7:
         cells.append(None)
@@ -111,7 +113,7 @@ def my_jobs(request):
     jobs = []
     for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive"):
         last = p.reviews.first()
-        jobs.append({"p": p, "hours": project_hours(p), "last": last})
+        jobs.append({"p": p, "hours": project_hours(p), "last": last, "delay": p.delays.first()})
     done = Project.objects.filter(editor=request.user, status=Project.CLOSED).order_by("-closed_on")[:10]
     return render(request, "team/jobs.html", {"jobs": jobs, "done": done})
 

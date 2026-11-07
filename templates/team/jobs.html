@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load ops_extras %}
+{% extends "base.html" %}{% load ops_extras static %}
 {% block title %}My jobs{% endblock %}
 {% block content %}
 <div class="head"><div><h1>My jobs</h1><p>Send a cut for review when it's ready. Once QC passes, upload the files and close the job.</p></div></div>
@@ -6,6 +6,10 @@
 <section class="card">
   <div class="title"><div><h2>{{ p }}{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</h2><span class="small muted">{{ p.agency }} · Tier {{ p.tier }}{% if p.drive %} · Drive {{ p.drive }}{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %} · {{ j.hours|hours }} hrs so far</span></div>
     <span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></div>
+  {% if j.delay %}{% with d=j.delay %}
+  <div class="small delay-note {{ d.status }}">{% if d.status == 'pending' %}<b>Delay asked:</b> {{ d.deadline_then|date:"j M" }} → {{ d.proposed_date|date:"j M" }}. Waiting for a founder.
+  {% elif d.status == 'approved' %}<b>New deadline approved:</b> {{ d.approved_date|date:"D j M" }}{% if d.founder_note %} · “{{ d.founder_note }}”{% endif %}
+  {% else %}<b>Delay declined</b> · deadline stays {{ p.deadline|date:"j M" }}{% if d.founder_note %} · “{{ d.founder_note }}”{% endif %}{% endif %}</div>{% endwith %}{% endif %}
   {% if p.brief %}<div class="small" style="white-space:pre-line">{{ p.brief }}</div>{% endif %}
   {% if j.last and not j.last.passed %}<div class="card tight warn"><b class="small" style="color:var(--warn)">{{ j.last.get_kind_display }} sent it back · {{ j.last.created|date:"j M" }}</b>{% if j.last.issues %}<span class="small">Issues: {{ j.last.issues|join:", " }}</span>{% endif %}{% if j.last.comments %}<span class="small" style="white-space:pre-line">{{ j.last.comments }}</span>{% endif %}</div>{% endif %}
   {% if p.status == 'qc_passed' %}
@@ -15,6 +19,7 @@
       <input class="input" type="url" name="cut_link" value="{{ p.cut_link }}" placeholder="Link to the cut for review" style="flex:1 1 280px">
       <button class="btn dark">Send for {% if role == 'tl' %}QC{% else %}TL review{% endif %}</button></form>
   {% endif %}
+  {% if p.deadline and p.status != 'qc_passed' %}<div class="actions"><a class="btn sm" href="{% url 'job_delay' p.pk %}"><svg class="ico" aria-hidden="true"><use href="{% static 'icons.svg' %}#alert"/></svg>Can't make {{ p.deadline|date:"j M" }}? Report a delay</a></div>{% endif %}
 </section>{% endwith %}{% empty %}<section class="card"><span class="muted">No open jobs. Enjoy the quiet!</span></section>{% endfor %}
 {% if done %}<section class="card"><h2>Recently closed</h2>{% for p in done %}<div class="small">{{ p }} · {{ p.closed_on|date:"j M" }}</div>{% endfor %}</section>{% endif %}
 {% endblock %}

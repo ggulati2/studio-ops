@@ -65,6 +65,14 @@ urlpatterns = [
     # raw data back-office for founders (Django admin)
     path("settings/audit/", v.audit_log, name="audit_log"),
     path("settings/access/", v.access_matrix, name="access_matrix"),
+    path("delays/", v.delays, name="delays"),
+    path("delays/<int:pk>/decide/", v.delay_decide, name="delay_decide"),
+    path("projects/<int:pk>/delay/", v.delay_log, name="delay_log"),
+    path("my-jobs/<int:pk>/delay/", v.job_delay, name="job_delay"),
+    path("contract-editors/", v.contractors, name="contractors"),
+    path("contract-editors/<int:pk>/", v.contractor_detail, name="contractor_detail"),
+    path("contract-editors/payment/<int:pk>/delete/", v.contract_payment_delete, name="contract_payment_delete"),
+    path("my-payments/", v.my_payments, name="my_payments"),
     path("backoffice/", admin.site.urls),
 ]
 

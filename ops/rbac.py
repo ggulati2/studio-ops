@@ -21,13 +21,13 @@ ADMIN, TL, EDITOR, INTERN, QC, DRIVE = (Profile.ADMIN, Profile.TL, Profile.EDITO
 # permission -> plain-English meaning (shown in Settings → Roles & permissions)
 PERMISSIONS = {
     "dashboard.view": "See the studio dashboard",
-    "projects.manage": "Create, edit and assign any project",
+    "projects.manage": "Create, edit and assign any project; decide on delays",
     "planner.manage": "Plan who works on what",
     "deadlines.view": "See every deadline",
     "delivered.view": "See delivered films and their links",
     "reports.manage": "Make team and agency status reports",
     "invoices.manage": "Create invoices and record payments",
-    "payroll.manage": "See salaries, run payroll",
+    "payroll.manage": "See salaries, run payroll, pay contract editors",
     "people.manage": "Add people, set roles, reset passwords",
     "attendance.view_all": "See everyone's attendance and value vs salary",
     "extra.manage": "Offer extra work and see extra pay",
@@ -39,9 +39,9 @@ PERMISSIONS = {
     "drives.manage": "Receive and send back hard drives",
     "pod.review": "Review films from their own pod",
     "qc.review": "Pass or fail films in QC",
-    "work.log_own": "Log their own day and jobs",
+    "work.log_own": "Log their own day and jobs; report a delay on their own job",
     "extra.log_own": "Accept and log their own extra work",
-    "payslips.view_own": "See their own payslips",
+    "payslips.view_own": "See their own payslips (or payments, if on contract)",
     "leaderboard.view": "See the leaderboard",
 }
 

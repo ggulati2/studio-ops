@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Delay · {{ p }}{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% if founder %}{% url 'project_edit' p.pk %}{% else %}{% url 'my_jobs' %}{% endif %}" class="small">← {% if founder %}{{ p }}{% else %}My jobs{% endif %}</a>
+<h1>{% if founder %}Record a delay{% else %}This film will be late{% endif %}</h1>
+<p>{{ p }} · {{ p.agency }} · due <b>{{ p.deadline|date:"D j M" }}</b>{% if p.original_deadline %} (first deadline {{ p.original_deadline|date:"j M" }}){% endif %}.
+{% if founder %}The deadline moves straight away and the delay is kept on record.{% else %}Tell us as early as you know. A founder confirms the new date; until then the current deadline stands.{% endif %}</p></div></div>
+{% if pending and not founder %}<div class="msg warning">You already asked to move this to {{ pending.proposed_date|date:"j M" }}. Saving again updates that request.</div>{% endif %}
+<form method="post" class="card" style="max-width:640px">{% csrf_token %}
+  {% include "_form.html" %}
+  <div class="actions"><button class="btn primary">{% if founder %}Move deadline{% else %}Send to founders{% endif %}</button>
+  <a class="btn" href="{% if founder %}{% url 'project_edit' p.pk %}{% else %}{% url 'my_jobs' %}{% endif %}">Cancel</a></div>
+</form>
+{% if history %}<section class="card" style="max-width:640px"><h2>Earlier delays on this film</h2>
+{% for d in history %}<div class="small">{{ d.reported_on|date:"j M" }}: {{ d.get_reason_display }}, {{ d.deadline_then|date:"j M" }} → {{ d.approved_date|default:d.proposed_date|date:"j M" }} · {{ d.get_status_display }}</div>{% endfor %}
+</section>{% endif %}
+{% endblock %}

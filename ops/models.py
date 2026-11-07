@@ -87,6 +87,15 @@ class Profile(models.Model):
     joined_on = models.DateField(null=True, blank=True)
     color = models.CharField(max_length=9, blank=True)
     active = models.BooleanField(default=True)
+    # Employment
+    FULL_TIME, CONTRACT = "full_time", "contract"
+    EMPLOYMENT = [(FULL_TIME, "Full-time employee"), (CONTRACT, "Contract-based")]
+    BASIS = [("project", "Per film (fee set on each film)"), ("hour", "Per hour logged"), ("day", "Per day worked"),
+             ("month", "Fixed monthly retainer")]
+    employment = models.CharField(max_length=10, choices=EMPLOYMENT, default=FULL_TIME)
+    contract_basis = models.CharField("Paid", max_length=8, choices=BASIS, blank=True)
+    contract_rate = models.PositiveIntegerField("Rate (₹)", default=0,
+                                                help_text="₹ per hour, per day or per month. For per-film, set the fee on each film.")
     must_change_password = models.BooleanField(default=False,
                                                help_text="Forces a new password at next login (set when a founder sets/resets it)")
 
@@ -105,6 +114,10 @@ class Profile(models.Model):
         if not self.color:
             self.color = self.COLORS[(self.user_id or 0) % len(self.COLORS)]
         super().save(*args, **kwargs)
+
+    @property
+    def is_contract(self):
+        return self.employment == self.CONTRACT
 
     @property
     def does_editing(self):
@@ -265,6 +278,11 @@ class Project(models.Model):
     # What the client sees in status reports (overrides; blank = derived)
     client_stage = models.CharField(max_length=30, blank=True, choices=[(s, s) for s in CLIENT_STAGES])
     client_date = models.DateField(null=True, blank=True)
+    # Contract editors: what we pay them for this film (founders only)
+    contractor_fee = models.PositiveIntegerField("Pay to contract editor (₹)", default=0,
+                                                 help_text="Only for contract editors paid per film.")
+    # First deadline, kept when a delay moves it
+    original_deadline = models.DateField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -578,3 +596,53 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.created:%Y-%m-%d %H:%M} {self.username} {self.action} {self.target}"
+
+
+# --------------------------------------------------------------------------
+# Contract editors: payments made to them
+# --------------------------------------------------------------------------
+class ContractPayment(models.Model):
+    METHODS = [("bank", "Bank transfer"), ("upi", "UPI"), ("cash", "Cash"), ("other", "Other")]
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="contract_payments")
+    paid_on = models.DateField(default=date.today)
+    amount = models.PositiveIntegerField()
+    method = models.CharField(max_length=6, choices=METHODS, default="bank")
+    reference = models.CharField(max_length=80, blank=True, help_text="UTR / UPI ref / cheque no.")
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name="+")
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-paid_on", "-id"]
+
+
+# --------------------------------------------------------------------------
+# Delays: an editor says a film will miss its deadline; a founder decides
+# --------------------------------------------------------------------------
+class DelayReport(models.Model):
+    PENDING, APPROVED, DECLINED = "pending", "approved", "declined"
+    STATUSES = [(PENDING, "Waiting for decision"), (APPROVED, "New date approved"), (DECLINED, "Declined")]
+    REASONS = [("footage", "Footage / files late or missing"), ("client", "Client changes or extra requests"),
+               ("workload", "Too much work at once"), ("revisions", "More QC / review fixes than expected"),
+               ("technical", "Technical problem (system, render, drive)"), ("leave", "Leave or illness"),
+               ("other", "Other")]
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="delays")
+    reported_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name="+")
+    reported_on = models.DateTimeField(auto_now_add=True)
+    deadline_then = models.DateField(help_text="Deadline at the time of the report")
+    proposed_date = models.DateField("New expected date")
+    reason = models.CharField(max_length=10, choices=REASONS)
+    note = models.TextField("What's happening", blank=True)
+    status = models.CharField(max_length=10, choices=STATUSES, default=PENDING)
+    decided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_on = models.DateTimeField(null=True, blank=True)
+    approved_date = models.DateField(null=True, blank=True)
+    founder_note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-reported_on"]
+
+    @property
+    def days_slip(self):
+        target = self.approved_date or self.proposed_date
+        return (target - self.deadline_then).days if target and self.deadline_then else 0

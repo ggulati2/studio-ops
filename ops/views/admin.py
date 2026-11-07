@@ -107,15 +107,22 @@ def project_new(request):
         c = form.cleaned_data
         editor = User.objects.filter(pk=c["editor"]).first() if c["editor"] else None
         rates = {r.deliverable: r.amount for r in c["agency"].rates.all()}
+        made, short = 0, 0
         with transaction.atomic():
             for d in c["deliverables"]:
-                Project.objects.create(
+                job = Project.objects.create(
                     couple=c["couple"], deliverable=d, agency=c["agency"], tier=c["tier"], editor=editor,
                     deadline=c["deadline"], drive=c["drive"], brief=c["brief"],
                     invoice_amount=c["invoice_amount"] if c["invoice_amount"] is not None else rates.get(d, 0),
                     is_extra=c["is_extra"] and bool(editor), extra_basis=c["extra_basis"] or "fixed",
                     extra_rate=c["extra_rate"] or 0)
-        messages.success(request, f"Created {len(c['deliverables'])} job(s) for {c['couple']}.")
+                m, sh = S.auto_plan(job)
+                made, short = made + m, short + sh
+        messages.success(request, f"Created {len(c['deliverables'])} job(s) for {c['couple']}."
+                         + (f" Planned {made} day(s) for {editor.profile.name} in the Planner." if made else ""))
+        if short:
+            messages.warning(request, f"{editor.profile.name}'s planner is full before the deadline: {short} more day(s) "
+                                      "of work didn't fit. Check the Planner.")
         return redirect("projects")
     return render(request, "form_page.html", {"form": form, "title": "New project", "back": "projects",
                                               "submit": "Create jobs"})
@@ -126,10 +133,17 @@ def project_edit(request, pk):
     p = get_object_or_404(Project, pk=pk)
     form = ProjectForm(request.POST or None, instance=p)
     if request.method == "POST" and form.is_valid():
+        before = Project.objects.values("editor_id", "deadline").get(pk=p.pk)
         obj = form.save(commit=False)
         if obj.status == Project.CLOSED and not obj.closed_on:
             obj.closed_on = timezone.localdate()
         obj.save()
+        if before["editor_id"] != obj.editor_id or before["deadline"] != obj.deadline:
+            made, short = S.auto_plan(obj)
+            if made:
+                messages.info(request, f"Planner updated: {made} day(s) planned for {obj.editor.profile.name}.")
+            if short:
+                messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
         messages.success(request, "Job saved.")
         return redirect("projects")
     return render(request, "founder/project_edit.html", {"form": form, "p": p, "hours": project_hours(p),
@@ -143,7 +157,11 @@ def project_assign(request, pk):
     if form.is_valid():
         p.editor = User.objects.get(pk=form.cleaned_data["editor"])
         p.save(update_fields=["editor"])
-        messages.success(request, f"{p} assigned to {p.editor.profile.name}.")
+        made, short = S.auto_plan(p)
+        messages.success(request, f"{p} assigned to {p.editor.profile.name}."
+                         + (f" {made} day(s) added to the Planner." if made else ""))
+        if short:
+            messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
     return redirect(request.POST.get("next") or "projects")
 
 
@@ -160,6 +178,15 @@ def planner(request):
         u = get_object_or_404(User, pk=request.POST["user"])
         d = date.fromisoformat(request.POST["date"])
         val = request.POST.get("value", "")
+        try:
+            repeat = max(0, min(int(request.POST.get("repeat", "0") or 0), 60))
+        except ValueError:
+            repeat = 0
+        if repeat and val.strip():
+            done, last = S.repeat_plan(u, d, val.strip(), repeat)
+            messages.success(request, f"Copied to {done} more working day(s) for {u.profile.name}, up to {last:%-d %b} "
+                                      "(weekly offs, holidays and leave skipped).")
+            return redirect(f"{request.path}?start={start.isoformat()}")
         PlanEntry.objects.filter(user=u, date=d).delete()
         if val.startswith("p:"):
             PlanEntry.objects.create(user=u, date=d, project_id=int(val[2:]))
@@ -170,6 +197,7 @@ def planner(request):
     logs = {(l.user_id, l.date): l for l in DayLog.objects.filter(date__range=(days[0], days[-1]))}
     hols = holidays_between(days[0], days[-1])
     weekdays = StudioSettings.get().weekdays
+    due = S.deliveries_between(days[0], days[-1])
     grid = []
     for d in days:
         cells = []
@@ -180,8 +208,9 @@ def planner(request):
                 kind = "holiday" if hols[d].kind == "full" else "half" if hols[d].kind == "half" else ""
             if not kind and d.weekday() not in weekdays:
                 kind = "off"
-            cells.append({"u": u, "entry": plan.get((u.id, d)), "kind": kind})
-        grid.append({"d": d, "cells": cells, "holiday": hols.get(d)})
+            mine = [p for p in due.get(d, []) if p.editor_id == u.id]
+            cells.append({"u": u, "entry": plan.get((u.id, d)), "kind": kind, "due": mine})
+        grid.append({"d": d, "cells": cells, "holiday": hols.get(d), "due": due.get(d, [])})
     open_projects = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency")
     return render(request, "founder/planner.html", {
         "grid": grid, "people": people, "start": start, "prev": start - timedelta(days=14),
@@ -347,6 +376,11 @@ def person_edit(request, pk=None):
             user.save()
             p, _ = Profile.objects.get_or_create(user=user)
             p.role, p.pod, p.monthly_salary, p.joined_on, p.active = c["role"], c["pod"], c["monthly_salary"], c["joined_on"], c["active"]
+            p.employment = c["employment"]
+            p.contract_basis = c["contract_basis"] if p.is_contract else ""
+            p.contract_rate = (c["contract_rate"] or 0) if p.is_contract else 0
+            if p.is_contract:
+                p.monthly_salary = 0
             if c["password"] and user.pk != request.user.pk:
                 p.must_change_password = True   # a password someone else knows must be replaced at first login
             p.save()

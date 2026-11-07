@@ -11,12 +11,13 @@
   <div class="kpi"><span>Hours worked</span><b>{{ att.hours|hours }}</b></div><div class="kpi"><span>Late arrivals</span><b>{{ att.late }}</b></div>
   <div class="kpi"><span>Extra hours</span><b>{{ extra_h|hours }}</b></div>
 </div>
-<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag k-downtime">Downtime</span></div>
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag k-downtime">Downtime</span><span class="tag due-key">Delivery day</span></div>
 <div class="scroll"><div class="cal">
   <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
   {% for c in cells %}{% if c %}
-  <a class="day {% if c.kind %}k-{{ c.kind }}{% endif %} {% if c.today %}today{% endif %}" href="{% url 'today' %}?date={{ c.d|date:'Y-m-d' }}">
+  <a class="day {% if c.kind %}k-{{ c.kind }}{% endif %} {% if c.today %}today{% endif %} {% if c.due %}due{% endif %}" href="{% url 'today' %}?date={{ c.d|date:'Y-m-d' }}">
     <span class="n">{{ c.d.day }}<small>{% if c.holiday %}{{ c.holiday.name|upper|truncatechars:14 }}{% elif c.kind == 'off' %}OFF{% elif c.kind and c.kind != 'office' %}{{ c.kind|upper }}{% endif %}</small></span>
+    {% for p in c.due %}<span class="chip {{ p|cal_class }}">Due: {{ p }}</span>{% endfor %}
     {% if c.plan %}<span class="chip" style="background:var(--red-soft);color:var(--red-dark)">Plan: {{ c.plan.text }}</span>{% endif %}
     {% if c.log and c.log.hours %}<span class="small">{{ c.log.hours|hours }} h{% for t in c.log.tasks.all|slice:":2" %} · {{ t.project.couple }}{% endfor %}</span>{% endif %}
     {% if c.warn %}<span class="small" style="color:var(--bad);font-weight:600">{{ c.warn }}</span>{% endif %}

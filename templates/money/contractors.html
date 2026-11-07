@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Contract editors{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Contract editors</h1><p>People on contract aren't in payroll. Their pay is worked out from their basis (per film, hour, day or month); record each payment here to see what's due.</p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
+<div class="grid">
+  <div class="kpi"><span>Earned in {{ month|date:"F" }}</span><b>₹{{ totals.earned|money }}</b></div>
+  <div class="kpi"><span>Paid in {{ month|date:"F" }}</span><b>₹{{ totals.paid|money }}</b></div>
+  <div class="kpi {% if totals.balance > 0 %}warn{% endif %}"><span>Due now (all time)</span><b>₹{{ totals.balance|money }}</b></div>
+</div>
+<section class="card"><div class="scroll"><table>
+  <thead><tr><th>Name</th><th>Paid</th><th>Earned this month</th><th>Paid this month</th><th>Due now</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><b>{{ r.u.profile.name }}</b><div class="small muted">{{ r.u.profile.get_role_display }}{% if not r.u.profile.active %} · inactive{% endif %}</div></td>
+    <td>{{ r.u.profile.get_contract_basis_display|default:"—" }}{% if r.u.profile.contract_basis != 'project' and r.u.profile.contract_rate %}<div class="small muted">₹{{ r.u.profile.contract_rate|money }}</div>{% endif %}</td>
+    <td>₹{{ r.st.earned|money }}{% if r.st.missing_fees %}<div class="small" style="color:var(--warn)">{{ r.st.missing_fees|length }} film{{ r.st.missing_fees|length|pluralize }} without a fee</div>{% endif %}</td>
+    <td>₹{{ r.st.paid|money }}</td>
+    <td><b {% if r.st.balance > 0 %}style="color:var(--warn)"{% endif %}>₹{{ r.st.balance|money }}</b></td>
+    <td><a class="btn sm" href="{% url 'contractor_detail' r.u.pk %}?m={{ month|date:'Y-m' }}">Open</a></td>
+  </tr>{% empty %}<tr><td colspan="6" class="muted">No contract editors yet. When adding a person, choose <b>Contract-based</b>.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+{% endblock %}

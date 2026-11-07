@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}{{ u.profile.name }} · contract{% endblock %}
+{% block content %}
+<div class="head"><div><a href="{% url 'contractors' %}?m={{ month|date:'Y-m' }}" class="small">← Contract editors</a><h1>{{ u.profile.name }}</h1>
+<p>Contract · {{ u.profile.get_contract_basis_display }}{% if u.profile.contract_basis != 'project' %} · ₹{{ u.profile.contract_rate|money }}{% endif %} · <a href="{% url 'person_edit' u.pk %}">change terms</a></p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
+<div class="grid">
+  <div class="kpi"><span>Earned in {{ month|date:"F" }}</span><b>₹{{ st.earned|money }}</b></div>
+  <div class="kpi"><span>Paid in {{ month|date:"F" }}</span><b>₹{{ st.paid|money }}</b></div>
+  <div class="kpi"><span>Earned / paid, all time</span><b>₹{{ st.all_earned|money }}</b><small>paid ₹{{ st.all_paid|money }}</small></div>
+  <div class="kpi {% if st.balance > 0 %}warn{% endif %}"><span>Due now</span><b>₹{{ st.balance|money }}</b>{% if st.balance < 0 %}<small>Paid ahead (advance)</small>{% endif %}</div>
+</div>
+<div class="row">
+  <div class="grow">
+    {% if st.missing_fees %}<section class="card warn"><h2>Delivered films without a fee</h2><p class="small muted" style="margin:0">Set what you'll pay for each; it's added to what's due.</p>
+      {% for p in st.missing_fees %}<form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="fee"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}"><input type="hidden" name="project" value="{{ p.pk }}">
+        <span style="flex:1 1 220px">{{ p }} <span class="small muted">· delivered {{ p.closed_on|date:"j M" }}</span></span>
+        <input class="input" name="fee" inputmode="numeric" placeholder="₹ fee" style="width:120px"><button class="btn sm">Set fee</button></form>{% endfor %}
+    </section>{% endif %}
+    <section class="card"><h2>Earned in {{ month|date:"F Y" }}</h2>
+      <div class="scroll"><table><thead><tr><th>Date</th><th>Work</th><th>Quantity</th><th class="right">Amount</th></tr></thead><tbody>
+      {% for i in st.items %}<tr><td>{{ i.date|date:"j M" }}</td><td>{{ i.what }}</td><td>{{ i.qty }}</td><td class="right">₹{{ i.amount|money }}</td></tr>
+      {% empty %}<tr><td colspan="4" class="muted">Nothing earned this month yet.</td></tr>{% endfor %}</tbody>
+      {% if st.items %}<tfoot><tr><td colspan="3">Total</td><td class="right">₹{{ st.earned|money }}</td></tr></tfoot>{% endif %}</table></div>
+    </section>
+    {% if open_jobs %}<section class="card"><h2>Open films and agreed fees</h2>
+      {% for p in open_jobs %}<form method="post" class="actions">{% csrf_token %}<input type="hidden" name="action" value="fee"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}"><input type="hidden" name="project" value="{{ p.pk }}">
+        <span style="flex:1 1 220px">{{ p }} <span class="small muted">· due {{ p.deadline|date:"j M"|default:"—" }}</span></span>
+        <input class="input" name="fee" inputmode="numeric" value="{{ p.contractor_fee|default:'' }}" placeholder="₹ fee" style="width:120px"><button class="btn sm">Save</button></form>{% endfor %}
+      <p class="small muted" style="margin:0">Fees count as earned when the film is delivered.</p></section>{% endif %}
+  </div>
+  <aside class="aside">
+    <form method="post" class="card">{% csrf_token %}<input type="hidden" name="action" value="pay"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
+      <h2>Record a payment</h2>{% include "_form.html" %}<button class="btn primary">Record payment</button></form>
+    <section class="card"><h2>Payments</h2>
+      {% for pay in history %}<div class="title small"><span><b>₹{{ pay.amount|money }}</b> · {{ pay.paid_on|date:"j M Y" }}<br><span class="muted">{{ pay.get_method_display }}{% if pay.reference %} · {{ pay.reference }}{% endif %}{% if pay.note %} · {{ pay.note }}{% endif %}</span></span>
+        <form method="post" action="{% url 'contract_payment_delete' pay.pk %}">{% csrf_token %}<button class="btn sm danger" data-confirm="Remove this payment of ₹{{ pay.amount }}?">Remove</button></form></div>
+      {% empty %}<span class="small muted">No payments yet.</span>{% endfor %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

@@ -296,3 +296,130 @@ def store_image(upload, max_side=1600, quality=78):
 
 def is_company_drive_link(url):
     return bool(url) and ("drive.google.com" in url or "docs.google.com" in url)
+
+
+# ---------------------------------------------------------------- planner automation
+def is_workday_for(user, d, logs=None, hols=None):
+    """Can this person be planned on day d? (not weekly off, full holiday or leave)."""
+    return day_kind(user, d, logs, hols) not in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF)
+
+
+def auto_plan(project, start=None):
+    """Put a job on its editor's planner: enough working days (from its usual hours)
+    between `start` (default today) and the deadline, using only empty days so
+    nothing already planned is overwritten. Days already planned for this job count.
+    Planned days left on another person (after a reassignment) are removed.
+    Returns (days_planned_now, days_short)."""
+    import math
+    from .models import PlanEntry
+    today = timezone.localdate()
+    if not project.pk or project.is_extra:
+        return 0, 0
+    PlanEntry.objects.filter(project=project, date__gte=today).exclude(user_id=project.editor_id).delete()
+    if not (project.editor_id and project.deadline and project.is_open):
+        return 0, 0
+    start = max(start or today, project.received_on or today, today)
+    if start > project.deadline:
+        return 0, 0
+    s = StudioSettings.get()
+    per_day = float(s.hours_per_day or 8)
+    need = max(1, math.ceil(hours_remaining(project) / per_day)) if hours_remaining(project) else 1
+    user = project.editor
+    logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(start, project.deadline))}
+    hols = holidays_between(start, project.deadline)
+    taken = {e.date: e for e in PlanEntry.objects.filter(user=user, date__range=(start, project.deadline))}
+    have = sum(1 for e in taken.values() if e.project_id == project.pk)
+    made = 0
+    d = start
+    while d <= project.deadline and have + made < need:
+        if d not in taken and is_workday_for(user, d, logs, hols):
+            PlanEntry.objects.create(user=user, date=d, project=project)
+            made += 1
+        d += timedelta(days=1)
+    return made, max(need - have - made, 0)
+
+
+def repeat_plan(user, start, value, days):
+    """Copy a planner cell down to the next `days` working days for this person
+    (skips weekly offs, holidays and leave; replaces what was planned there)."""
+    from .models import PlanEntry
+    done, d, guard = 0, start, 0
+    end = start + timedelta(days=days * 3 + 14)
+    logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(start, end))}
+    hols = holidays_between(start, end)
+    while done < days and guard < days * 3 + 14:
+        d += timedelta(days=1)
+        guard += 1
+        if not is_workday_for(user, d, logs, hols):
+            continue
+        PlanEntry.objects.filter(user=user, date=d).delete()
+        if value.startswith("p:"):
+            PlanEntry.objects.create(user=user, date=d, project_id=int(value[2:]))
+        else:
+            PlanEntry.objects.create(user=user, date=d, label=value[:80])
+        done += 1
+    return done, d
+
+
+# ---------------------------------------------------------------- deliveries on calendars
+def deliveries_between(a, b, user=None):
+    """{date: [projects due that day]} (open jobs by deadline; delivered jobs on their deadline too)."""
+    qs = Project.objects.filter(deadline__range=(a, b)).exclude(status=Project.ON_HOLD).select_related("agency", "editor__profile")
+    if user is not None:
+        qs = qs.filter(editor=user)
+    out = defaultdict(list)
+    for p in qs:
+        out[p.deadline].append(p)
+    return out
+
+
+# ---------------------------------------------------------------- contract editors
+def contract_earnings(user, a, b):
+    """What a contract editor earned in [a, b] under their pay basis, with the line items."""
+    prof = user.profile
+    basis, rate = prof.contract_basis or "project", prof.contract_rate or 0
+    items, total = [], 0
+    if basis == "project":
+        for p in Project.objects.filter(editor=user, status=Project.CLOSED, closed_on__range=(a, b)).order_by("closed_on"):
+            items.append({"date": p.closed_on, "what": str(p), "qty": "1 film", "amount": p.contractor_fee, "project": p})
+            total += p.contractor_fee
+    elif basis in ("hour", "day"):
+        for log in DayLog.objects.filter(user=user, date__range=(a, b)).order_by("date"):
+            if basis == "hour":
+                h = log.hours or 0
+                if h:
+                    amt = round(h * rate)
+                    items.append({"date": log.date, "what": "Hours logged", "qty": f"{h:g} h", "amount": amt})
+                    total += amt
+            else:
+                q = {DayLog.OFFICE: 1, DayLog.WFH: 1, DayLog.HALF: 0.5}.get(log.day_type, 0)
+                if q:
+                    amt = round(q * rate)
+                    items.append({"date": log.date, "what": "Day worked", "qty": "½ day" if q == 0.5 else "1 day", "amount": amt})
+                    total += amt
+    elif basis == "month":
+        m = month_start(a)
+        joined = prof.joined_on
+        while m <= b:
+            if (not joined or joined <= month_end(m)) and m <= timezone.localdate():
+                items.append({"date": m, "what": f"Retainer {m:%B %Y}", "qty": "1 month", "amount": rate})
+                total += rate
+            m = add_months(m, 1)
+    return total, items
+
+
+def contract_statement(user, month):
+    """This month's earnings and payments, plus the running balance since they joined."""
+    from .models import ContractPayment
+    a, b = month_start(month), month_end(month)
+    earned, items = contract_earnings(user, a, b)
+    pays = ContractPayment.objects.filter(user=user, paid_on__range=(a, b))
+    paid = sum(p.amount for p in pays)
+    first = user.profile.joined_on or user.date_joined.date()
+    first = min(first, a)
+    all_earned, _ = contract_earnings(user, month_start(first), month_end(max(b, timezone.localdate())))
+    all_paid = sum(p.amount for p in ContractPayment.objects.filter(user=user))
+    missing_fees = (Project.objects.filter(editor=user, status=Project.CLOSED, contractor_fee=0)
+                    if (user.profile.contract_basis or "project") == "project" else Project.objects.none())
+    return {"earned": earned, "items": items, "payments": pays, "paid": paid,
+            "balance": all_earned - all_paid, "all_earned": all_earned, "all_paid": all_paid, "missing_fees": missing_fees}

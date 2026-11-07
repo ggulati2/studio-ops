@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}My payments{% endblock %}
+{% block content %}
+<div class="head"><div><h1>My payments</h1><p>You're on contract · {{ user.profile.get_contract_basis_display }}{% if user.profile.contract_basis != 'project' %} · ₹{{ user.profile.contract_rate|money }}{% endif %}. Questions about a payment? Ask a founder.</p></div>
+  <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
+<div class="grid">
+  <div class="kpi"><span>Earned in {{ month|date:"F" }}</span><b>₹{{ st.earned|money }}</b></div>
+  <div class="kpi"><span>Paid in {{ month|date:"F" }}</span><b>₹{{ st.paid|money }}</b></div>
+  <div class="kpi"><span>Still to be paid</span><b>₹{% if st.balance > 0 %}{{ st.balance|money }}{% else %}0{% endif %}</b></div>
+</div>
+<div class="row">
+  <section class="card grow"><h2>Work in {{ month|date:"F" }}</h2>
+    <div class="scroll"><table><thead><tr><th>Date</th><th>Work</th><th>Quantity</th><th class="right">Amount</th></tr></thead><tbody>
+    {% for i in st.items %}<tr><td>{{ i.date|date:"j M" }}</td><td>{{ i.what }}</td><td>{{ i.qty }}</td><td class="right">₹{{ i.amount|money }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="muted">Nothing yet this month.</td></tr>{% endfor %}</tbody></table></div></section>
+  <aside class="aside"><section class="card"><h2>Payments received</h2>
+    {% for pay in history %}<div class="title small"><span>{{ pay.paid_on|date:"j M Y" }} · {{ pay.get_method_display }}</span><b>₹{{ pay.amount|money }}</b></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}
+  </section></aside>
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Delays{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Delays</h1><p>Editors report a delay from their job; you approve a new date or decline. Approving moves the deadline, updates the planner and keeps the first deadline on record.</p></div></div>
+<div class="grid">
+  <div class="kpi {% if pending %}warn{% endif %}"><span>Waiting for you</span><b>{{ pending|length }}</b></div>
+  <div class="kpi {% if stats.silent %}bad{% endif %}"><span>Late with no update</span><b>{{ stats.silent }}</b></div>
+  <div class="kpi"><span>Delays, last 90 days</span><b>{{ stats.count }}</b><small>{{ stats.approved }} approved · avg +{{ stats.avg_slip }} days</small></div>
+  <div class="kpi"><span>On time vs first deadline, 90 days</span><b>{% if stats.on_time_pct is not None %}{{ stats.on_time_pct }}%{% else %}–{% endif %}</b></div>
+</div>
+
+<section class="card">
+  <h2>Waiting for a decision</h2>
+  {% for d in pending %}
+  <div class="card tight" style="box-shadow:none">
+    <div class="title"><div><b>{{ d.project }}</b> <span class="small muted">· {{ d.project.agency }} · {{ d.project.editor.profile.name|default:"—" }}</span></div>
+      <span class="tag warn">{{ d.deadline_then|date:"j M" }} → {{ d.proposed_date|date:"j M" }} (+{{ d.days_slip }} days)</span></div>
+    <div class="small"><b>{{ d.get_reason_display }}</b>{% if d.note %}: {{ d.note }}{% endif %}</div>
+    <div class="small muted">Reported {{ d.reported_on|date:"j M, H:i" }} by {{ d.reported_by.profile.name|default:"—" }}</div>
+    <form method="post" action="{% url 'delay_decide' d.pk %}" class="actions">{% csrf_token %}
+      <label class="small" style="flex-direction:row;align-items:center;gap:8px">New deadline <input class="input" type="date" name="approved_date" value="{{ d.proposed_date|date:'Y-m-d' }}" style="width:auto"></label>
+      <input class="input" name="founder_note" placeholder="Note to the editor (optional)" style="flex:1 1 220px;width:auto">
+      <button class="btn primary" name="decision" value="approve">Approve new date</button>
+      <button class="btn danger" name="decision" value="decline">Decline</button>
+    </form>
+  </div>
+  {% empty %}<span class="muted small">Nothing waiting.</span>{% endfor %}
+</section>
+
+{% if silent %}<section class="card bad"><h2>Past deadline, no delay reported</h2>
+<div class="scroll"><table><thead><tr><th>Film</th><th>Editor</th><th>Deadline</th><th>Late by</th><th>Status</th><th></th></tr></thead><tbody>
+{% for p in silent %}<tr><td><b>{{ p }}</b><div class="small muted">{{ p.agency }}</div></td><td>{{ p.editor.profile.name|default:"Unassigned" }}</td><td>{{ p.deadline|date:"j M" }}</td><td style="color:var(--bad)">{{ p.deadline|timesince:today }}</td><td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td><td><a class="btn sm" href="{% url 'delay_log' p.pk %}">Record a delay</a></td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+
+<div class="row">
+  <section class="card grow"><h2>Decided</h2>
+  <div class="scroll"><table><thead><tr><th>Film</th><th>Editor</th><th>Reason</th><th>From → to</th><th>Decision</th></tr></thead><tbody>
+  {% for d in log %}<tr><td><a href="{% url 'project_edit' d.project_id %}">{{ d.project }}</a></td><td>{{ d.project.editor.profile.name|default:"—" }}</td><td>{{ d.get_reason_display }}</td>
+  <td class="nowrap">{{ d.deadline_then|date:"j M" }} → {{ d.approved_date|default:d.proposed_date|date:"j M" }} <span class="small muted">(+{{ d.days_slip }}d)</span></td>
+  <td><span class="tag {% if d.status == 'approved' %}info{% else %}bad{% endif %}">{{ d.get_status_display }}</span><div class="small muted">{{ d.decided_by.profile.name|default:"" }} · {{ d.decided_on|date:"j M" }}{% if d.founder_note %} · {{ d.founder_note }}{% endif %}</div></td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">No decided delays yet.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+  <aside class="aside">
+    <section class="card"><h2>Why films slip (90 days)</h2>{% for r, n in by_reason %}<div class="title small"><span>{{ r }}</span><b>{{ n }}</b></div>{% empty %}<span class="small muted">No delays yet.</span>{% endfor %}</section>
+    <section class="card"><h2>By editor (90 days)</h2>{% for r, n in by_editor %}<div class="title small"><span>{{ r }}</span><b>{{ n }}</b></div>{% empty %}<span class="small muted">No delays yet.</span>{% endfor %}</section>
+  </aside>
+</div>
+{% endblock %}

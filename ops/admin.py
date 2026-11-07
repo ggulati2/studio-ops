@@ -6,7 +6,8 @@ from . import models as m
 
 admin.site.site_header = "Studio Ops · back office"
 for model in (m.Pod, m.Holiday, m.AgencyRate, m.DriveReturn, m.TaskEntry, m.PlanEntry, m.Review, m.InvoiceLine,
-              m.PayrollMonth, m.Payslip, m.EmployeeOfMonth, m.Congrats, m.StudioSettings):
+              m.PayrollMonth, m.Payslip, m.EmployeeOfMonth, m.Congrats, m.StudioSettings, m.ContractPayment,
+              m.DelayReport):
     admin.site.register(model)
 
 

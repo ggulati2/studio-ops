@@ -123,6 +123,7 @@ def invoice_print(request, pk):
 
 def _people():
     return (User.objects.filter(profile__isnull=False, profile__active=True).exclude(profile__role=Profile.ADMIN)
+            .exclude(profile__employment=Profile.CONTRACT)
             .select_related("profile").order_by("first_name"))
 
 

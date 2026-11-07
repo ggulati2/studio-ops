@@ -161,4 +161,22 @@ class Command(BaseCommand):
                                        handed_over_on=month_start(today))
         EmployeeOfMonth.objects.create(month=add_months(last, -1), user=soham, reason="Delivered the Elysia destination wedding two days early.")
         EmployeeOfMonth.objects.create(month=add_months(last, -2), user=shabnam, reason="Highest client rating from BadalRaja this season.")
-        self.stdout.write(self.style.SUCCESS(f"Demo data loaded. Log in as ag / nikhil / pratik / qc / drives with password '{password}'."))
+        # A contract editor paid per film, with one delivered film and a part payment
+        from ops.models import ContractPayment, DelayReport
+        kabir = person("kabir", "Kabir", Profile.EDITOR, pods[2], 0)
+        kabir.last_name = "Rao"; kabir.save()
+        kabir.profile.employment, kabir.profile.contract_basis = Profile.CONTRACT, "project"
+        kabir.profile.save()
+        done = Project.objects.create(couple="Meera & Dev", deliverable="Teaser", agency=ag["Happy Frames"], tier=2, editor=kabir,
+                                      deadline=today - timedelta(days=6), status=Project.CLOSED, closed_on=today - timedelta(days=7),
+                                      invoice_amount=9000, contractor_fee=4000)
+        Project.objects.create(couple="Sana & Imran", deliverable="Highlight", agency=ag["Happy Frames"], tier=2, editor=kabir,
+                               deadline=today + timedelta(days=12), status=Project.IN_PROGRESS, invoice_amount=16000, contractor_fee=7000)
+        ContractPayment.objects.create(user=kabir, paid_on=today - timedelta(days=2), amount=2500, method="upi", reference="UPI 4471")
+        # A delay waiting for a founder's decision
+        late = Project.objects.filter(editor=himanshu).exclude(status=Project.CLOSED).filter(deadline__isnull=False).first()
+        if late:
+            DelayReport.objects.create(project=late, reported_by=himanshu, deadline_then=late.deadline,
+                                       proposed_date=late.deadline + timedelta(days=3), reason="client",
+                                       note="Agency sent a new song list yesterday; the trailer needs a re-cut.")
+        self.stdout.write(self.style.SUCCESS(f"Demo data loaded. Log in as ag / nikhil / pratik / kabir / qc / drives with password '{password}'."))

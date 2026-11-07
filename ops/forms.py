@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from .models import (Agency, DayLog, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
+from .models import (Agency, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
                      Profile, Project, StudioSettings, TaskStage)
 from .services import is_company_drive_link, team
 
@@ -82,7 +82,7 @@ class ProjectForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = Project
         fields = ["couple", "deliverable", "agency", "tier", "editor", "received_on", "deadline", "status",
-                  "invoice_amount", "drive", "brief", "cut_link", "is_extra", "extra_basis", "extra_rate"]
+                  "invoice_amount", "drive", "brief", "cut_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee"]
         widgets = {"received_on": DATE, "deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
@@ -274,7 +274,18 @@ class PersonForm(StyledMixin, forms.Form):
         label="Yes, give this person full founder access: invoices, salaries, client details, everyone's data, "
               "adding and removing people, and the back office.")
     pod = forms.ModelChoiceField(queryset=Pod.objects.all(), required=False)
-    monthly_salary = forms.IntegerField(min_value=0, initial=0, label="Monthly salary / stipend (₹)")
+    employment = forms.ChoiceField(choices=Profile.EMPLOYMENT, initial=Profile.FULL_TIME,
+                                   widget=forms.RadioSelect(attrs={"class": "pills"}),
+                                   label="Employment", required=False)
+
+    def clean_employment(self):
+        return self.cleaned_data.get("employment") or Profile.FULL_TIME
+    monthly_salary = forms.IntegerField(min_value=0, initial=0, label="Monthly salary / stipend (₹)",
+                                        help_text="Full-time only. Goes through monthly payroll.")
+    contract_basis = forms.ChoiceField(choices=[("", "— How are they paid? —")] + Profile.BASIS, required=False,
+                                       label="Contract pay basis")
+    contract_rate = forms.IntegerField(min_value=0, initial=0, required=False, label="Contract rate (₹)",
+                                       help_text="₹ per hour / per day / per month. Per-film fees are set on each film.")
     joined_on = forms.DateField(widget=DATE, required=False)
     active = forms.BooleanField(required=False, initial=True)
     password = forms.CharField(
@@ -290,7 +301,8 @@ class PersonForm(StyledMixin, forms.Form):
         if instance:
             p = instance.profile
             self.initial.update(first_name=instance.first_name, last_name=instance.last_name, username=instance.username,
-                                email=instance.email,
+                                email=instance.email, employment=p.employment, contract_basis=p.contract_basis,
+                                contract_rate=p.contract_rate,
                                 role=p.role, pod=p.pod, monthly_salary=p.monthly_salary, joined_on=p.joined_on, active=p.active)
 
     def clean_username(self):
@@ -317,6 +329,11 @@ class PersonForm(StyledMixin, forms.Form):
     def clean(self):
         data = super().clean()
         inst = self.instance
+        if data.get("employment") == Profile.CONTRACT:
+            if not data.get("contract_basis"):
+                self.add_error("contract_basis", "Choose how this contract person is paid.")
+            elif data["contract_basis"] != "project" and not data.get("contract_rate"):
+                self.add_error("contract_rate", "Enter their rate.")
         becoming_founder = data.get("role") == Profile.ADMIN and not (inst and inst.profile.role == Profile.ADMIN)
         if becoming_founder and not data.get("confirm_founder"):
             self.add_error("confirm_founder", "Tick this to confirm, or pick another role. Founder access can see all money and salaries.")
@@ -354,3 +371,37 @@ class EOTMForm(StyledMixin, forms.ModelForm):
 
     def validate_unique(self):
         """Choosing a winner for a month that already has one replaces it (handled in the view)."""
+
+
+class DelayForm(StyledMixin, forms.ModelForm):
+    class Meta:
+        model = DelayReport
+        fields = ["proposed_date", "reason", "note"]
+        widgets = {"proposed_date": DATE, "note": forms.Textarea(attrs={"rows": 3, "placeholder": "e.g. Client sent new songs on Monday; need 2 more days for the re-cut."})}
+
+    def __init__(self, *args, project=None, **kwargs):
+        self.project = project
+        super().__init__(*args, **kwargs)
+        self.fields["note"].required = True
+
+    def clean_proposed_date(self):
+        d = self.cleaned_data["proposed_date"]
+        from django.utils import timezone
+        if d < timezone.localdate():
+            raise forms.ValidationError("Pick today or a later date.")
+        if self.project and self.project.deadline and d <= self.project.deadline:
+            raise forms.ValidationError(f"Pick a date after the current deadline ({self.project.deadline:%-d %b}).")
+        return d
+
+
+class ContractPaymentForm(StyledMixin, forms.ModelForm):
+    class Meta:
+        model = ContractPayment
+        fields = ["paid_on", "amount", "method", "reference", "note"]
+        widgets = {"paid_on": DATE}
+
+    def clean_amount(self):
+        a = self.cleaned_data["amount"]
+        if not a:
+            raise forms.ValidationError("Enter the amount paid.")
+        return a

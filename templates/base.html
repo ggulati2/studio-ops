@@ -56,7 +56,7 @@
     <nav aria-label="Main">
       {% for label, href, icon, active in nav_items %}
         <a href="{{ href }}"{% if active %} class="on" aria-current="page"{% endif %}>
-          <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#{{ icon }}"/></svg><span>{{ label }}</span>
+          <svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#{{ icon }}"/></svg><span>{{ label }}</span>{% if label == "Delays" and pending_delays %}<span class="badge" aria-label="{{ pending_delays }} waiting">{{ pending_delays }}</span>{% endif %}
         </a>
       {% endfor %}
     </nav>
@@ -67,7 +67,8 @@
         <a href="{% url 'admin:index' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#database"/></svg>Back office</a>
       {% endif %}
       {% if 'payslips.view_own' in my_perms %}
-        <a href="{% url 'my_payslips' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payslips</a>
+        {% if is_contract %}<a href="{% url 'my_payments' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payments</a>
+        {% else %}<a href="{% url 'my_payslips' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payslips</a>{% endif %}
       {% endif %}
       <a href="{% url 'password_change' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#key"/></svg>Change password</a>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}

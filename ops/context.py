@@ -14,6 +14,7 @@ MENU = [
     ("Waiting for QC", "qc_queue", "qc.review", "check"),
     ("Projects", "projects", "projects.manage", "film"),
     ("Planner", "planner", "planner.manage", "layout"),
+    ("Delays", "delays", "projects.manage", "alert"),
     ("Deadlines", "deadlines", "deadlines.view", "calendar"),
     ("Delivered", "delivered", "delivered.view", "send"),
     ("Reports", "reports", "reports.manage", "file"),
@@ -24,6 +25,7 @@ MENU = [
     ("Extra work", "extra_admin", "extra.manage", "clock"),
     ("Extra work", "my_extra", "extra.log_own", "clock"),
     ("Payroll", "payroll", "payroll.manage", "wallet"),
+    ("Contract editors", "contractors", "payroll.manage", "briefcase"),
     ("Employee of the month", "eotm", "eotm.manage", "trophy"),
     ("Leaderboard", "leaderboard", "leaderboard.view", "trophy"),
     ("Agencies", "agencies", "agencies.manage", "briefcase"),
@@ -44,6 +46,13 @@ def build_menu(user, path="/"):
     return [(label, h, icon, h == best) for label, h, icon in items]
 
 
+def _pending_delays(r):
+    if r != ADMIN:
+        return 0
+    from .models import DelayReport
+    return DelayReport.objects.filter(status=DelayReport.PENDING).count()
+
+
 def nav(request):
     studio = StudioSettings.get()
     if not request.user.is_authenticated:
@@ -57,6 +66,8 @@ def nav(request):
         "role_label": ROLE_LABEL.get(r, ""),
         "is_founder": r == ADMIN,
         "my_perms": perms_of(request.user),
+        "is_contract": bool(getattr(getattr(request.user, "profile", None), "is_contract", False)),
+        "pending_delays": _pending_delays(r),
         "my_trophies": trophy_counts().get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
         "celebrating": bool(award and award.user_id == request.user.id),
         "current_award": award,

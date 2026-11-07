@@ -66,6 +66,10 @@ Month end: Payroll draft (salary − unpaid leave + extra work ± adjustment) �
 - **Value of work:** each INR film's invoice is shared by the hours each editor spent on it. A film's hourly value = invoice ÷ max(actual hours, usual hours).
 - **Client report dates:** your deadline plus N working days (skipping holidays), unless you override the stage or date for that film. Overrides are remembered.
 - **Invoices:** numbered by date like your current ones (DDMMYYYY, `-2` for a second invoice the same day). A Sent invoice past its due date becomes Overdue automatically.
+- **Planner, automatically:** creating or assigning a film with an editor and deadline plans enough working days for it (from its usual hours) on that editor's empty days before the deadline. Nothing already planned is overwritten, and a warning shows if it doesn't fit. Reassigning moves the future plan, and approving a delay extends it. **⤓** copies a planner cell to the next N working days, skipping weekly offs, holidays and leave.
+- **Delivery days** are marked in red on the deadlines calendar, each editor's month calendar and the planner (day count plus a "Due" tag in the editor's cell).
+- **Delays:** an editor reports a delay from their job with a new date, a reason and a note. Founders approve (optionally with a different date) or decline. Approving moves the deadline, keeps the first deadline on record and updates the planner. The Delays page tracks pending requests, late films with no update, reasons, editors and on-time delivery against the first deadline.
+- **Contract editors** are paid per film, hour, day or monthly retainer instead of through payroll. Earnings come from delivered films (with the per-film fee), logged hours or days worked. Founders record payments, and the balance due is tracked. Contract editors see their own statement under My payments.
 - **Employee of the Month:** the winner for month M is celebrated during month M+1. They get the gold look; everyone else gets a congrats banner.
 
 ### Code map

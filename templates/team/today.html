@@ -32,8 +32,9 @@
     <h2>What I worked on</h2>
     {{ formset.management_form }}
     {% for f in formset %}
-    <div class="fields" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px">
+    <div class="fields task-row" data-task-row style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px">
       <label>Job {{ forloop.counter }}{{ f.project }}</label><label>Stage{{ f.stage }}</label><label>Hours (optional){{ f.hours }}</label>
+      {% if not forloop.last %}<button type="button" class="btn sm copy-down" data-copy-down>⤓ Copy to rows below</button>{% endif %}
       {% if f.errors %}<p class="err" style="grid-column:1/-1">{{ f.errors.stage|join:" " }}</p>{% endif %}
     </div>
     {% endfor %}

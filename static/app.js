@@ -227,6 +227,46 @@
       }
     }
 
+    /* Person form: full-time vs contract fields */
+    if (pf) {
+      var emp = pf.querySelectorAll('input[name="employment"]'), basis = pf.querySelector("#id_contract_basis");
+      var rowOf = function (n) { return pf.querySelector('[data-field="' + n + '"]'); };
+      function empSync() {
+        var checked = pf.querySelector('input[name="employment"]:checked');
+        var contract = checked && checked.value === "contract";
+        var sal = rowOf("monthly_salary"), cb = rowOf("contract_basis"), cr = rowOf("contract_rate");
+        if (sal) sal.hidden = contract;
+        if (cb) cb.hidden = !contract;
+        if (cr) cr.hidden = !contract || !basis || basis.value === "project" || !basis.value;
+      }
+      Array.prototype.forEach.call(emp, function (r) { r.addEventListener("change", empSync); });
+      if (basis) basis.addEventListener("change", empSync);
+      empSync();
+    }
+
+    /* Today: copy a job + stage to the rows below */
+    doc.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-copy-down]");
+      if (!btn) return;
+      var row = btn.closest("[data-task-row]"), rows = Array.prototype.slice.call(doc.querySelectorAll("[data-task-row]"));
+      var src = row.querySelectorAll("select"), i = rows.indexOf(row), n = 0;
+      rows.slice(i + 1).forEach(function (r) {
+        var dst = r.querySelectorAll("select");
+        for (var k = 0; k < src.length && k < dst.length; k++) dst[k].value = src[k].value;
+        r.classList.add("flash"); setTimeout(function () { r.classList.remove("flash"); }, 700);
+        n++;
+      });
+      btn.textContent = "Copied to " + n + " row" + (n === 1 ? "" : "s") + " ✓";
+      setTimeout(function () { btn.textContent = "⤓ Copy to rows below"; }, 1800);
+    });
+
+    /* Planner: close the copy-down popover when clicking elsewhere */
+    doc.addEventListener("click", function (e) {
+      Array.prototype.forEach.call(doc.querySelectorAll("details.repeat[open]"), function (d) {
+        if (!d.contains(e.target)) d.removeAttribute("open");
+      });
+    });
+
     /* Copy buttons */
     doc.addEventListener("click", function (e) {
       var b = e.target.closest("[data-copy]");

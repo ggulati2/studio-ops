@@ -431,3 +431,38 @@ a.day:hover{background:var(--row-hover);text-decoration:none}
 .creds dl{display:grid;grid-template-columns:max-content 1fr;gap:10px 18px;margin:0}
 .creds dt{color:var(--muted);font-size:var(--t-sm)}
 .creds dd{margin:0;color:var(--ink);font-size:.9375rem;overflow-wrap:anywhere}
+.side nav a .badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-size:.6875rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+
+/* delivery days on every calendar */
+.cal .day.due{background-image:linear-gradient(var(--red-soft),var(--red-soft));box-shadow:inset 0 -3px 0 var(--red)}
+.cal .day.due.today{box-shadow:inset 0 -3px 0 var(--red)}
+.tag.due-key{background:var(--red-soft);color:var(--red);border-color:var(--red-line)}
+.plan td.due{box-shadow:inset 3px 0 0 var(--red);background-image:linear-gradient(var(--red-soft),var(--red-soft))}
+.due-tag{font-size:.6875rem;font-weight:600;color:var(--red);margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.due-count{display:inline-block;margin-top:3px;font-size:.6875rem;font-weight:600;color:#fff;background:var(--red);border-radius:999px;padding:1px 7px}
+
+/* planner: copy a cell down */
+.plan-cell{display:flex;align-items:center;gap:2px;position:relative}
+.plan-cell select{flex:1;min-width:0}
+.repeat{position:relative}
+.repeat summary{list-style:none;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted);font-size:.875rem}
+.repeat summary::-webkit-details-marker{display:none}
+.repeat summary:hover,.repeat[open] summary{background:var(--hover);color:var(--ink)}
+.repeat-pop{position:absolute;right:0;top:30px;z-index:5;display:flex;align-items:center;gap:6px;white-space:nowrap;padding:10px 12px;border-radius:var(--r);
+  background:var(--card);border:1px solid var(--line);box-shadow:var(--float);font-size:var(--t-xs)}
+.repeat-pop .input{width:60px;min-height:32px;padding:4px 8px}
+
+/* Today: copy a task row down */
+.task-row{position:relative}
+.copy-down{justify-self:start;align-self:end}
+
+/* delays on job cards */
+.delay-note{padding:8px 12px;border-radius:var(--r-sm);border:1px solid var(--line)}
+.delay-note.pending{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+.delay-note.approved{background:var(--info-bg);border-color:var(--info-line);color:var(--info)}
+.delay-note.declined{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad)}
+.delay-note b{color:inherit}
+
+/* person form: employment */
+.person-form [hidden]{display:none!important}
+.task-row.flash{box-shadow:0 0 0 2px var(--ok-line);transition:box-shadow .3s}
