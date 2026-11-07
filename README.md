@@ -1,6 +1,6 @@
 # Studio Ops · Red Wed Films
 
-Private web app for running the editing studio: projects, planner, deadlines, daily logs, QC, delivery, hard drives, invoices, payroll, extra work, and Employee of the Month. Founders, team leads, editors, QC and the drive desk each log in and see only what their role allows.
+Private web app for running the editing studio: projects, planner, deadlines, daily logs, QC, delivery, hard drives, invoices, payroll, extra work, and Trailblazer of the Month. Founders, team leads, editors, QC and the drive desk each log in and see only what their role allows.
 
 Deploying it for ₹0 (Render + Supabase): **[DEPLOY.md](DEPLOY.md)**.
 
@@ -34,7 +34,7 @@ Access is defined in one table, `ops/rbac.py`. Each view declares what it needs 
 
 | Role | Can open |
 |---|---|
-| **Founder** (admin) | Everything: dashboard, projects, planner, deadlines, delivered, reports, invoices, payroll, team and attendance, value vs salary, extra work, Employee of the Month, agencies, settings, audit log, backup, back office. Can also use the drive desk, pod review and QC screens. |
+| **Founder** (admin) | Everything: dashboard, projects, planner, deadlines, delivered, reports, invoices, payroll, team and attendance, value vs salary, extra work, Trailblazer of the Month, agencies, settings, audit log, backup, back office. Can also use the drive desk, pod review and QC screens. |
 | **Team lead** | Their pod's jobs and reviews (only editors in their own pod), plus their own Today, month, jobs, extra work, payslips and the leaderboard. |
 | **Intern** | Their own Today, calendar, jobs, payslips and the leaderboard. No paid extra work. Can be assigned films and planned like editors. |
 | **Editor** | Their own Today, month calendar, jobs (send for review, close with Drive links), extra work, payslips and the leaderboard. |
@@ -72,13 +72,15 @@ Month end: Payroll draft (salary − unpaid leave + extra work ± adjustment) �
 - **Delivery tag:** on time / late is worked out from the first delivery vs the deadline at that time. Founders can override it on the Delivered page or the job: *On time*, *Delivered late*, or *Late due to client approval* (not counted against the studio), with a note.
 - **Agency nickname:** up to 3 letters, unique (e.g. BRC). It's added to the end of every project name: "Riya & Arjun – Teaser – BRC".
 - **Hours:** office hours are 9 a day including a 1-hour break; **productive hours** = in/out time minus the break (only on days longer than 5 h), so 9 h in office = 8 h productive. Productive hours drive task splitting, capacity, value and hourly contract pay. Both are adjustable in Settings.
+- **Projects filters:** quick chips (Open, Past deadline, Any revisions, each status) plus search (couple, agency, nickname, drive, brief), agency, editor (or unassigned), film type, tier, deadline window (overdue / today / this week / 14 days / this month / editor's date after agency's / none), footage source, extra work / had a delay / had client revisions, and sort. Filters live in the link, so a filtered view can be bookmarked.
+- **Planner month view:** one row per editor, one column per day, with leave/holiday/off colours, alongside work, delivery days and "planned / working days" per person. Clicking a day opens that week to edit.
 - **Two things at once:** each planner day has a main slot and an **alongside** slot (a second film, or *Revisions* on a delivered film). Today and My month show both. Auto-planning uses empty days first, then goes alongside other work if the days before the deadline are full. Clearing the main slot promotes the second one.
 - **Two deadlines per film:** the **editor's deadline** (what editors see and work to) and the **agency's deadline** (founders only, never sent to any editor page; a test checks this). The editor's deadline can't be after the agency's. Client reports use the agency's deadline unless you override it, and delay requests show whether the new date still meets it.
 - **New project:** one job per ticked film, each with its own editor's deadline, agency's deadline and invoice amount (blank = the shared value or the agency's usual rate). Footage can be on a hard drive or **Cloud / online** with the download link, which editors see on their job.
 - **Delivery days** are marked in red on the deadlines calendar, each editor's month calendar and the planner (day count plus a "Due" tag in the editor's cell).
 - **Delays:** an editor reports a delay from their job with a new date, a reason and a note. Founders approve (optionally with a different date) or decline. Approving moves the deadline, keeps the first deadline on record and updates the planner. The Delays page tracks pending requests, late films with no update, reasons, editors and on-time delivery against the first deadline.
 - **Contract editors** are paid per film, hour, day or monthly retainer instead of through payroll. Earnings come from delivered films (with the per-film fee), logged hours or days worked. Founders record payments, and the balance due is tracked. Contract editors see their own statement under My payments.
-- **Employee of the Month:** the winner for month M is celebrated during month M+1. They get the gold look; everyone else gets a congrats banner.
+- **Trailblazer of the Month:** the winner for month M is celebrated during month M+1. They get the gold look; everyone else gets a congrats banner.
 
 ### Code map
 
@@ -125,7 +127,7 @@ DEBUG=1 python manage.py test ops
 
 41 tests in four groups:
 - **Access:** every role opens its own pages and gets 403 on the rest, the menu matches permissions, and every URL has a guard.
-- **Flows:** the day-log hour split, TL review → QC → close (including rejecting a non-Drive link), invoice totals and payment states, the payroll leave deduction, extra pay, holidays reducing capacity, Employee of the Month, drive photos and the send-back guard, client-report overrides, and new projects.
+- **Flows:** the day-log hour split, TL review → QC → close (including rejecting a non-Drive link), invoice totals and payment states, the payroll leave deduction, extra pay, holidays reducing capacity, Trailblazer of the Month, drive photos and the send-back guard, client-report overrides, and new projects.
 - **Hosting:** Supabase pooler settings, the Render blueprint and build steps, trusted client IPs behind Cloudflare, the cron secret, the backup file, and the Data API lockdown (on Postgres in CI).
 - **Security:** headers and CSP, no inline scripts, lockout, forced password change, weak passwords, founder idle timeout, role-to-back-office sync, the last-founder guard, fake and oversized uploads, photo permissions, and audit entries.
 

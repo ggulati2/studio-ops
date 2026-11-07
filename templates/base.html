@@ -44,10 +44,10 @@
       <span class="avatar{% if celebrating %} gold{% endif %}" style="background:{{ user.profile.color|default:'#A90404' }}" aria-hidden="true">{{ user.profile.initial|default:user.username|first|upper }}</span>
       <span class="who-text"><b>{{ user.profile.name|default:user.get_username }}</b><span>{{ role_label }}{% if user.profile.pod %}, {{ user.profile.pod }}{% endif %}</span></span>
     </div>
-    {% if celebrating %}<span class="eotm-tag">Employee of the month</span>{% endif %}
+    {% if celebrating %}<span class="eotm-tag">Trailblazer of the month</span>{% endif %}
     {% if my_trophies is not None %}
       {% if my_trophies %}
-      <a class="trophy has" href="{% url 'leaderboard' %}" aria-label="Employee of the month {{ my_trophies }} times. Open leaderboard">{% include "_cup.html" with size=18 %}<span>×{{ my_trophies }}</span><small>Employee of the month</small></a>
+      <a class="trophy has" href="{% url 'leaderboard' %}" aria-label="Trailblazer of the month {{ my_trophies }} times. Open leaderboard">{% include "_cup.html" with size=18 %}<span>×{{ my_trophies }}</span><small>Trailblazer of the month</small></a>
       {% else %}
       <a class="trophy none" href="{% url 'leaderboard' %}">{% include "_cup.html" with size=18 empty=1 %}<small>No trophies yet</small></a>
       {% endif %}

@@ -4,7 +4,7 @@
 {% if award %}
   {% if award.user_id == user.id %}{% include "_hero.html" %}
   {% else %}
-  <div class="banner">{% include "_cup.html" with size=26 %}<span style="flex:1"><b>Employee of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}. {{ award.reason|truncatechars:90 }}</span>
+  <div class="banner">{% include "_cup.html" with size=26 %}<span style="flex:1"><b>Trailblazer of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}. {{ award.reason|truncatechars:90 }}</span>
     {% if not congratulated %}<form method="post" action="{% url 'congrats' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn sm" style="background:var(--gold);border-color:var(--gold)">Say congrats</button></form>{% else %}<span class="small" style="color:var(--gold-soft)">You said congrats ✓</span>{% endif %}</div>
   {% endif %}
 {% endif %}
@@ -33,13 +33,11 @@
   <section class="card" style="margin-top:16px">
     <h2>What I worked on</h2>
     {{ formset.management_form }}
-    {% for f in formset %}
-    <div class="fields task-row" data-task-row style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px">
-      <label>Job {{ forloop.counter }}{{ f.project }}</label><label>Stage{{ f.stage }}</label><label>Hours (optional){{ f.hours }}</label>
-      {% if not forloop.last %}<button type="button" class="btn sm copy-down" data-copy-down>⤓ Copy to rows below</button>{% endif %}
-      {% if f.errors %}<p class="err" style="grid-column:1/-1">{{ f.errors.stage|join:" " }}</p>{% endif %}
+    <div class="task-rows" data-task-rows data-max="{{ formset.max_num }}">
+    {% for f in formset %}{% include "team/_task_row.html" with n=forloop.counter %}{% endfor %}
     </div>
-    {% endfor %}
+    <template data-task-template>{% include "team/_task_row.html" with f=formset.empty_form n="__num__" %}</template>
+    <div class="actions"><button type="button" class="btn" data-add-task>+ Add a job</button><span class="small muted" data-task-limit hidden>That's the most for one day.</span></div>
     <label>{{ form.notes.label }}{{ form.notes }}</label>
     <button class="btn primary">Save {% if is_today %}today{% else %}{{ d|date:"j M" }}{% endif %}</button>
     <p class="small muted" style="margin:0">Blank hours share your productive time (in/out time minus the {{ studio.break_minutes }}-minute break). Extra (freelance) hours go under Extra work, not here.</p>

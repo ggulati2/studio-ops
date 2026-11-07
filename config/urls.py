@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
+from django.views.generic import RedirectView
 
 from ops import views as v
 
@@ -34,7 +35,8 @@ urlpatterns = [
     path("payroll/", v.payroll, name="payroll"),
     path("payroll/save/", v.payroll_save, name="payroll_save"),
     path("payslip/<int:pk>/", v.payslip_view, name="payslip"),
-    path("employee-of-the-month/", v.eotm, name="eotm"),
+    path("trailblazer-of-the-month/", v.eotm, name="eotm"),
+    path("employee-of-the-month/", RedirectView.as_view(pattern_name="eotm", permanent=True)),   # old link
     path("agencies/", v.agencies, name="agencies"),
     path("agencies/new/", v.agency_edit, name="agency_new"),
     path("agencies/<int:pk>/", v.agency_edit, name="agency_edit"),

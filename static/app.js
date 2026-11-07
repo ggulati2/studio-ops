@@ -260,6 +260,31 @@
       setTimeout(function () { btn.textContent = "⤓ Copy to rows below"; }, 1800);
     });
 
+    /* Today: add another job row / clear a row */
+    var rowsBox = doc.querySelector("[data-task-rows]"), tpl = doc.querySelector("[data-task-template]");
+    var total = doc.querySelector('input[name="form-TOTAL_FORMS"]');
+    function renumber() {
+      Array.prototype.forEach.call(rowsBox.querySelectorAll("[data-task-row]"), function (r, i) {
+        var n = r.querySelector("[data-task-num]"); if (n) n.textContent = i + 1;
+      });
+    }
+    doc.addEventListener("click", function (e) {
+      if (e.target.closest("[data-add-task]") && rowsBox && tpl && total) {
+        var max = parseInt(rowsBox.getAttribute("data-max") || "12", 10), i = parseInt(total.value, 10);
+        if (i >= max) { var lim = doc.querySelector("[data-task-limit]"); if (lim) lim.hidden = false; return; }
+        var html = tpl.innerHTML.replace(/__prefix__/g, i).replace(/__num__/g, i + 1);
+        rowsBox.insertAdjacentHTML("beforeend", html);
+        total.value = i + 1;
+        renumber();
+        var sel = rowsBox.lastElementChild.querySelector("select"); if (sel) sel.focus();
+      }
+      var clr = e.target.closest("[data-remove-task]");
+      if (clr) {
+        var row = clr.closest("[data-task-row]");
+        Array.prototype.forEach.call(row.querySelectorAll("select, input"), function (el) { el.value = ""; });
+      }
+    });
+
     /* Planner: close the copy-down popover when clicking elsewhere */
     doc.addEventListener("click", function (e) {
       Array.prototype.forEach.call(doc.querySelectorAll("details.repeat[open]"), function (d) {

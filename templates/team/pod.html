@@ -20,6 +20,6 @@
   <section class="card grow"><h2>Pod jobs</h2><div class="scroll"><table style="min-width:560px">
     <thead><tr><th>Job</th><th>Editor</th><th>Status</th><th>Deadline</th></tr></thead>
     <tbody>{% for p in jobs %}<tr><td><b>{{ p }}</b></td><td>{{ p.editor.profile.name }}</td><td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td><td>{{ p.deadline|date:"j M"|default:"–" }} {% if p.flag == 'Overdue' or p.flag == 'Due soon' %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="muted">No open jobs.</td></tr>{% endfor %}</tbody>
-  </table></div><span class="small muted">Team leads see their pod's jobs and hours, never invoices or salaries.</span></section>
+  </table></div></section>
 </div>
 {% endblock %}

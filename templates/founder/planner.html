@@ -3,7 +3,7 @@
 {% block content %}
 <div class="head">
   <div><h1>Planner</h1><p>Pick a job in any cell; it saves straight away and shows on that editor's Today screen. Delivery days are marked in red.</p></div>
-  <div class="actions"><a class="btn" href="?start={{ prev|date:'Y-m-d' }}">←</a><b>{{ start|date:"j M" }} – {{ grid.13.d|date:"j M Y" }}</b><a class="btn" href="?start={{ next|date:'Y-m-d' }}">→</a></div>
+  <div class="actions"><div class="seg" role="tablist"><a class="on" href="?start={{ start|date:'Y-m-d' }}" aria-current="page">2 weeks</a><a href="?view=month&m={{ start|date:'Y-m' }}">Month</a></div><a class="btn" href="?start={{ prev|date:'Y-m-d' }}">←</a><b>{{ start|date:"j M" }} – {{ grid.13.d|date:"j M Y" }}</b><a class="btn" href="?start={{ next|date:'Y-m-d' }}">→</a></div>
 </div>
 {% if tray %}<section class="card warn tight" style="flex-direction:row;flex-wrap:wrap;align-items:center"><h3 style="color:var(--warn)">Waiting for an editor</h3>{% for p in tray %}<span class="tag" style="background:var(--card);border:1px dashed #EA580C">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>{% endfor %}</section>{% endif %}
 <div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span></div>

@@ -21,7 +21,7 @@
 </div>
 
 {% if pending_delays %}<a class="card warn tight" href="{% url 'delays' %}" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit"><b style="color:var(--warn)">{{ pending_delays }} delay request{{ pending_delays|pluralize }} waiting for you</b><span class="small muted">Approve a new date or decline →</span></a>{% endif %}
-{% if award %}<a class="banner" href="{% url 'eotm' %}" style="text-decoration:none">{% include "_cup.html" with size=26 %}<span><b>Employee of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}</span></a>{% endif %}
+{% if award %}<a class="banner" href="{% url 'eotm' %}" style="text-decoration:none">{% include "_cup.html" with size=26 %}<span><b>Trailblazer of the month · {{ award.month|date:"F" }}:</b> {{ award.user.profile.name }}</span></a>{% endif %}
 
 <div class="row">
   <section class="card grow">

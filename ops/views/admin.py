@@ -1,11 +1,11 @@
 """Founder (admin) screens: dashboard, projects, planner, deadlines, delivered,
-reports, team, extra work, EOTM, agencies, settings."""
+reports, team, extra work, Trailblazer, agencies, settings."""
 from collections import defaultdict
 from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -80,14 +80,54 @@ def dashboard(request):
 @requires("projects.manage")
 def projects(request):
     qs = Project.objects.select_related("agency", "editor__profile", "drive")
-    status = request.GET.get("status", "open")
-    q = request.GET.get("q", "").strip()
+    g = request.GET
+    status = g.get("status", "open")
+    q = g.get("q", "").strip()
+    f = {k: g.get(k, "") for k in ("agency", "editor", "film", "tier", "due", "source", "kind", "sort")}
+    today = timezone.localdate()
     if status == "open":
         qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
+    elif status == "late":
+        qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).filter(deadline__lt=today)
+    elif status == "revisions":
+        qs = qs.filter(status__in=(Project.TL_REVISIONS, Project.REVISIONS, Project.CLIENT_REV))
     elif status:
         qs = qs.filter(status=status)
     if q:
-        qs = qs.filter(Q(couple__icontains=q) | Q(agency__name__icontains=q) | Q(drive__code__icontains=q))
+        qs = qs.filter(Q(couple__icontains=q) | Q(agency__name__icontains=q) | Q(agency__code__iexact=q)
+                       | Q(drive__code__icontains=q) | Q(brief__icontains=q))
+    if f["agency"].isdigit():
+        qs = qs.filter(agency_id=int(f["agency"]))
+    if f["editor"] == "none":
+        qs = qs.filter(editor__isnull=True)
+    elif f["editor"].isdigit():
+        qs = qs.filter(editor_id=int(f["editor"]))
+    if f["film"] in Project.DELIVERABLES:
+        qs = qs.filter(deliverable=f["film"])
+    if f["tier"].isdigit():
+        qs = qs.filter(tier=int(f["tier"]))
+    week_end = today + timedelta(days=6 - (today.weekday() + 1) % 7)       # through Saturday
+    due = {"overdue": Q(deadline__lt=today), "today": Q(deadline=today), "week": Q(deadline__range=(today, week_end)),
+           "14": Q(deadline__range=(today, today + timedelta(days=14))),
+           "month": Q(deadline__range=(month_start(today), month_end(today))), "none": Q(deadline__isnull=True),
+           "agency_risk": Q(agency_deadline__isnull=False, deadline__gt=models.F("agency_deadline"))}
+    if f["due"] in due:
+        qs = qs.filter(due[f["due"]])
+    if f["source"] == "cloud":
+        qs = qs.filter(received_online=True)
+    elif f["source"] == "drive":
+        qs = qs.filter(drive__isnull=False)
+    elif f["source"] == "none":
+        qs = qs.filter(drive__isnull=True, received_online=False)
+    if f["kind"] == "extra":
+        qs = qs.filter(is_extra=True)
+    elif f["kind"] == "delayed":
+        qs = qs.filter(delays__isnull=False).distinct()
+    elif f["kind"] == "client_rev":
+        qs = qs.filter(client_revisions__isnull=False).distinct()
+    sorts = {"deadline": ("deadline", "couple"), "agency_deadline": ("agency_deadline", "deadline"),
+             "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
+    qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
     queue = Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive")
     bench = benchmarks()
     jobs = []
@@ -95,8 +135,11 @@ def projects(request):
         h = project_hours(p)
         usual = S.usual_hours(p, bench)
         jobs.append({"p": p, "hours": h, "usual": usual, "over": round((h / usual - 1) * 100) if usual and h else None})
+    active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
     return render(request, "founder/projects.html", {
-        "jobs": jobs, "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES,
+        "jobs": jobs, "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+        "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES, "tiers": Project.TIERS,
+        "total_value": sum(j["p"].invoice_amount for j in jobs),
         "assign_form": AssignForm(), "new_form": NewProjectForm()})
 
 
@@ -173,6 +216,8 @@ def project_assign(request, pk):
 
 @requires("planner.manage")
 def planner(request):
+    if request.method == "GET" and request.GET.get("view") == "month":
+        return _planner_month(request)
     start = request.GET.get("start")
     try:
         start = date.fromisoformat(start)
@@ -225,6 +270,40 @@ def planner(request):
         "grid": grid, "people": people, "start": start, "prev": start - timedelta(days=14),
         "next": start + timedelta(days=14), "open_projects": open_projects,
         "tray": open_projects.filter(editor__isnull=True)})
+
+
+def _planner_month(request):
+    """Whole month at a glance: one row per editor, one column per day. Click a day to edit that week."""
+    month = parse_month(request.GET.get("m"))
+    a, b = month_start(month), month_end(month)
+    days = [a + timedelta(days=i) for i in range((b - a).days + 1)]
+    people = list(team())
+    plan = defaultdict(list)
+    for e in PlanEntry.objects.filter(date__range=(a, b)).select_related("project__agency"):
+        plan[(e.user_id, e.date)].append(e)
+    logs = defaultdict(dict)
+    for l in DayLog.objects.filter(date__range=(a, b)):
+        logs[l.user_id][l.date] = l
+    hols = holidays_between(a, b)
+    due = S.deliveries_between(a, b)
+    today = timezone.localdate()
+    rows = []
+    for u in people:
+        cells, planned, workdays = [], 0, 0
+        for d in days:
+            kind = S.day_kind(u, d, logs[u.id], hols)
+            entries = plan.get((u.id, d), [])
+            off = kind in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF)
+            if not off:
+                workdays += 1
+                planned += 1 if entries else 0
+            cells.append({"d": d, "kind": kind, "entries": entries, "off": off,
+                          "due": [p for p in due.get(d, []) if p.editor_id == u.id], "week": week_start(d)})
+        rows.append({"u": u, "cells": cells, "planned": planned, "workdays": workdays,
+                     "free": workdays - planned})
+    return render(request, "founder/planner_month.html", {
+        "rows": rows, "days": [{"d": d, "holiday": hols.get(d), "due": len(due.get(d, [])), "today": d == today} for d in days],
+        "month": month, "prev": add_months(month, -1), "next": add_months(month, 1)})
 
 
 @requires("deadlines.view")
@@ -457,7 +536,7 @@ def eotm(request):
         if form.cleaned_data.get("photo_upload"):
             obj.photo = store_image(form.cleaned_data["photo_upload"], max_side=800)
             obj.save(update_fields=["photo"])
-        messages.success(request, f"{obj.user.profile.name} is Employee of the Month for {obj.month:%B %Y}.")
+        messages.success(request, f"{obj.user.profile.name} is Trailblazer of the Month for {obj.month:%B %Y}.")
         return redirect("eotm")
     # Suggestions for last month: numbers only, the choice stays with the founders.
     last = add_months(month_start(timezone.localdate()), -1)

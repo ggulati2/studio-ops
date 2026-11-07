@@ -1,0 +1,5 @@
+<div class="fields task-row" data-task-row>
+  <label><span>Job <span data-task-num>{{ n }}</span></span>{{ f.project }}</label><label>Stage{{ f.stage }}</label><label>Hours (optional){{ f.hours }}</label>
+  <div class="task-row-tools"><button type="button" class="btn sm copy-down" data-copy-down>⤓ Copy to rows below</button><button type="button" class="btn sm" data-remove-task aria-label="Clear this row">Clear</button></div>
+  {% if f.errors %}<p class="err" style="grid-column:1/-1">{{ f.errors.stage|join:" " }}</p>{% endif %}
+</div>

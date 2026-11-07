@@ -265,7 +265,7 @@ class TaskRowForm(forms.Form):
         return c
 
 
-TaskFormSet = forms.formset_factory(TaskRowForm, extra=0, max_num=6)
+TaskFormSet = forms.formset_factory(TaskRowForm, extra=0, max_num=12)
 
 
 class CloseJobForm(StyledMixin, forms.Form):

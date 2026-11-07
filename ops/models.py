@@ -656,6 +656,8 @@ class EmployeeOfMonth(models.Model):
 
     class Meta:
         ordering = ["-month"]
+        verbose_name = "Trailblazer of the month"
+        verbose_name_plural = "Trailblazers of the month"
 
     def __str__(self):
         return f"{self.month:%B %Y} – {self.user}"

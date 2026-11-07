@@ -481,3 +481,34 @@ details.also[open]>summary{display:none}
 /* delivered: editable delivery tag */
 .tag-edit{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .tag-edit select.input{min-height:32px;padding:4px 30px 4px 8px;font-size:var(--t-xs);width:auto}
+/* projects: filter bar */
+.filters{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(min(170px,100%),1fr));padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.filters input[type=search]{grid-column:span 2}
+.filters .input{min-height:38px;font-size:var(--t-sm)}
+.filters .actions{grid-column:1/-1}
+@media (max-width:719.98px){.filters input[type=search]{grid-column:1/-1}}
+/* planner: month view */
+.plan-month{border-collapse:separate;border-spacing:0;font-size:.6875rem;width:max-content;min-width:100%}
+.plan-month th,.plan-month td{border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);padding:0;text-align:center;vertical-align:top}
+.plan-month thead th{position:sticky;top:0;z-index:2;background:var(--bg);padding:6px 2px;min-width:52px;font-weight:500;line-height:1.2}
+.plan-month thead th .dow{display:block;color:var(--faint);font-size:.625rem}
+.plan-month thead th .dn{display:block;font-size:.8125rem;font-weight:600;color:var(--ink)}
+.plan-month thead th .dd{display:inline-block;margin-top:2px;min-width:16px;padding:0 4px;border-radius:999px;background:var(--red);color:#fff;font-size:.625rem;font-weight:600}
+.plan-month thead th.today .dn{color:#fff;background:var(--red);border-radius:10px;padding:0 6px;display:inline-block}
+.plan-month .who{position:sticky;left:0;z-index:3;background:var(--card);text-align:left;padding:8px 10px;min-width:120px;box-shadow:1px 0 0 var(--line);font-size:.8125rem}
+.plan-month thead .who{z-index:4;background:var(--bg)}
+.plan-month .sum{position:sticky;left:120px;z-index:3;background:var(--card);padding:8px;min-width:70px;box-shadow:1px 0 0 var(--line)}
+.plan-month thead .sum{z-index:4;background:var(--bg)}
+.plan-month td a{display:flex;flex-direction:column;gap:2px;min-height:46px;padding:3px;text-decoration:none;color:inherit}
+.plan-month td a:hover{background:var(--row-hover);box-shadow:inset 0 0 0 1px var(--field)}
+.plan-month td.has{background:var(--plan-has)}
+.plan-month td.due{box-shadow:inset 0 -3px 0 var(--red)}
+.plan-month .pm{display:block;padding:2px 3px;border-radius:4px;background:var(--card);border:1px solid var(--line);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62px;font-weight:500}
+.plan-month .pm.also{background:var(--qc-bg);border-color:var(--qc-line);color:var(--qc)}
+.plan-month .pm.rev{font-style:italic}
+.plan-month .pk{color:var(--muted);font-weight:500;padding-top:12px}
+/* Today: job rows */
+.task-rows{display:flex;flex-direction:column;gap:10px}
+.task-row{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px}
+.task-row-tools{display:flex;gap:6px;align-items:end;grid-column:1/-1}
+.task-rows .task-row:last-child .copy-down{display:none}

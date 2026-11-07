@@ -339,3 +339,66 @@ class AgencyNickname(SeededTestCase):
         r = self.login("ag").post(f"/agencies/{b.pk}/", {"name": b.name, "code": "AB1", "currency": "INR",
                                                          "payment_terms_days": 15, "active": "on"})
         self.assertContains(r, "1 to 3 letters")
+
+
+class ProjectFilters(SeededTestCase):
+    def test_filters_narrow_the_list(self):
+        from ops.models import Agency
+        ag = self.login("ag")
+        brc = Agency.objects.get(name="BadalRaja Company")
+        pratik = U.objects.get(username="pratik")
+        r = ag.get(f"/projects/?status=&agency={brc.pk}&editor={pratik.pk}&film=Teaser&sort=newest")
+        jobs = [j["p"] for j in r.context["jobs"]]
+        self.assertTrue(all(p.agency_id == brc.pk and p.editor_id == pratik.pk and p.deliverable == "Teaser" for p in jobs))
+        self.assertContains(r, "Clear 3 filters")
+        r = ag.get("/projects/?status=late")
+        today = timezone.localdate()
+        self.assertTrue(all(j["p"].deadline < today and j["p"].is_open for j in r.context["jobs"]))
+        r = ag.get("/projects/?status=&editor=none")
+        self.assertTrue(all(j["p"].editor_id is None for j in r.context["jobs"]))
+        r = ag.get("/projects/?status=&source=cloud")
+        self.assertTrue(all(j["p"].received_online for j in r.context["jobs"]))
+        r = ag.get("/projects/?status=&due=overdue&tier=2&kind=delayed&q=BRC")
+        self.assertEqual(r.status_code, 200)
+
+
+class PlannerMonth(SeededTestCase):
+    def test_month_view(self):
+        r = self.login("ag").get("/planner/?view=month")
+        self.assertContains(r, "plan-month")
+        rows = r.context["rows"]
+        self.assertTrue(rows and all(len(row["cells"]) >= 28 for row in rows))
+        self.assertContains(r, "?start=")                     # each day links to the editable 2-week view
+        self.assertContains(self.login("ag").get("/planner/"), "view=month")
+        self.assertEqual(self.login("pratik").get("/planner/?view=month").status_code, 403)
+
+
+class Trailblazer(SeededTestCase):
+    def test_renamed_everywhere(self):
+        ag = self.login("ag")
+        for url in ("/dashboard/", "/trailblazer-of-the-month/", "/leaderboard/"):
+            with self.subTest(url=url):
+                body = ag.get(url).content.decode()
+                self.assertNotIn("Employee of the", body)
+        self.assertContains(ag.get("/trailblazer-of-the-month/"), "Trailblazer of the month")
+        r = ag.get("/employee-of-the-month/")
+        self.assertEqual((r.status_code, r["Location"]), (301, "/trailblazer-of-the-month/"))
+
+
+class AddJobRows(SeededTestCase):
+    def test_add_job_and_more_rows_save(self):
+        c = self.login("pratik")
+        r = c.get("/today/")
+        self.assertContains(r, "data-add-task")
+        self.assertContains(r, "data-task-template")
+        d = next_workday(timezone.localdate() + timedelta(days=1), U.objects.get(username="pratik"))
+        jobs = list(Project.objects.filter(editor__username="pratik").exclude(status="closed")[:3])
+        data = {"day_type": "office", "time_in": "10:00", "time_out": "19:00", "form-TOTAL_FORMS": "5", "form-INITIAL_FORMS": "0",
+                "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "12"}
+        for i, p in enumerate(jobs + jobs[:2]):
+            data.update({f"form-{i}-project": p.pk, f"form-{i}-stage": "Edit", f"form-{i}-hours": "1"})
+        self.assertEqual(c.post(f"/today/?date={d}", data).status_code, 302)
+        self.assertEqual(DayLog.objects.get(user__username="pratik", date=d).tasks.count(), 5)
+
+    def test_pod_page_has_no_disclaimer(self):
+        self.assertNotContains(self.login("nikhil").get("/pod/"), "never invoices or salaries")

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% load ops_extras %}
-{% block title %}Employee of the month{% endblock %}
+{% block title %}Trailblazer of the month{% endblock %}
 {% block content %}
-<div class="head"><div><h1>Employee of the month</h1><p>Announced on the 1st for the month before; celebrated in the winner's app all month.</p></div></div>
+<div class="head"><div><h1>Trailblazer of the month</h1><p>Announced on the 1st for the month before; celebrated in the winner's app all month.</p></div></div>
 <div class="row">
   <div class="grow">
     {% if current %}{% include "_hero.html" with award=current admin=1 %}{% endif %}

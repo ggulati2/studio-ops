@@ -31,7 +31,7 @@ def no_access(request, exception=None):
 
 @login_required
 def image(request, pk):
-    """Photos are private. Drive photos: drive desk and founders. Employee of the Month photos: everyone signed in."""
+    """Photos are private. Drive photos: drive desk and founders. Trailblazer of the Month photos: everyone signed in."""
     img = get_object_or_404(StoredImage, pk=pk)
     is_drive_photo = img.drives.exists() or img.drivereturn_set.exists()
     if is_drive_photo and not has_perm(request.user, "drives.manage"):

@@ -4,7 +4,6 @@
 <div class="head">
   <div><h1>Projects</h1><p>One row per film. Amounts never leave the founder screens.</p></div>
   <div class="actions">
-    <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Couple, agency or drive" style="width:230px"><input type="hidden" name="status" value="{{ status }}"><button class="btn">Search</button></form>
     <a class="btn primary" href="{% url 'project_new' %}">+ New project</a>
   </div>
 </div>
@@ -27,13 +26,50 @@
 <section class="card">
   <div class="title">
     <h2>Jobs</h2>
-    <div class="chips">
-      <a href="?status=open" class="{% if status == 'open' %}on{% endif %}">Open</a>
-      {% for v, l in statuses %}<a href="?status={{ v }}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}
-      <a href="?status=" class="{% if status == '' %}on{% endif %}">All</a>
-    </div>
+    <span class="small muted">{{ jobs|length }} film{{ jobs|length|pluralize }}{% if jobs %} · ₹{{ total_value|money }} invoice value{% endif %}</span>
   </div>
-  <div class="scroll"><table style="min-width:920px">
+  <div class="chips">
+    <a href="{% qs status='open' %}" class="{% if status == 'open' %}on{% endif %}">Open</a>
+    <a href="{% qs status='late' %}" class="{% if status == 'late' %}on{% endif %}">Past deadline</a>
+    <a href="{% qs status='revisions' %}" class="{% if status == 'revisions' %}on{% endif %}">Any revisions</a>
+    {% for v, l in statuses %}<a href="{% qs status=v %}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}
+    <a href="{% qs status='' %}" class="{% if status == '' %}on{% endif %}">All</a>
+  </div>
+  <form method="get" class="filters" role="search" aria-label="Filter projects">
+    <input type="hidden" name="status" value="{{ status }}">
+    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Search couple, agency, code, drive, brief" aria-label="Search">
+    <select class="input" name="agency" data-autosubmit aria-label="Agency"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if f.agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a.name }}{% if a.code %} ({{ a.code }}){% endif %}</option>{% endfor %}</select>
+    <select class="input" name="editor" data-autosubmit aria-label="Editor"><option value="">All editors</option><option value="none" {% if f.editor == 'none' %}selected{% endif %}>Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}" {% if f.editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
+    <select class="input" name="film" data-autosubmit aria-label="Film type"><option value="">All film types</option>{% for d in films %}<option {% if f.film == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+    <select class="input" name="tier" data-autosubmit aria-label="Tier"><option value="">All tiers</option>{% for v, l in tiers %}<option value="{{ v }}" {% if f.tier == v|stringformat:'s' %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    <select class="input" name="due" data-autosubmit aria-label="Deadline">
+      <option value="">Any deadline</option>
+      <option value="overdue" {% if f.due == 'overdue' %}selected{% endif %}>Overdue</option>
+      <option value="today" {% if f.due == 'today' %}selected{% endif %}>Due today</option>
+      <option value="week" {% if f.due == 'week' %}selected{% endif %}>Due this week</option>
+      <option value="14" {% if f.due == '14' %}selected{% endif %}>Due in next 14 days</option>
+      <option value="month" {% if f.due == 'month' %}selected{% endif %}>Due this month</option>
+      <option value="agency_risk" {% if f.due == 'agency_risk' %}selected{% endif %}>Editor's date after agency's</option>
+      <option value="none" {% if f.due == 'none' %}selected{% endif %}>No deadline</option>
+    </select>
+    <select class="input" name="source" data-autosubmit aria-label="Footage">
+      <option value="">Any footage</option><option value="drive" {% if f.source == 'drive' %}selected{% endif %}>On a hard drive</option>
+      <option value="cloud" {% if f.source == 'cloud' %}selected{% endif %}>Cloud / online</option><option value="none" {% if f.source == 'none' %}selected{% endif %}>Not received</option>
+    </select>
+    <select class="input" name="kind" data-autosubmit aria-label="Other">
+      <option value="">Everything</option><option value="extra" {% if f.kind == 'extra' %}selected{% endif %}>Extra work</option>
+      <option value="delayed" {% if f.kind == 'delayed' %}selected{% endif %}>Had a delay</option><option value="client_rev" {% if f.kind == 'client_rev' %}selected{% endif %}>Had client revisions</option>
+    </select>
+    <select class="input" name="sort" data-autosubmit aria-label="Sort by">
+      <option value="deadline" {% if f.sort == 'deadline' or not f.sort %}selected{% endif %}>Sort: editor's deadline</option>
+      <option value="agency_deadline" {% if f.sort == 'agency_deadline' %}selected{% endif %}>Sort: agency's deadline</option>
+      <option value="newest" {% if f.sort == 'newest' %}selected{% endif %}>Sort: newest first</option>
+      <option value="agency" {% if f.sort == 'agency' %}selected{% endif %}>Sort: agency</option>
+      <option value="couple" {% if f.sort == 'couple' %}selected{% endif %}>Sort: couple A–Z</option>
+    </select>
+    <div class="actions"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
+  </form>
+  <div class="scroll"><table style="min-width:1120px">
     <thead><tr><th>Job</th><th>Agency</th><th>Tier</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th>Hrs vs usual</th><th class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
       <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
@@ -45,7 +81,7 @@
       <td class="mono">{{ p.source_label }}</td>
       <td>{{ j.hours|hours }}{% if j.usual %} / {{ j.usual|hours }}{% endif %}{% if j.over is not None and j.over > 20 %} <span class="tag bad">+{{ j.over }}%</span>{% endif %}</td>
       <td class="right">{{ p.agency.symbol }}{{ p.invoice_amount|money }}</td>
-    </tr>{% endwith %}{% empty %}<tr><td colspan="10" class="muted">No jobs here.</td></tr>{% endfor %}</tbody>
+    </tr>{% endwith %}{% empty %}<tr><td colspan="10" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endblock %}

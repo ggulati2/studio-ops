@@ -145,7 +145,7 @@ class Flows(SeededTestCase):
 
     def test_employee_of_the_month(self):
         m = S.month_start(self.today)
-        self.login("ag").post("/employee-of-the-month/", {"month": S.add_months(m, -1).strftime("%Y-%m"), "user": self.nikhil.pk,
+        self.login("ag").post("/trailblazer-of-the-month/", {"month": S.add_months(m, -1).strftime("%Y-%m"), "user": self.nikhil.pk,
                                                           "reason": "Great month", "voucher_amount": 1000})
         self.assertEqual(S.celebrated_award().user_id, self.nikhil.pk)
         r = self.login("nikhil").get("/today/")

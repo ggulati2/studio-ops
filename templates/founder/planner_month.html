@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Planner · {{ month|date:"F Y" }}{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Planner</h1><p>The whole month for everyone. Click any day to plan or change it in the 2-week view. Red marks are delivery days; purple is work done alongside.</p></div>
+  <div class="actions"><div class="seg"><a href="?start={{ month|date:'Y-m-d' }}">2 weeks</a><a class="on" href="?view=month&m={{ month|date:'Y-m' }}" aria-current="page">Month</a></div>
+    <a class="btn" href="?view=month&m={{ prev|date:'Y-m' }}" aria-label="Previous month">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?view=month&m={{ next|date:'Y-m' }}" aria-label="Next month">→</a></div>
+</div>
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag due-key">Delivery day</span><span class="tag" style="background:var(--plan-has)">Planned</span><span class="tag qc">+ alongside</span></div>
+<div class="scroll card" style="padding:0">
+<table class="plan-month no-stack">
+  <thead><tr><th class="who" scope="col">Editor</th><th class="sum" scope="col">Planned</th>
+    {% for c in days %}<th scope="col" class="{% if c.today %}today{% endif %}{% if c.holiday %} k-holiday{% elif c.d.weekday == 6 %} k-off{% endif %}" title="{{ c.d|date:'l j F' }}{% if c.holiday %} · {{ c.holiday.name }}{% endif %}">
+      <span class="dow">{{ c.d|date:"D"|slice:":2" }}</span><span class="dn">{{ c.d|date:"j" }}</span>{% if c.due %}<span class="dd">{{ c.due }}</span>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <th class="who" scope="row">{{ r.u.profile.name }}<div class="small muted">{{ r.u.profile.pod|default:"" }}</div></th>
+    <td class="sum"><b>{{ r.planned }}</b><span class="small muted">/{{ r.workdays }}</span>{% if r.free %}<div class="small" style="color:var(--ok)">{{ r.free }} free</div>{% endif %}</td>
+    {% for c in r.cells %}<td class="{% if c.kind %}k-{{ c.kind }}{% elif c.entries %}has{% endif %}{% if c.due %} due{% endif %}">
+      <a href="?start={{ c.week|date:'Y-m-d' }}" title="{{ r.u.profile.name }} · {{ c.d|date:'D j M' }}{% for e in c.entries %} · {% if e.slot == 2 %}+ {% endif %}{{ e.text }}{% endfor %}{% for p in c.due %} · DUE: {{ p }}{% endfor %}" aria-label="{{ r.u.profile.name }}, {{ c.d|date:'j M' }}: {% for e in c.entries %}{{ e.text }}{% if not forloop.last %} and {% endif %}{% empty %}{% if c.kind %}{{ c.kind }}{% else %}free{% endif %}{% endfor %}">
+        {% for e in c.entries %}<span class="pm {% if e.slot == 2 %}also{% endif %}{% if e.is_revision %} rev{% endif %}">{% if e.project %}{{ e.project.couple|truncatechars:9 }}{% else %}{{ e.label|truncatechars:9 }}{% endif %}</span>{% endfor %}
+        {% if not c.entries and c.kind %}<span class="pk">{% if c.kind == 'leave' %}Leave{% elif c.kind == 'half' %}½{% elif c.kind == 'holiday' %}Hol{% elif c.kind == 'off' %}Off{% elif c.kind == 'wfh' %}WFH{% endif %}</span>{% endif %}
+      </a></td>{% endfor %}
+  </tr>{% empty %}<tr><td colspan="3" class="muted">No editors yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="small muted">Planned = working days with something planned, out of working days this month (weekly offs, holidays and leave excluded).</p>
+{% endblock %}

@@ -31,7 +31,7 @@ PERMISSIONS = {
     "people.manage": "Add people, set roles, reset passwords",
     "attendance.view_all": "See everyone's attendance and value vs salary",
     "extra.manage": "Offer extra work and see extra pay",
-    "eotm.manage": "Choose Employee of the Month",
+    "eotm.manage": "Choose Trailblazer of the Month",
     "agencies.manage": "Manage client details and rates",
     "settings.manage": "Change studio settings and holidays",
     "audit.view": "Read the audit log",

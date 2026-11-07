@@ -15,7 +15,7 @@ class PagesOpen(SeededTestCase):
             "ag": ["/", "/dashboard/", "/projects/", "/projects/new/", f"/projects/{pid}/", "/planner/", "/deadlines/",
                    "/deadlines/?view=client", "/delivered/", "/reports/", "/reports/?agency=1", "/reports/print/",
                    "/reports/print/?agency=1", "/invoices/", "/invoices/new/", "/invoices/new/?agency=1", f"/invoices/{inv}/",
-                   "/team/", "/team/new/", "/team/2/", "/extra-work/", "/payroll/", "/employee-of-the-month/", "/agencies/",
+                   "/team/", "/team/new/", "/team/2/", "/extra-work/", "/payroll/", "/trailblazer-of-the-month/", "/agencies/",
                    "/agencies/new/", "/agencies/1/", "/settings/", "/settings/audit/", "/settings/access/", "/drives/",
                    f"/drives/{dr}/", "/drives/send-back/", "/qc/", "/leaderboard/", "/backoffice/", "/password/"],
             "nikhil": ["/", "/pod/", "/today/", "/my-month/", "/my-jobs/", "/my-extra/", "/leaderboard/", "/my-payslips/"],
@@ -81,8 +81,9 @@ class RbacTable(SeededTestCase):
                     yield p
         for p in walk(get_resolver().url_patterns):
             with self.subTest(view=p.name):
-                if p.name in open_ok:
-                    continue
+                from django.views.generic import RedirectView
+                if p.name in open_ok or getattr(p.callback, "view_class", None) is RedirectView:
+                    continue   # plain redirects only forward to a guarded page
                 perms = getattr(p.callback, "required_perms", None)
                 self.assertTrue(perms, f"{p.name} has no @requires(...)")
                 self.assertTrue(set(perms) <= set(PERMISSIONS))

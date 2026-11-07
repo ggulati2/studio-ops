@@ -26,7 +26,7 @@ MENU = [
     ("Extra work", "my_extra", "extra.log_own", "clock"),
     ("Payroll", "payroll", "payroll.manage", "wallet"),
     ("Contract editors", "contractors", "payroll.manage", "briefcase"),
-    ("Employee of the month", "eotm", "eotm.manage", "trophy"),
+    ("Trailblazer of the month", "eotm", "eotm.manage", "trophy"),
     ("Leaderboard", "leaderboard", "leaderboard.view", "trophy"),
     ("Agencies", "agencies", "agencies.manage", "briefcase"),
     ("Settings", "settings", "settings.manage", "settings"),
