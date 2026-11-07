@@ -171,6 +171,74 @@
       }
     }, true);
 
+    /* Add / edit a person */
+    var pf = doc.querySelector("[data-person-form]");
+    if (pf) {
+      var role = pf.querySelector("#id_role"), warn = pf.querySelector("[data-founder-warning]");
+      var confirmRow = pf.querySelector('[data-field="confirm_founder"]');
+      var original = pf.getAttribute("data-original-role");
+      function founderCheck() {
+        var risky = role && role.value === "admin" && original !== "admin";
+        if (warn) warn.hidden = !risky;
+        if (confirmRow) confirmRow.hidden = !risky;
+        if (!risky && confirmRow) { var cb = confirmRow.querySelector("input"); if (cb) cb.checked = false; }
+      }
+      if (role) { role.addEventListener("change", founderCheck); founderCheck(); }
+      pf.addEventListener("submit", function (e) {
+        if (role && role.value === "admin" && original !== "admin") {
+          var cb = confirmRow && confirmRow.querySelector("input");
+          if (!cb || !cb.checked) { e.preventDefault(); e.stopImmediatePropagation(); pf.dataset.sent = "";
+            if (warn) warn.scrollIntoView({ block: "center", behavior: "smooth" });
+            window.alert("You've chosen Founder (full access). Tick the confirmation box if that's intended, or pick another role."); }
+        }
+      }, true);
+
+      /* Login ID suggestion: Name_Surname, until you type your own */
+      var first = pf.querySelector("#id_first_name"), last = pf.querySelector("#id_last_name"), uname = pf.querySelector("#id_username");
+      function part(v) {
+        return (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().split(/\s+/)
+          .map(function (w) { w = w.replace(/[^A-Za-z0-9]/g, ""); return w ? w[0].toUpperCase() + w.slice(1) : ""; })
+          .filter(Boolean).join("_");
+      }
+      if (uname && first) {
+        if (!pf.hasAttribute("data-new") || uname.value) uname.dataset.touched = "1";
+        uname.addEventListener("input", function () { uname.dataset.touched = uname.value ? "1" : ""; });
+        var suggest = function () {
+          if (uname.dataset.touched) return;
+          uname.value = [part(first.value), part(last && last.value)].filter(Boolean).join("_");
+        };
+        first.addEventListener("input", suggest);
+        if (last) last.addEventListener("input", suggest);
+      }
+
+      /* Password: visible, with a generator */
+      var pw = pf.querySelector("[data-password]");
+      if (pw && window.crypto) {
+        var row = doc.createElement("div"); row.className = "pw-row";
+        pw.parentNode.insertBefore(row, pw); row.appendChild(pw);
+        var gen = doc.createElement("button"); gen.type = "button"; gen.className = "btn"; gen.textContent = "Generate";
+        row.appendChild(gen);
+        gen.addEventListener("click", function () {
+          var chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", out = [];
+          var buf = new Uint32Array(12); crypto.getRandomValues(buf);
+          for (var i = 0; i < 12; i++) { out.push(chars[buf[i] % chars.length]); if (i === 3 || i === 7) out.push("-"); }
+          pw.value = out.join("");
+        });
+      }
+    }
+
+    /* Copy buttons */
+    doc.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-copy]");
+      if (!b) return;
+      var src = doc.querySelector(b.getAttribute("data-copy"));
+      if (!src) return;
+      var text = src.value || src.textContent, label = b.textContent;
+      function done() { b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = label; }, 2000); }
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done);
+      else { src.classList.remove("sr"); src.select(); doc.execCommand("copy"); src.classList.add("sr"); done(); }
+    });
+
     /* Messages fade after a while (errors stay) */
     Array.prototype.forEach.call(doc.querySelectorAll(".msg:not(.error)"), function (m) {
       setTimeout(function () { m.classList.add("gone"); }, 6000);

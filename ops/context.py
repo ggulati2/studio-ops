@@ -1,7 +1,7 @@
 """Menu and page-wide context. The menu is built from the RBAC table, so a
 link only shows when the server would also allow the page."""
 from .models import StudioSettings
-from .rbac import ADMIN, DRIVE, EDITOR, QC, TL, perms_of, role_of
+from .rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, perms_of, role_of
 from .services import celebrated_award, trophy_counts
 
 # (label, url name, permission needed, icon)
@@ -31,7 +31,7 @@ MENU = [
 ]
 # Founders reach these from inside other screens; keep their menu focused.
 HIDE_FOR = {ADMIN: {"pod", "qc_queue", "drive_returns", "leaderboard"}}
-ROLE_LABEL = {ADMIN: "Founder", TL: "Team lead", EDITOR: "Editor", QC: "Quality check", DRIVE: "Drive desk"}
+ROLE_LABEL = {ADMIN: "Founder", TL: "Team lead", EDITOR: "Editor", INTERN: "Intern", QC: "Quality check", DRIVE: "Drive desk"}
 
 
 def build_menu(user, path="/"):
@@ -57,7 +57,7 @@ def nav(request):
         "role_label": ROLE_LABEL.get(r, ""),
         "is_founder": r == ADMIN,
         "my_perms": perms_of(request.user),
-        "my_trophies": trophy_counts().get(request.user.id, 0) if r in (TL, EDITOR, QC) else None,
+        "my_trophies": trophy_counts().get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
         "celebrating": bool(award and award.user_id == request.user.id),
         "current_award": award,
     }

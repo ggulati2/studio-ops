@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Login details{% endblock %}
+{% block content %}
+<div class="head"><div><h1>{% if created %}{{ person.profile.name }} is added{% else %}New password set for {{ person.profile.name }}{% endif %}</h1>
+<p>Send these details to {{ person.first_name|default:person.username }} now. This is the only time the password is shown. They'll choose their own at first sign-in.</p></div></div>
+<div class="card creds" style="max-width:560px">
+  <dl>
+    <dt>Link</dt><dd class="mono">{{ app_url }}</dd>
+    <dt>Login ID</dt><dd class="mono">{{ login_id }}</dd>
+    <dt>Password</dt><dd class="mono">{{ password }}</dd>
+  </dl>
+  <textarea class="sr" id="creds-text" readonly>Studio Ops login
+Link: {{ app_url }}
+Login ID: {{ login_id }}
+Password: {{ password }}
+(You'll be asked to set your own password when you first sign in.)</textarea>
+  <div class="actions">
+    <button type="button" class="btn primary" data-copy="#creds-text">Copy login details</button>
+    <a class="btn" href="{% url 'team' %}">Done</a>
+  </div>
+</div>
+{% endblock %}

@@ -263,30 +263,46 @@ class StudioSettingsForm(StyledMixin, forms.ModelForm):
 
 class PersonForm(StyledMixin, forms.Form):
     first_name = forms.CharField(label="Name", max_length=60)
-    username = forms.CharField(label="Login name", max_length=40, help_text="Lower case, no spaces, e.g. pratik")
+    last_name = forms.CharField(label="Surname", max_length=60, required=False)
+    username = forms.CharField(label="Login ID", max_length=60,
+                               help_text="Filled in as Name_Surname while you type. You can change it. Letters, numbers and _ . - only; "
+                                         "capitals don't matter when they log in.")
     email = forms.EmailField(required=False)
     role = forms.ChoiceField(choices=Profile.ROLES)
+    confirm_founder = forms.BooleanField(
+        required=False,
+        label="Yes, give this person full founder access: invoices, salaries, client details, everyone's data, "
+              "adding and removing people, and the back office.")
     pod = forms.ModelChoiceField(queryset=Pod.objects.all(), required=False)
-    monthly_salary = forms.IntegerField(min_value=0, initial=0, label="Monthly salary (₹)")
+    monthly_salary = forms.IntegerField(min_value=0, initial=0, label="Monthly salary / stipend (₹)")
     joined_on = forms.DateField(widget=DATE, required=False)
     active = forms.BooleanField(required=False, initial=True)
-    password = forms.CharField(required=False, widget=forms.PasswordInput, help_text="Set or reset their password (8+ characters). Leave blank to keep it.")
+    password = forms.CharField(
+        required=False, strip=False, label="Password",
+        widget=forms.TextInput(attrs={"autocomplete": "off", "autocapitalize": "none", "spellcheck": "false",
+                                      "class": "input mono", "data-password": "1"}),
+        help_text="Shown as you type so you can share it. They'll be asked to choose their own at first login. "
+                  "Leave blank to keep the current one.")
 
     def __init__(self, *args, instance=None, **kwargs):
         self.instance = instance
         super().__init__(*args, **kwargs)
         if instance:
             p = instance.profile
-            self.initial.update(first_name=instance.first_name, username=instance.username, email=instance.email,
+            self.initial.update(first_name=instance.first_name, last_name=instance.last_name, username=instance.username,
+                                email=instance.email,
                                 role=p.role, pod=p.pod, monthly_salary=p.monthly_salary, joined_on=p.joined_on, active=p.active)
 
     def clean_username(self):
-        u = self.cleaned_data["username"].strip().lower()
-        qs = User.objects.filter(username=u)
+        import re
+        u = self.cleaned_data["username"].strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.\-]+", u):
+            raise forms.ValidationError("Use letters, numbers and _ . - only (no spaces).")
+        qs = User.objects.filter(username__iexact=u)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise forms.ValidationError("That login name is taken.")
+            raise forms.ValidationError("That login ID is taken. Try adding a number or a middle initial.")
         return u
 
     def clean_password(self):
@@ -301,6 +317,9 @@ class PersonForm(StyledMixin, forms.Form):
     def clean(self):
         data = super().clean()
         inst = self.instance
+        becoming_founder = data.get("role") == Profile.ADMIN and not (inst and inst.profile.role == Profile.ADMIN)
+        if becoming_founder and not data.get("confirm_founder"):
+            self.add_error("confirm_founder", "Tick this to confirm, or pick another role. Founder access can see all money and salaries.")
         if inst and inst.profile.role == Profile.ADMIN:
             losing = data.get("role") != Profile.ADMIN or not data.get("active")
             if losing:

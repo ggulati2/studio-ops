@@ -2,9 +2,9 @@
 <div class="fields">
 {% for f in form.visible_fields %}
   {% if f.widget_type == 'checkbox' %}
-    <div class="field" style="grid-column:1/-1"><label class="inline">{{ f }} {{ f.label }}</label>{% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}</div>
+    <div class="field" data-field="{{ f.name }}" style="grid-column:1/-1"><label class="inline">{{ f }} {{ f.label }}</label>{% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}</div>
   {% else %}
-    <div class="field" {% if f.widget_type == 'textarea' or f.widget_type == 'checkboxselectmultiple' or f.widget_type == 'radioselect' %}style="grid-column:1/-1"{% endif %}>
+    <div class="field" data-field="{{ f.name }}" {% if f.widget_type == 'textarea' or f.widget_type == 'checkboxselectmultiple' or f.widget_type == 'radioselect' %}style="grid-column:1/-1"{% endif %}>
       <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>
       {{ f }}
       {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}

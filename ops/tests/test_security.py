@@ -68,7 +68,7 @@ class Login(SeededTestCase):
         r = ag.post(f"/team/{pr.pk}/", {"first_name": "Pratik", "username": "pratik", "email": "", "role": "editor",
                                         "pod": pr.profile.pod_id or "", "monthly_salary": 35000, "active": "on",
                                         "password": "Temp-Pass-2026x"})
-        self.assertEqual(r.status_code, 302)
+        self.assertContains(r, "Temp-Pass-2026x")          # login details shown once to the founder
         pr.profile.refresh_from_db()
         self.assertTrue(pr.profile.must_change_password)
         c = Client(); c.login(username="pratik", password="Temp-Pass-2026x")
@@ -105,7 +105,10 @@ class People(SeededTestCase):
 
     def test_role_change_syncs_back_office_and_is_audited(self):
         ag, pr = self.login("ag"), U.objects.get(username="pratik")
-        self._post(ag, pr, role="admin")
+        r = self._post(ag, pr, role="admin")                      # no confirmation tick: refused
+        self.assertContains(r, "Tick this to confirm")
+        pr.refresh_from_db(); self.assertFalse(pr.is_superuser)
+        self._post(ag, pr, role="admin", confirm_founder="on")
         pr.refresh_from_db(); self.assertTrue(pr.is_superuser and pr.is_staff)
         self._post(ag, pr, role="editor")
         pr.refresh_from_db(); self.assertFalse(pr.is_superuser or pr.is_staff)
@@ -173,3 +176,58 @@ class Audit(SeededTestCase):
     def test_audit_log_page_founders_only(self):
         self.assertEqual(self.login("ag").get("/settings/audit/?kind=security").status_code, 200)
         self.assertEqual(self.login("nikhil").get("/settings/audit/").status_code, 403)
+
+
+class AddingPeople(SeededTestCase):
+    def _new(self, c, **kw):
+        data = {"first_name": "Riya", "last_name": "Kapoor", "username": "Riya_Kapoor", "role": "intern",
+                "monthly_salary": 10000, "active": "on", "password": "Kite-Mango-4729"}
+        data.update(kw)
+        return c.post("/team/new/", data)
+
+    def test_new_person_shows_login_details_once(self):
+        r = self._new(self.login("ag"))
+        self.assertContains(r, "Riya_Kapoor")
+        self.assertContains(r, "Kite-Mango-4729")
+        self.assertIn("no-store", r["Cache-Control"])
+        u = U.objects.get(username="Riya_Kapoor")
+        self.assertEqual((u.first_name, u.last_name, u.profile.role), ("Riya", "Kapoor", "intern"))
+        self.assertTrue(u.profile.must_change_password)
+        self.assertFalse(AuditEvent.objects.filter(detail__icontains="Kite-Mango").exists())
+
+    def test_password_field_is_visible_text(self):
+        r = self.login("ag").get("/team/new/")
+        self.assertContains(r, 'type="text" name="password"')
+        self.assertContains(r, "data-founder-warning")
+
+    def test_login_id_ignores_capitals_and_must_be_unique(self):
+        self._new(self.login("ag"))
+        c = Client()
+        self.assertTrue(c.login(username="riya_kapoor", password="Kite-Mango-4729"))
+        r = self._new(self.login("ag"), username="RIYA_KAPOOR")
+        self.assertContains(r, "That login ID is taken")
+        r = self._new(self.login("ag"), username="Riya Kapoor")
+        self.assertContains(r, "no spaces")
+
+    def test_new_founder_needs_confirmation(self):
+        ag = self.login("ag")
+        r = self._new(ag, role="admin", username="Partner_Two")
+        self.assertContains(r, "Tick this to confirm")
+        self.assertFalse(U.objects.filter(username="Partner_Two").exists())
+        self._new(ag, role="admin", username="Partner_Two", confirm_founder="on")
+        self.assertTrue(U.objects.get(username="Partner_Two").is_superuser)
+
+    def test_intern_access(self):
+        self._new(self.login("ag"))
+        c = Client(); c.login(username="Riya_Kapoor", password="Kite-Mango-4729")
+        c.post("/password/", {"old_password": "Kite-Mango-4729", "new_password1": "Own-Secret-Pass-88",
+                              "new_password2": "Own-Secret-Pass-88"})
+        self.assertEqual(c.get("/", follow=True).request["PATH_INFO"], "/today/")
+        for url in ("/today/", "/my-jobs/", "/my-payslips/", "/leaderboard/"):
+            with self.subTest(url=url):
+                self.assertEqual(c.get(url).status_code, 200)
+        for url in ("/my-extra/", "/invoices/", "/payroll/", "/pod/", "/qc/", "/drives/", "/dashboard/"):
+            with self.subTest(url=url):
+                self.assertEqual(c.get(url).status_code, 403)
+        from ops.services import team
+        self.assertIn("Riya_Kapoor", [u.username for u in team()])     # can be assigned films and planned

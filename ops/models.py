@@ -74,9 +74,9 @@ class Pod(models.Model):
 
 
 class Profile(models.Model):
-    ADMIN, TL, EDITOR, QC, DRIVE = "admin", "tl", "editor", "qc", "drive"
-    ROLES = [(ADMIN, "Admin (founder)"), (TL, "Team lead"), (EDITOR, "Editor"),
-             (QC, "QC"), (DRIVE, "Drive desk")]
+    ADMIN, TL, EDITOR, INTERN, QC, DRIVE = "admin", "tl", "editor", "intern", "qc", "drive"
+    ROLES = [(EDITOR, "Editor"), (TL, "Team lead"), (INTERN, "Intern"), (QC, "QC"), (DRIVE, "Drive desk"),
+             (ADMIN, "Founder (full access)")]
     COLORS = ["#7C3AED", "#0F766E", "#B45309", "#1D4ED8", "#BE185D", "#0E7490", "#4D7C0F", "#9333EA"]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
@@ -108,7 +108,7 @@ class Profile(models.Model):
 
     @property
     def does_editing(self):
-        return self.role in (self.TL, self.EDITOR)
+        return self.role in (self.TL, self.EDITOR, self.INTERN)
 
 
 class Holiday(models.Model):

@@ -15,7 +15,8 @@ from django.core.exceptions import PermissionDenied
 
 from .models import Profile
 
-ADMIN, TL, EDITOR, QC, DRIVE = Profile.ADMIN, Profile.TL, Profile.EDITOR, Profile.QC, Profile.DRIVE
+ADMIN, TL, EDITOR, INTERN, QC, DRIVE = (Profile.ADMIN, Profile.TL, Profile.EDITOR, Profile.INTERN, Profile.QC,
+                                        Profile.DRIVE)
 
 # permission -> plain-English meaning (shown in Settings → Roles & permissions)
 PERMISSIONS = {
@@ -53,6 +54,7 @@ ROLE_PERMISSIONS = {
     ADMIN: _ADMIN_ONLY | {"drives.manage", "pod.review", "qc.review", "leaderboard.view"},
     TL: _OWN_WORK | {"pod.review"},
     EDITOR: set(_OWN_WORK),
+    INTERN: {"work.log_own", "payslips.view_own", "leaderboard.view"},   # no paid extra work
     QC: {"qc.review", "leaderboard.view"},
     DRIVE: {"drives.manage"},
 }

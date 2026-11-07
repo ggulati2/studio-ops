@@ -36,6 +36,7 @@ Access is defined in one table, `ops/rbac.py`. Each view declares what it needs 
 |---|---|
 | **Founder** (admin) | Everything: dashboard, projects, planner, deadlines, delivered, reports, invoices, payroll, team and attendance, value vs salary, extra work, Employee of the Month, agencies, settings, audit log, backup, back office. Can also use the drive desk, pod review and QC screens. |
 | **Team lead** | Their pod's jobs and reviews (only editors in their own pod), plus their own Today, month, jobs, extra work, payslips and the leaderboard. |
+| **Intern** | Their own Today, calendar, jobs, payslips and the leaderboard. No paid extra work. Can be assigned films and planned like editors. |
 | **Editor** | Their own Today, month calendar, jobs (send for review, close with Drive links), extra work, payslips and the leaderboard. |
 | **QC** | The QC queue with checklist, pass/fail and history, plus the leaderboard. |
 | **Drive desk** | The drive register (receive with photos) and send-back records. Nothing else. |

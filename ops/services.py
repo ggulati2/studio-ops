@@ -44,7 +44,7 @@ def week_start(d):
 
 
 # ---------------------------------------------------------------- people
-def team(roles=(Profile.TL, Profile.EDITOR)):
+def team(roles=(Profile.TL, Profile.EDITOR, Profile.INTERN)):
     return (User.objects.filter(profile__role__in=roles, profile__active=True, is_active=True)
             .select_related("profile", "profile__pod").order_by("profile__pod__name", "first_name"))
 

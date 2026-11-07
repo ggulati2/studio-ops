@@ -337,7 +337,8 @@ def person_edit(request, pk=None):
         with transaction.atomic():
             if not user:
                 user = User(username=c["username"])
-            user.username, user.first_name, user.email = c["username"], c["first_name"], c["email"]
+            user.username, user.first_name, user.last_name, user.email = (c["username"], c["first_name"], c["last_name"],
+                                                                          c["email"])
             user.is_active = c["active"]
             # Founders get the back office; nobody else does.
             user.is_staff = user.is_superuser = (c["role"] == Profile.ADMIN)
@@ -354,11 +355,17 @@ def person_edit(request, pk=None):
         if c["password"] and user.pk == request.user.pk:
             from django.contrib.auth import update_session_auth_hash
             update_session_auth_hash(request, user)
+        if c["password"] and user.pk != request.user.pk:
+            # Show the login details once, on this response only (never stored or put in a cookie).
+            resp = render(request, "founder/person_saved.html", {
+                "person": user, "login_id": user.username, "password": c["password"], "created": created,
+                "app_url": request.build_absolute_uri("/")})
+            resp["Cache-Control"] = "no-store"
+            return resp
         messages.success(request, f"Saved {user.profile.name}.")
         return redirect("team")
-    return render(request, "form_page.html", {"form": form, "title": f"Edit {user.profile.name}" if user else "Add a person",
-                                              "back": "team", "submit": "Save",
-                                              "intro": "Only people you add here can log in. Share their login name and password with them directly."})
+    return render(request, "founder/person_form.html", {"form": form, "person": user,
+                                                        "title": f"Edit {user.profile.name}" if user else "Add a person"})
 
 
 @requires("extra.manage")

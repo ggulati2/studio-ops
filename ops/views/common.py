@@ -10,11 +10,11 @@ from django.views.decorators.http import require_GET
 
 from ..audit import client_ip, record
 from ..models import StoredImage
-from ..rbac import ADMIN, DRIVE, EDITOR, QC, TL, has_perm, role_of
+from ..rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, has_perm, role_of
 
 __all__ = ["home", "image", "health", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
 
-HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", QC: "qc_queue", DRIVE: "drives"}
+HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", INTERN: "today", QC: "qc_queue", DRIVE: "drives"}
 
 
 @login_required
