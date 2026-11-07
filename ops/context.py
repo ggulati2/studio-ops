@@ -10,8 +10,9 @@ MENU = [
     ("My pod", "pod", "pod.review", "users"),
     ("Today", "today", "work.log_own", "sun"),
     ("My month", "my_month", "work.log_own", "calendar"),
+    ("My leave", "my_leave", "work.log_own", "plane"),
     ("My jobs", "my_jobs", "work.log_own", "film"),
-    ("Waiting for QC", "qc_queue", "qc.review", "check"),
+    ("QC dashboard", "qc_queue", "qc.review", "check"),
     ("Projects", "projects", "projects.manage", "film"),
     ("Planner", "planner", "planner.manage", "layout"),
     ("Delays", "delays", "projects.manage", "alert"),
@@ -21,6 +22,7 @@ MENU = [
     ("Invoices", "invoices", "invoices.manage", "receipt"),
     ("Hard drives", "drives", "drives.manage", "drive"),
     ("Send back", "drive_returns", "drives.manage", "truck"),
+    ("Leave requests", "leave_requests", "leave.approve", "plane"),
     ("Team & attendance", "team", "attendance.view_all", "users"),
     ("Extra work", "extra_admin", "extra.manage", "clock"),
     ("Extra work", "my_extra", "extra.log_own", "clock"),
@@ -53,6 +55,13 @@ def _pending_delays(r):
     return DelayReport.objects.filter(status=DelayReport.PENDING).count()
 
 
+def _pending_leave(r):
+    if r != ADMIN:
+        return 0
+    from .models import LeaveRequest
+    return LeaveRequest.objects.filter(status=LeaveRequest.PENDING).count()
+
+
 def nav(request):
     studio = StudioSettings.get()
     if not request.user.is_authenticated:
@@ -68,6 +77,7 @@ def nav(request):
         "my_perms": perms_of(request.user),
         "is_contract": bool(getattr(getattr(request.user, "profile", None), "is_contract", False)),
         "pending_delays": _pending_delays(r),
+        "pending_leave": _pending_leave(r),
         "my_trophies": trophy_counts().get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
         "celebrating": bool(award and award.user_id == request.user.id),
         "current_award": award,

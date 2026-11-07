@@ -453,3 +453,46 @@ def contract_statement(user, month):
                     if (user.profile.contract_basis or "project") == "project" else Project.objects.none())
     return {"earned": earned, "items": items, "payments": pays, "paid": paid,
             "balance": all_earned - all_paid, "all_earned": all_earned, "all_paid": all_paid, "missing_fees": missing_fees}
+
+
+# ---------------------------------------------------------------- advance leave
+def leave_working_days(user, start, end):
+    """Working days in [start, end] for this person (weekly offs and holidays skipped)."""
+    hols = holidays_between(start, end)
+    weekdays = StudioSettings.get().weekdays
+    d, out = start, []
+    while d <= end:
+        if d.weekday() in weekdays and (d not in hols or hols[d].kind != Holiday.FULL):
+            out.append(d)
+        d += timedelta(days=1)
+    return out
+
+
+def approve_leave(req, by, note=""):
+    """Approve a leave request: each working day in it becomes a Leave (or Half day) entry,
+    which the planner, calendars, attendance and payroll already understand. Days the person
+    has already logged work on are left alone. Planned work on those days is cleared."""
+    from .models import LeaveRequest, PlanEntry
+    kind = DayLog.HALF if req.half_day else DayLog.LEAVE
+    made = 0
+    for d in leave_working_days(req.user, req.start, req.end):
+        log, created = DayLog.objects.get_or_create(user=req.user, date=d, defaults={"day_type": kind,
+                                                                                       "notes": f"Approved leave: {req.reason}"[:200]})
+        if not created and log.tasks.exists():
+            continue
+        if not created:
+            log.day_type = kind
+            log.save(update_fields=["day_type"])
+        if kind == DayLog.LEAVE:
+            PlanEntry.objects.filter(user=req.user, date=d).delete()
+        made += 1
+    req.status, req.decided_by, req.decided_on, req.founder_note = LeaveRequest.APPROVED, by, timezone.now(), note[:200]
+    req.save()
+    return made
+
+
+def undo_leave(req):
+    """Remove the Leave entries an approval created (only untouched ones)."""
+    kind = DayLog.HALF if req.half_day else DayLog.LEAVE
+    DayLog.objects.filter(user=req.user, date__range=(req.start, req.end), day_type=kind, tasks__isnull=True,
+                          notes__startswith="Approved leave").delete()

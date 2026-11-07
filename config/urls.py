@@ -76,6 +76,10 @@ urlpatterns = [
     path("contract-editors/<int:pk>/", v.contractor_detail, name="contractor_detail"),
     path("contract-editors/payment/<int:pk>/delete/", v.contract_payment_delete, name="contract_payment_delete"),
     path("my-payments/", v.my_payments, name="my_payments"),
+    path("my-leave/", v.my_leave, name="my_leave"),
+    path("my-leave/<int:pk>/cancel/", v.leave_cancel, name="leave_cancel"),
+    path("leave/", v.leave_requests, name="leave_requests"),
+    path("leave/<int:pk>/decide/", v.leave_decide, name="leave_decide"),
     path("backoffice/", admin.site.urls),
 ]
 

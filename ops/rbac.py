@@ -30,6 +30,7 @@ PERMISSIONS = {
     "payroll.manage": "See salaries, run payroll, pay contract editors",
     "people.manage": "Add people, set roles, reset passwords",
     "attendance.view_all": "See everyone's attendance and value vs salary",
+    "leave.approve": "Approve or decline advance leave",
     "extra.manage": "Offer extra work and see extra pay",
     "eotm.manage": "Choose Trailblazer of the Month",
     "agencies.manage": "Manage client details and rates",
@@ -39,7 +40,7 @@ PERMISSIONS = {
     "drives.manage": "Receive and send back hard drives",
     "pod.review": "Review films from their own pod",
     "qc.review": "Pass or fail films in QC",
-    "work.log_own": "Log their own day and jobs; report a delay on their own job",
+    "work.log_own": "Log their own day and jobs; report a delay; apply for leave",
     "extra.log_own": "Accept and log their own extra work",
     "payslips.view_own": "See their own payslips (or payments, if on contract)",
     "leaderboard.view": "See the leaderboard",
@@ -47,7 +48,8 @@ PERMISSIONS = {
 
 _ADMIN_ONLY = {"dashboard.view", "projects.manage", "planner.manage", "deadlines.view", "delivered.view",
                "reports.manage", "invoices.manage", "payroll.manage", "people.manage", "attendance.view_all",
-               "extra.manage", "eotm.manage", "agencies.manage", "settings.manage", "audit.view", "backup.download"}
+               "extra.manage", "eotm.manage", "agencies.manage", "settings.manage", "audit.view", "backup.download",
+               "leave.approve"}
 _OWN_WORK = {"work.log_own", "extra.log_own", "payslips.view_own", "leaderboard.view"}
 
 ROLE_PERMISSIONS = {

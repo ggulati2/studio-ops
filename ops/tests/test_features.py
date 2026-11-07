@@ -402,3 +402,92 @@ class AddJobRows(SeededTestCase):
 
     def test_pod_page_has_no_disclaimer(self):
         self.assertNotContains(self.login("nikhil").get("/pod/"), "never invoices or salaries")
+
+
+class QCStatusBoard(SeededTestCase):
+    def test_board_shows_each_state(self):
+        from ops.models import Review
+        qc = U.objects.get(username="qc")
+        pratik = U.objects.get(username="pratik")
+        ag = Project.objects.first().agency
+        mk = lambda name, status: Project.objects.create(couple=name, agency=ag, editor=pratik, status=status, deliverable="Trailer")
+        waiting = mk("Wait Board", Project.QC)
+        recheck = mk("Recheck Board", Project.QC)
+        Review.objects.create(project=recheck, kind="qc", passed=False, reviewer=qc)
+        sent = mk("Sent Board", Project.REVISIONS)
+        Review.objects.create(project=sent, kind="qc", passed=False, issues=["Audio levels"], reviewer=qc)
+        passed = mk("Passed Board", Project.QC_PASSED)
+        Review.objects.create(project=passed, kind="qc", passed=True, reviewer=qc)
+        from ops.views.team import qc_board
+        rows, counts = qc_board()
+        state = {b["p"].pk: b["state"] for b in rows}
+        self.assertEqual(state[waiting.pk], "waiting")
+        self.assertEqual(state[recheck.pk], "recheck")
+        self.assertEqual(state[sent.pk], "sent_back")
+        self.assertEqual(state[passed.pk], "passed")
+        self.assertTrue(next(b for b in rows if b["p"].pk == passed.pk)["first_time"])
+        c = self.login("qc")
+        html = c.get("/qc/").content.decode()
+        for txt in ("Where every film stands", "Back for re-check", "Sent back", "Passed", "Failed at least once"):
+            self.assertIn(txt, html)
+        only = c.get("/qc/?s=sent_back").content.decode()
+        self.assertIn("Sent Board", only)
+        self.assertNotIn("Passed Board", only)
+
+
+class AdvanceLeave(SeededTestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.pratik = U.objects.get(username="pratik")
+        self.day = next_workday(self.today + timedelta(days=3), self.pratik)
+
+    def test_apply_approve_and_calendar(self):
+        from ops.models import LeaveRequest
+        c = self.login("pratik")
+        PlanEntry.objects.update_or_create(user=self.pratik, date=self.day, slot=1, defaults={"label": "Edit"})
+        r = c.post("/my-leave/", {"start": self.day.isoformat(), "end": "", "reason": "Cousin's wedding"})
+        self.assertEqual(r.status_code, 302)
+        req = LeaveRequest.objects.get(user=self.pratik)
+        self.assertEqual(req.status, LeaveRequest.PENDING)
+        self.assertFalse(DayLog.objects.filter(user=self.pratik, date=self.day, day_type=DayLog.LEAVE).exists())
+        # Editors can't approve
+        self.assertEqual(c.post(f"/leave/{req.pk}/decide/", {"decision": "approve"}).status_code, 403)
+        f = self.login("ag")
+        self.assertIn("1 leave request", f.get("/dashboard/").content.decode())
+        page = f.get("/leave/").content.decode()
+        self.assertIn("Cousin", page)
+        f.post(f"/leave/{req.pk}/decide/", {"decision": "approve", "founder_note": "Enjoy"})
+        req.refresh_from_db()
+        self.assertEqual(req.status, LeaveRequest.APPROVED)
+        self.assertTrue(DayLog.objects.filter(user=self.pratik, date=self.day, day_type=DayLog.LEAVE).exists())
+        self.assertFalse(PlanEntry.objects.filter(user=self.pratik, date=self.day).exists())
+        # Founder cancels it again: the day comes off the calendar
+        f.post(f"/leave/{req.pk}/decide/", {"decision": "revoke"})
+        self.assertFalse(DayLog.objects.filter(user=self.pratik, date=self.day, day_type=DayLog.LEAVE).exists())
+
+    def test_rules(self):
+        c = self.login("pratik")
+        past = c.post("/my-leave/", {"start": self.today.isoformat(), "reason": "x"}).content.decode()
+        self.assertIn("starts tomorrow or later", past)
+        half = c.post("/my-leave/", {"start": self.day.isoformat(), "end": (self.day + timedelta(days=2)).isoformat(),
+                                     "half_day": "on", "reason": "x"}).content.decode()
+        self.assertIn("single date", half)
+        c.post("/my-leave/", {"start": self.day.isoformat(), "reason": "first"})
+        dup = c.post("/my-leave/", {"start": self.day.isoformat(), "reason": "again"}).content.decode()
+        self.assertIn("already asked", dup)
+
+    def test_future_leave_blocked_on_today_page(self):
+        c = self.login("pratik")
+        r = c.post(f"/today/?date={self.day.isoformat()}", {"day_type": DayLog.LEAVE, "notes": "",
+                   "form-TOTAL_FORMS": "0", "form-INITIAL_FORMS": "0"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("needs the founders", r.content.decode())
+        self.assertFalse(DayLog.objects.filter(user=self.pratik, date=self.day).exists())
+
+    def test_decline(self):
+        from ops.models import LeaveRequest
+        req = LeaveRequest.objects.create(user=self.pratik, start=self.day, end=self.day, reason="Trip")
+        self.login("ag").post(f"/leave/{req.pk}/decide/", {"decision": "decline", "founder_note": "Big delivery week"})
+        req.refresh_from_db()
+        self.assertEqual(req.status, LeaveRequest.DECLINED)
+        self.assertIn("Big delivery week", self.login("pratik").get("/my-leave/").content.decode())

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from .models import (Agency, ClientRevision, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
+from .models import (Agency, ClientRevision, LeaveRequest, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
                      Profile, Project, StudioSettings, TaskStage)
 from .services import is_company_drive_link, team
 
@@ -238,10 +238,19 @@ class DayForm(StyledMixin, forms.ModelForm):
         fields = ["day_type", "time_in", "time_out", "notes"]
         widgets = {"time_in": TIME, "time_out": TIME, "day_type": forms.RadioSelect}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, future=False, **kwargs):
+        self.future = future
         super().__init__(*args, **kwargs)
         self.fields["day_type"].widget.attrs["class"] = "pills"
         self.fields["notes"].label = "Notes for my TL"
+        # Already-approved leave keeps its type; anything else in the future needs approval first
+        self.approved_type = self.instance.day_type if (self.instance.pk and self.instance.day_type in (DayLog.LEAVE, DayLog.HALF)) else None
+
+    def clean_day_type(self):
+        t = self.cleaned_data["day_type"]
+        if self.future and t in (DayLog.LEAVE, DayLog.HALF) and t != self.approved_type:
+            raise forms.ValidationError("Leave on a future day needs the founders' approval. Use My leave → Apply for leave.")
+        return t
 
 
 class TaskRowForm(forms.Form):
@@ -540,3 +549,42 @@ class ClientRevisionForm(StyledMixin, forms.ModelForm):
         if d < timezone.localdate():
             raise forms.ValidationError("Pick today or a later date.")
         return d
+
+
+class LeaveRequestForm(StyledMixin, forms.ModelForm):
+    class Meta:
+        model = LeaveRequest
+        fields = ["start", "end", "half_day", "reason"]
+        widgets = {"start": DATE, "end": DATE}
+        labels = {"reason": "Reason (founders see this)"}
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self.fields["end"].required = False
+        self.fields["end"].help_text = "Leave blank for a single day."
+
+    def clean(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        data = super().clean()
+        s, e = data.get("start"), data.get("end") or data.get("start")
+        if not s:
+            return data
+        data["end"] = e
+        today = timezone.localdate()
+        if s <= today:
+            self.add_error("start", "Advance leave starts tomorrow or later. For today, mark it on your Today page.")
+        if e < s:
+            self.add_error("end", "The last day can't be before the first.")
+        elif (e - s).days > 30:
+            self.add_error("end", "Up to 31 days in one request. Split longer leave into two.")
+        if data.get("half_day") and e != s:
+            self.add_error("half_day", "A half day must be a single date.")
+        if self.user and not self.errors:
+            clash = LeaveRequest.objects.filter(user=self.user, status__in=(LeaveRequest.PENDING, LeaveRequest.APPROVED),
+                                                start__lte=e, end__gte=s)
+            if clash.exists():
+                c = clash.first()
+                raise forms.ValidationError(f"You already asked for {c.start:%-d %b}–{c.end:%-d %b} ({c.get_status_display().lower()}).")
+        return data

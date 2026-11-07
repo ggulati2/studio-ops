@@ -26,7 +26,10 @@
   --t-figure:clamp(1.375rem,1.15rem + .6vw,1.75rem);
   --ease:cubic-bezier(.2,.7,.2,1);
   --on-ink:#FFFFFF;--row-hover:#FAFAF8;--field-hover:#C4C4BE;--glass:rgba(255,255,255,.86);
-  --k-leave:#FBE4E1;--k-half:#FCEEDC;--k-holiday:#E4EEFC;--k-wfh:#FBF4D2;--k-downtime:#EEE9FB;--plan-has:#F5F2FC;
+  /* day types: each has its own hue and a strong edge colour, so they read apart at a glance (and in print/greyscale the off-day stripes still show) */
+  --k-leave:#FDDCDC;--k-leave-edge:#D92D20;--k-half:#FFE7B8;--k-half-edge:#D97706;--k-holiday:#D6E6FF;--k-holiday-edge:#2563EB;
+  --k-wfh:#D3F4E4;--k-wfh-edge:#059669;--k-downtime:#EBE2FF;--k-downtime-edge:#7C3AED;--k-off:#EEEEEC;--k-off-edge:#A1A1A1;
+  --plan-has:#F5F2FC;
   color-scheme:light;
 }
 
@@ -46,8 +49,9 @@
   --bad:#FF6B5E;--bad-bg:rgba(255,107,94,.12);--bad-line:rgba(255,107,94,.36);
   --info:#7FA6FF;--info-bg:rgba(127,166,255,.12);--info-line:rgba(127,166,255,.32);
   --qc:#B79CFF;--qc-bg:rgba(183,156,255,.12);--qc-line:rgba(183,156,255,.32);
-  --k-leave:rgba(255,107,94,.16);--k-half:rgba(240,162,87,.16);--k-holiday:rgba(127,166,255,.16);--k-wfh:rgba(230,200,90,.16);
-  --k-downtime:rgba(183,156,255,.16);--plan-has:rgba(183,156,255,.08);
+  --k-leave:rgba(255,99,90,.24);--k-leave-edge:#FF6B5E;--k-half:rgba(245,166,35,.24);--k-half-edge:#F5A623;
+  --k-holiday:rgba(96,148,255,.24);--k-holiday-edge:#6094FF;--k-wfh:rgba(52,211,153,.2);--k-wfh-edge:#34D399;
+  --k-downtime:rgba(167,139,250,.24);--k-downtime-edge:#A78BFA;--k-off:#1C1C21;--k-off-edge:#55555F;--plan-has:rgba(183,156,255,.08);
   --lift:0 1px 0 rgba(255,255,255,.02) inset,0 1px 2px rgba(0,0,0,.4);
   --raise:0 1px 2px rgba(0,0,0,.5),0 10px 30px -12px rgba(0,0,0,.6);
   --float:0 24px 64px -16px rgba(0,0,0,.7),0 2px 6px rgba(0,0,0,.4);
@@ -333,7 +337,19 @@ a.day:hover{background:var(--row-hover);text-decoration:none}
 .cal .day.sel{box-shadow:inset 0 0 0 2px var(--ink)}
 .chip{display:block;font-size:.6875rem;line-height:1.3;font-weight:500;padding:3px 7px;border-radius:6px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip:hover{text-decoration:none;filter:brightness(.97)}
-.k-leave{background:var(--k-leave)}.k-half{background:var(--k-half)}.k-holiday{background:var(--k-holiday)}.k-off{background:var(--sunk)}.k-wfh{background:var(--k-wfh)}.k-downtime{background:var(--k-downtime)}
+.k-leave,.k-half,.k-holiday,.k-wfh,.k-downtime,.k-off{--edge:transparent;background-color:var(--kbg);box-shadow:inset 3px 0 0 var(--edge)}
+.k-leave{--kbg:var(--k-leave);--edge:var(--k-leave-edge)}
+.k-half{--kbg:var(--k-half);--edge:var(--k-half-edge);background-image:linear-gradient(135deg,transparent 50%,rgba(255,255,255,.55) 50%)}
+.k-holiday{--kbg:var(--k-holiday);--edge:var(--k-holiday-edge)}
+.k-wfh{--kbg:var(--k-wfh);--edge:var(--k-wfh-edge)}
+.k-downtime{--kbg:var(--k-downtime);--edge:var(--k-downtime-edge)}
+.k-off{--kbg:var(--k-off);--edge:var(--k-off-edge);background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.05) 6px 8px)}
+:root[data-theme="dark"] .k-half{background-image:linear-gradient(135deg,transparent 50%,rgba(0,0,0,.25) 50%)}
+:root[data-theme="dark"] .k-off{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.04) 6px 8px)}
+/* legend tags get a solid swatch so the key is unmistakable */
+.tag.k-leave,.tag.k-half,.tag.k-holiday,.tag.k-wfh,.tag.k-downtime,.tag.k-off{color:var(--ink);border-color:var(--edge);box-shadow:none;font-weight:600}
+.tag.k-leave::before,.tag.k-half::before,.tag.k-holiday::before,.tag.k-wfh::before,.tag.k-downtime::before,.tag.k-off::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--edge)}
+
 .st-overdue{background:var(--bad-bg);color:var(--bad);box-shadow:inset 2px 0 0 var(--bad)}
 .st-soon{background:var(--warn-bg);color:var(--warn);box-shadow:inset 2px 0 0 #E08A2C}
 .st-track{background:var(--info-bg);color:var(--info);box-shadow:inset 2px 0 0 #4A72CF}
@@ -512,3 +528,8 @@ details.also[open]>summary{display:none}
 .task-row{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));padding:10px;border:1px solid var(--line2);border-radius:10px}
 .task-row-tools{display:flex;gap:6px;align-items:end;grid-column:1/-1}
 .task-rows .task-row:last-child .copy-down{display:none}
+
+/* a cell that is both a day type and a delivery day keeps both marks */
+.cal .day.due[class*="k-"],.plan td.due[class*="k-"],.plan-month td.due[class*="k-"]{box-shadow:inset 3px 0 0 var(--edge),inset 0 -3px 0 var(--red)}
+.plan-month td[class*="k-"] .pk{color:var(--ink);font-weight:600}
+.seg a .muted{margin-left:6px;font-variant-numeric:tabular-nums}

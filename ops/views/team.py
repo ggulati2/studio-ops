@@ -58,7 +58,7 @@ def today(request):
                    for e in plans if e.project_id]
     while len(initial) < 3:
         initial.append({})
-    form = DayForm(request.POST or None, instance=log)
+    form = DayForm(request.POST or None, instance=log, future=d > timezone.localdate())
     formset = TaskFormSet(request.POST or None, initial=initial, form_kwargs={"projects": workable})
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         with transaction.atomic():
@@ -79,7 +79,9 @@ def today(request):
            "prev": d - timedelta(days=1), "next": d + timedelta(days=1), "is_today": d == timezone.localdate(),
            "split": split_hours(log) if log.pk else {}, "my_jobs": _my_projects(user)[:6],
            "att": attendance(user, month), "free_leaves": StudioSettings.get().free_leaves_per_month,
-           "holiday": holidays_between(d, d).get(d), "award": celebrated_award()}
+           "holiday": holidays_between(d, d).get(d), "award": celebrated_award(),
+           "future": d > timezone.localdate(),
+           "leave_req": user.leave_requests.filter(status__in=("pending", "approved"), start__lte=d, end__gte=d).first()}
     if ctx["award"]:
         ctx["congratulated"] = Congrats.objects.filter(award=ctx["award"], user=user).exists()
         ctx["congrats_list"] = ctx["award"].congrats.select_related("user__profile")
@@ -285,12 +287,54 @@ def qc_queue(request):
         projs = {r.project_id for r in passed_m}
         ok = sum(1 for pid in projs if not Review.objects.filter(project_id=pid, kind="qc", passed=False).exists())
         first_time = round(ok / len(projs) * 100)
+    board, counts = qc_board()
+    show = request.GET.get("s", "")
+    if show:
+        board = [b for b in board if b["state"] == show or (show == "failed" and b["fails"])]
     return render(request, "team/qc.html", {
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.select_related("reviewer__profile") if sel else [],
-        "sent_back": Project.objects.filter(status=Project.REVISIONS, reviews__kind="qc").distinct()[:10],
-        "passed": Project.objects.filter(reviews__kind="qc", reviews__passed=True).distinct().order_by("-reviews__created")[:10],
+        "board": board, "counts": counts, "show": show, "states": QC_STATES,
         "first_time": first_time})
+
+
+# key, label, tag colour
+QC_STATES = [("waiting", "Waiting for QC", "qc"), ("recheck", "Back for re-check", "warn"),
+             ("sent_back", "Sent back", "bad"), ("passed", "Passed", "ok"), ("delivered", "Delivered", "info")]
+
+
+def qc_board(days=120):
+    """Every film that reached QC recently, with where it stands now: waiting, back for a
+    re-check after a fail, sent back to the editor, passed, or delivered."""
+    from django.db.models import Prefetch, Q
+    since = timezone.now() - timedelta(days=days)
+    qs = (Project.objects.filter(Q(status=Project.QC) | Q(reviews__kind=Review.QC, reviews__created__gte=since)).distinct()
+          .select_related("agency", "editor__profile")
+          .prefetch_related(Prefetch("reviews", queryset=Review.objects.filter(kind=Review.QC).select_related("reviewer__profile"),
+                                     to_attr="qc_reviews")))
+    label = {k: (lbl, cls) for k, lbl, cls in QC_STATES}
+    rows = []
+    for p in qs:
+        revs = p.qc_reviews          # newest first
+        last = revs[0] if revs else None
+        fails = sum(1 for r in revs if not r.passed)
+        if p.status == Project.QC:
+            state = "recheck" if fails else "waiting"
+        elif last and not last.passed:
+            state = "sent_back"
+        elif p.status in (Project.CLOSED, Project.CLIENT_REV) or p.first_delivered_on:
+            state = "delivered"
+        else:
+            state = "passed"
+        rows.append({"p": p, "state": state, "label": label[state][0], "cls": label[state][1], "last": last,
+                     "rounds": len(revs), "fails": fails, "first_time": bool(revs) and fails == 0 and last.passed,
+                     "when": last.created if last else None})
+    order = {k: i for i, (k, _, _) in enumerate(QC_STATES)}
+    rows.sort(key=lambda b: (order[b["state"]], -(b["when"].timestamp() if b["when"] else 0)))
+    counts = {k: sum(1 for b in rows if b["state"] == k) for k, _, _ in QC_STATES}
+    counts["failed"] = sum(1 for b in rows if b["fails"])
+    counts["all"] = len(rows)
+    return rows, counts
 
 
 @requires("qc.review")

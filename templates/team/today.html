@@ -23,7 +23,10 @@
 <form method="post" class="grow">{% csrf_token %}
   <section class="card">
     <h2>My day</h2>
-    <div><span class="small" style="font-weight:600">Day type</span><div style="margin-top:6px">{{ form.day_type }}</div></div>
+    <div><span class="small" style="font-weight:600">Day type</span><div style="margin-top:6px">{{ form.day_type }}</div>
+      {% if form.day_type.errors %}<div class="errorlist" role="alert" style="margin-top:6px">{{ form.day_type.errors.0 }} <a href="{% url 'my_leave' %}">Apply for leave →</a></div>{% endif %}
+      {% if leave_req %}<div class="small" style="margin-top:6px"><span class="tag {% if leave_req.status == 'approved' %}ok{% else %}warn{% endif %}">Leave {{ leave_req.get_status_display|lower }}</span> {{ leave_req.start|date:"j M" }}{% if leave_req.end != leave_req.start %} – {{ leave_req.end|date:"j M" }}{% endif %}</div>
+      {% elif future %}<div class="small muted" style="margin-top:6px">Planning time off? <a href="{% url 'my_leave' %}">Apply for leave</a> so the founders can approve it.</div>{% endif %}</div>
     <div class="fields">
       <label>In time{{ form.time_in }}</label><label>Out time{{ form.time_out }}</label>
       <div class="field" style="justify-content:flex-end"><span class="small muted">{% if log.pk %}{{ log.office_hours|hours }} h in office · <b>{{ log.hours|hours }} h productive</b>{% if log.break_hours %} (after {{ log.break_hours|hours }} h break){% endif %}{% if log.is_late %} · <b style="color:var(--warn)">Late</b>{% endif %}{% endif %}</span></div>

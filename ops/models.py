@@ -762,3 +762,31 @@ class ClientRevision(models.Model):
 
     class Meta:
         ordering = ["-round"]
+
+
+# --------------------------------------------------------------------------
+# Advance leave: asked for ahead of time, approved by a founder
+# --------------------------------------------------------------------------
+class LeaveRequest(models.Model):
+    PENDING, APPROVED, DECLINED, CANCELLED = "pending", "approved", "declined", "cancelled"
+    STATUSES = [(PENDING, "Waiting for approval"), (APPROVED, "Approved"), (DECLINED, "Declined"), (CANCELLED, "Cancelled")]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="leave_requests")
+    start = models.DateField("From")
+    end = models.DateField("To (including)")
+    half_day = models.BooleanField("Half day", default=False, help_text="Only for a single day")
+    reason = models.CharField(max_length=200)
+    status = models.CharField(max_length=10, choices=STATUSES, default=PENDING)
+    created = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_on = models.DateTimeField(null=True, blank=True)
+    founder_note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"{self.user} {self.start}–{self.end} ({self.status})"
+
+    @property
+    def days(self):
+        return 0.5 if self.half_day else (self.end - self.start).days + 1

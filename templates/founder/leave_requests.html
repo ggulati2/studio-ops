@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Leave requests{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Leave requests</h1><p>Editors apply for leave in advance; nothing goes on the calendar until you approve. Approving marks each working day as Leave (or Half day) and clears planned work on those days. Weekly offs and studio holidays aren't counted.</p></div></div>
+<div class="grid">
+  <div class="kpi {% if pending %}warn{% endif %}"><span>Waiting for you</span><b>{{ pending|length }}</b></div>
+  <div class="kpi"><span>Approved, coming up</span><b>{{ upcoming|length }}</b></div>
+</div>
+
+<section class="card">
+  <h2>Waiting for a decision</h2>
+  {% for r in pending %}
+  <div class="card tight" style="box-shadow:none">
+    <div class="title"><div><b>{{ r.user.profile.name }}</b> <span class="small muted">· asked {{ r.created|date:"j M" }}</span></div>
+      <span class="tag k-{% if r.half_day %}half{% else %}leave{% endif %}">{{ r.start|date:"D j M" }}{% if r.end != r.start %} – {{ r.end|date:"D j M" }}{% endif %} · {% if r.half_day %}half day{% else %}{{ r.working }} working day{{ r.working|pluralize }}{% endif %}</span></div>
+    <div class="small"><b>Reason:</b> {{ r.reason }}</div>
+    <div class="small">
+      {% if r.clash.deadlines %}<span class="tag bad">Deadline{{ r.clash.deadlines|pluralize }} around these dates</span> {% for p in r.clash.deadlines %}{{ p }} ({{ p.deadline|date:"j M" }}){% if not forloop.last %}, {% endif %}{% endfor %}<br>{% endif %}
+      {% if r.clash.planned %}<span class="tag warn">Planned work</span> {{ r.clash.planned|join:", " }}<br>{% endif %}
+      {% if r.clash.off %}<span class="tag info">Also off</span> {{ r.clash.off|join:", " }}{% endif %}
+      {% if not r.clash.deadlines and not r.clash.planned and not r.clash.off %}<span class="tag ok">No clashes</span> No deadlines, planned work or other leave on these dates.{% endif %}
+    </div>
+    <form method="post" action="{% url 'leave_decide' r.pk %}" class="actions">{% csrf_token %}
+      <input class="input" name="founder_note" placeholder="Note to {{ r.user.profile.name }} (optional)" style="flex:1 1 220px;width:auto" maxlength="200">
+      <button class="btn good" name="decision" value="approve">Approve</button>
+      <button class="btn danger" name="decision" value="decline">Decline</button>
+    </form>
+  </div>
+  {% empty %}<span class="muted small">Nothing waiting.</span>{% endfor %}
+</section>
+
+<div class="row">
+  <section class="card grow"><h2>Approved, coming up</h2>
+  <div class="scroll"><table class="stack"><thead><tr><th>Person</th><th>Dates</th><th>Reason</th><th>Approved by</th><th></th></tr></thead><tbody>
+  {% for r in upcoming %}<tr><td><b>{{ r.user.profile.name }}</b></td>
+    <td class="nowrap">{{ r.start|date:"j M" }}{% if r.end != r.start %} – {{ r.end|date:"j M" }}{% endif %}{% if r.half_day %} <span class="tag k-half">Half day</span>{% endif %}</td>
+    <td>{{ r.reason }}</td><td class="small">{{ r.decided_by.profile.name|default:"—" }} · {{ r.decided_on|date:"j M" }}</td>
+    <td><form method="post" action="{% url 'leave_decide' r.pk %}" data-confirm="Cancel {{ r.user.profile.name }}'s approved leave? The days come off the calendar.">{% csrf_token %}<button class="btn sm" name="decision" value="revoke">Cancel leave</button></form></td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">No approved leave coming up.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+  <section class="card grow"><h2>History</h2>
+  <div class="scroll"><table class="stack"><thead><tr><th>Person</th><th>Dates</th><th>Decision</th></tr></thead><tbody>
+  {% for r in decided %}<tr><td>{{ r.user.profile.name }}</td><td class="nowrap">{{ r.start|date:"j M" }}{% if r.end != r.start %} – {{ r.end|date:"j M" }}{% endif %}</td>
+    <td><span class="tag {% if r.status == 'approved' %}ok{% elif r.status == 'declined' %}bad{% endif %}">{{ r.get_status_display }}</span><div class="small muted">{{ r.decided_by.profile.name|default:"" }}{% if r.decided_on %} · {{ r.decided_on|date:"j M" }}{% endif %}{% if r.founder_note %} · {{ r.founder_note }}{% endif %}</div></td></tr>
+  {% empty %}<tr><td colspan="3" class="muted">No history yet.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+</div>
+{% endblock %}
