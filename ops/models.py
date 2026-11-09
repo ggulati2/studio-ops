@@ -254,11 +254,11 @@ class DriveReturn(models.Model):
 class Project(models.Model):
     NOT_STARTED, IN_PROGRESS, TL_REVIEW, QC, REVISIONS, QC_PASSED, CLOSED, ON_HOLD = (
         "not_started", "in_progress", "tl_review", "qc", "revisions", "qc_passed", "closed", "on_hold")
-    TL_REVISIONS, CLIENT_REV = "tl_revisions", "client_rev"
+    TL_REVISIONS, CLIENT_REV, SENT_AGENCY = "tl_revisions", "client_rev", "sent_agency"
     QC_REVISIONS = REVISIONS            # stored as "revisions" (existing data), shown as "QC revisions"
     STATUSES = [(NOT_STARTED, "Not started"), (IN_PROGRESS, "In progress"), (TL_REVIEW, "TL review"),
                 (TL_REVISIONS, "TL revisions"), (QC, "In QC"), (REVISIONS, "QC revisions"), (QC_PASSED, "QC passed"),
-                (CLOSED, "Delivered"), (CLIENT_REV, "Client revision"), (ON_HOLD, "On hold")]
+                (SENT_AGENCY, "Sent to agency"), (CLOSED, "Delivered"), (CLIENT_REV, "Client revision"), (ON_HOLD, "On hold")]
     WORKABLE = (NOT_STARTED, IN_PROGRESS, TL_REVISIONS, REVISIONS, CLIENT_REV)   # editor can send these for review
     TIMING = [("", "Automatic (from dates)"), ("on_time", "On time"), ("late", "Delivered late"),
               ("client_delay", "Late due to client approval (not our delay)")]
@@ -316,6 +316,11 @@ class Project(models.Model):
 
     def save(self, *args, **kwargs):
         from django.utils import timezone as tz
+        if self.status == self.SENT_AGENCY and not self.first_delivered_on:
+            # Sending the film to the agency is our delivery: on time / late is judged on this date
+            self.first_delivered_on, self.deadline_at_delivery = tz.localdate(), self.deadline
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = list(set(kwargs["update_fields"]) | {"first_delivered_on", "deadline_at_delivery"})
         if self.status == self.CLOSED:
             self.closed_on = self.closed_on or tz.localdate()
             if not self.first_delivered_on:
@@ -365,7 +370,7 @@ class Project(models.Model):
 
     @property
     def days_left(self):
-        if not self.deadline or not self.is_open:
+        if not self.deadline or not self.is_open or self.status == self.SENT_AGENCY:
             return None
         return (self.deadline - timezone.localdate()).days
 
@@ -374,6 +379,8 @@ class Project(models.Model):
         d = self.days_left
         if self.status == self.CLOSED:
             return self.timing_label or "Delivered"
+        if self.status == self.SENT_AGENCY:
+            return (self.timing_label or "Delivered").replace("Delivered", "Sent", 1)
         if not self.editor_id and self.is_open:
             return "Needs an editor"
         if d is None:

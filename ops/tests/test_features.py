@@ -265,7 +265,7 @@ class NewProjectOptions(SeededTestCase):
                     self.assertNotIn(secret.isoformat(), body)
         nikhil_pod = self.login("nikhil").get("/pod/").content.decode()
         self.assertNotIn(secret.strftime("%-d %b"), nikhil_pod)
-        self.assertContains(self.login("ag").get("/projects/?status="), secret.strftime("%-d %b"))
+        self.assertContains(self.login("ag").get("/projects/?status="), secret.isoformat())
 
 
 class RevisionsAndTags(SeededTestCase):
@@ -530,3 +530,49 @@ class ProjectsListChanges(SeededTestCase):
         r = f.post(f"/projects/{p.pk}/status/", {"status": Project.CLOSED, "next": "https://evil.example/"})
         self.assertEqual(r["Location"], "/projects/")
         self.assertEqual(self.login("pratik").post(f"/projects/{p.pk}/status/", {"status": Project.QC}).status_code, 403)
+
+
+class ProjectsInlineEdits(SeededTestCase):
+    def setUp(self):
+        self.f = self.login("ag")
+        self.p = Project.objects.filter(status=Project.IN_PROGRESS, editor__isnull=False).first()
+        self.today = timezone.localdate()
+
+    def post(self, data):
+        return self.f.post(f"/projects/{self.p.pk}/status/", {**data, "next": "/projects/"})
+
+    def test_invoice_and_dates(self):
+        self.post({"invoice_amount": "42,500"})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.invoice_amount, 42500)
+        ad = self.today + timedelta(days=30)
+        self.post({"agency_deadline": ad.isoformat()})
+        ed = self.today + timedelta(days=20)
+        self.post({"deadline": ed.isoformat()})
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.deadline, self.p.agency_deadline), (ed, ad))
+        # Editor's deadline after the agency's is refused
+        self.post({"deadline": (ad + timedelta(days=2)).isoformat()})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.deadline, ed)
+        self.post({"invoice_amount": "abc"})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.invoice_amount, 42500)
+        html = self.f.get("/projects/").content.decode()
+        self.assertIn('name="invoice_amount"', html)
+        self.assertIn('name="agency_deadline"', html)
+
+    def test_sent_to_agency(self):
+        self.p.deadline = self.today - timedelta(days=1)
+        self.p.save()
+        self.post({"status": Project.SENT_AGENCY})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.get_status_display(), "Sent to agency")
+        self.assertEqual(self.p.first_delivered_on, self.today)
+        self.assertIsNone(self.p.days_left)          # no longer "overdue"
+        self.assertTrue(self.p.delivered_late)
+        self.assertIn("Sent to agency", self.f.get("/projects/").content.decode())
+        # Delivered later keeps the date it went to the agency
+        self.post({"status": Project.CLOSED})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.first_delivered_on, self.today)

@@ -541,3 +541,17 @@ select.status-select.tag{appearance:none;-webkit-appearance:none;cursor:pointer;
 .status-pick::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;margin-top:-4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);pointer-events:none;color:var(--muted)}
 select.status-select:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .status-select option{color:var(--ink);background:var(--card)}
+
+/* cells edited straight in the Projects list */
+.cell-edit{display:inline-flex;align-items:center;gap:4px;margin:0;vertical-align:middle}
+.cell-input{font:inherit;font-size:var(--t-sm);color:var(--ink);background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 6px;min-height:32px;width:auto;max-width:100%;transition:border-color .15s,background .15s}
+.cell-input:hover{border-color:var(--line)}
+.cell-input:focus{outline:none;border-color:var(--red);background:var(--card);box-shadow:0 0 0 3px var(--red-soft)}
+.cell-input[type=date]{width:9.2em}
+.cell-input.num{width:7em;field-sizing:content;min-width:5ch;text-align:right;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.cell-input.num::-webkit-inner-spin-button,.cell-input.num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.money-edit .cur{color:var(--muted);font-size:var(--t-sm)}
+:root[data-theme="dark"] .cell-input{color-scheme:dark}
+form.is-saving .cell-input,form.is-saving select{opacity:.55}
+select.status-select.tag:not(.ok):not(.warn):not(.bad):not(.info):not(.qc):not(.gold){color:var(--ink)}
+.money-edit{gap:2px}

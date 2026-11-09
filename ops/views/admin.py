@@ -54,7 +54,8 @@ def dashboard(request):
     logged = set(DayLog.objects.filter(date=yesterday).values_list("user_id", flat=True))
     missing = [u for u in team() if u.id not in logged and yesterday.weekday() in StudioSettings.get().weekdays
                and yesterday not in holidays_between(yesterday, yesterday)]
-    delivered = Project.objects.filter(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__gte=month)
+    delivered = Project.objects.filter(Q(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__gte=month)
+                                       | Q(status=Project.SENT_AGENCY, first_delivered_on__gte=month))
     on_time = [p for p in delivered if p.deadline]
     rev_by_agency = defaultdict(int)
     for p in delivered.select_related("agency"):
@@ -101,7 +102,7 @@ def projects(request):
     if status == "open":
         qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
     elif status == "late":
-        qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).filter(deadline__lt=today)
+        qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY)).filter(deadline__lt=today)
     elif status == "revisions":
         qs = qs.filter(status__in=(Project.TL_REVISIONS, Project.REVISIONS, Project.CLIENT_REV))
     elif status:
@@ -151,19 +152,60 @@ def projects(request):
 
 @requires("projects.manage")
 def project_status(request, pk):
-    """Change a film's status straight from the Projects list."""
+    """Change a film's status, deadlines or invoice amount straight from the Projects list."""
     from django.utils.http import url_has_allowed_host_and_scheme
     p = get_object_or_404(Project, pk=pk)
     nxt = request.POST.get("next", "")
     if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
         nxt = reverse("projects")
-    new = request.POST.get("status", "")
-    if request.method == "POST" and new in dict(Project.STATUSES) and new != p.status:
-        old = p.get_status_display()
-        p.status = new
-        p.save()
-        record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
-        messages.success(request, f"{p}: {old} → {p.get_status_display()}.")
+    if request.method != "POST":
+        return redirect(nxt)
+    P = request.POST
+    if "status" in P:
+        new = P["status"]
+        if new in dict(Project.STATUSES) and new != p.status:
+            old = p.get_status_display()
+            p.status = new
+            p.save()
+            record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
+            messages.success(request, f"{p}: {old} → {p.get_status_display()}.")
+    elif "invoice_amount" in P:
+        raw = P["invoice_amount"].replace(",", "").strip() or "0"
+        if not raw.isdigit() or int(raw) > 100_000_000:
+            messages.error(request, f"{p}: invoice amount must be a whole number.")
+        elif int(raw) != p.invoice_amount:
+            old = p.invoice_amount
+            p.invoice_amount = int(raw)
+            p.save(update_fields=["invoice_amount"])
+            record(request, "project.invoice", str(p), f"{old} -> {p.invoice_amount}")
+            messages.success(request, f"{p}: invoice {p.agency.symbol}{old:,} → {p.agency.symbol}{p.invoice_amount:,}.")
+    else:
+        field = "deadline" if "deadline" in P else "agency_deadline" if "agency_deadline" in P else None
+        if field:
+            label = "Editor's deadline" if field == "deadline" else "Agency's deadline"
+            try:
+                new = date.fromisoformat(P[field]) if P[field] else None
+            except ValueError:
+                new = False
+            ed = new if field == "deadline" else p.deadline
+            ad = new if field == "agency_deadline" else p.agency_deadline
+            if new is False:
+                messages.error(request, f"{p}: that isn't a valid date.")
+            elif ed and ad and ed > ad:
+                messages.error(request, f"{p}: the editor's deadline ({ed:%-d %b}) can't be after the agency's ({ad:%-d %b}). Not saved.")
+            elif new != getattr(p, field):
+                old = getattr(p, field)
+                setattr(p, field, new)
+                p.save(update_fields=[field])
+                record(request, "project.deadline", str(p), f"{label}: {old} -> {new}")
+                messages.success(request, f"{p}: {label.lower()} {old:%-d %b} → {new:%-d %b}." if old and new
+                                 else f"{p}: {label.lower()} {'set to ' + format(new, '%-d %b') if new else 'cleared'}.")
+                if field == "deadline" and new and p.editor_id:
+                    made, short = S.auto_plan(p)
+                    if made:
+                        messages.info(request, f"Planner updated: {made} day(s) planned for {p.editor.profile.name}.")
+                    if short:
+                        messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
     return redirect(nxt)
 
 

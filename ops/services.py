@@ -229,7 +229,7 @@ CLIENT_STAGE = {
     Project.NOT_STARTED: "Scheduled", Project.IN_PROGRESS: "Editing", Project.TL_REVIEW: "Final checks",
     Project.QC: "Final checks", Project.REVISIONS: "Changes in progress", Project.QC_PASSED: "Final checks",
     Project.TL_REVISIONS: "Editing", Project.CLIENT_REV: "Changes in progress",
-    Project.CLOSED: "Delivered", Project.ON_HOLD: "Scheduled",
+    Project.SENT_AGENCY: "Delivered", Project.CLOSED: "Delivered", Project.ON_HOLD: "Scheduled",
 }
 
 

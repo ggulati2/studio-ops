@@ -51,6 +51,22 @@
       }
     });
 
+    /* Inline dates save when you leave the field or press Enter, not on every keystroke
+       (a date being typed is "valid" after each digit) */
+    function saveDate(el) {
+      if (!el.form || el.value === el.defaultValue || el.form.classList.contains("is-saving")) return;
+      if (el.value && (+el.value.slice(0, 4) < 2000 || !el.checkValidity())) return;
+      el.form.classList.add("is-saving");
+      if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
+    }
+    doc.addEventListener("focusout", function (e) {
+      if (e.target.matches && e.target.matches("[data-save-on-leave]")) saveDate(e.target);
+    });
+    doc.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target.matches && e.target.matches("[data-save-on-leave]")) { e.preventDefault(); saveDate(e.target); }
+      if (e.key === "Escape" && e.target.matches && e.target.matches("[data-save-on-leave]")) { e.target.value = e.target.defaultValue; e.target.blur(); }
+    });
+
     /* Ask before anything that can't be undone */
     doc.addEventListener("click", function (e) {
       var c = e.target.closest("[data-confirm]");

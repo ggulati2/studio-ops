@@ -42,7 +42,7 @@ def delays(request):
     today = timezone.localdate()
     pending = DelayReport.objects.filter(status=DelayReport.PENDING).select_related("project__agency", "project__editor__profile", "reported_by__profile")
     # Late with no word from the editor
-    silent = (Project.objects.filter(deadline__lt=today).exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
+    silent = (Project.objects.filter(deadline__lt=today).exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY))
               .exclude(delays__status=DelayReport.PENDING).select_related("agency", "editor__profile"))
     since = today - timedelta(days=90)
     recent = DelayReport.objects.filter(reported_on__date__gte=since).select_related("project__editor__profile")
