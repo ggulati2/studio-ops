@@ -76,6 +76,7 @@ urlpatterns = [
     path("contract-editors/", v.contractors, name="contractors"),
     path("contract-editors/<int:pk>/", v.contractor_detail, name="contractor_detail"),
     path("contract-editors/payment/<int:pk>/delete/", v.contract_payment_delete, name="contract_payment_delete"),
+    path("contract-editors/day/<int:pk>/delete/", v.contract_log_delete, name="contract_log_delete"),
     path("my-payments/", v.my_payments, name="my_payments"),
     path("my-leave/", v.my_leave, name="my_leave"),
     path("my-leave/<int:pk>/cancel/", v.leave_cancel, name="leave_cancel"),

@@ -169,6 +169,24 @@ def project_status(request, pk):
             p.save()
             record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
             messages.success(request, f"{p}: {old} → {p.get_status_display()}.")
+    elif "editor" in P:
+        raw = P["editor"]
+        new = None if not raw else team().filter(pk=raw).first() if raw.isdigit() else False
+        if new is False or (raw and new is None):
+            messages.error(request, "Pick an editor from the list.")
+        elif (new.pk if new else None) != p.editor_id:
+            old = p.editor.profile.name if p.editor_id else "Unassigned"
+            p.editor = new
+            p.save(update_fields=["editor"])
+            now = new.profile.name if new else "Unassigned"
+            record(request, "project.editor", str(p), f"{old} -> {now}")
+            messages.success(request, f"{p}: {old} → {now}.")
+            if new:
+                made, short = S.auto_plan(p)
+                if made:
+                    messages.info(request, f"Planner updated: {made} day(s) planned for {now}.")
+                if short:
+                    messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
     elif "invoice_amount" in P:
         raw = P["invoice_amount"].replace(",", "").strip() or "0"
         if not raw.isdigit() or int(raw) > 100_000_000:
@@ -533,7 +551,10 @@ def person_edit(request, pk=None):
             user.is_active = c["active"]
             # Founders get the back office; nobody else does.
             user.is_staff = user.is_superuser = (c["role"] == Profile.ADMIN)
-            if c["password"]:
+            contract = c["employment"] == Profile.CONTRACT
+            if contract:
+                user.set_unusable_password()      # contract editors are managed here but never sign in
+            elif c["password"]:
                 user.set_password(c["password"])
             user.save()
             p, _ = Profile.objects.get_or_create(user=user)
@@ -543,14 +564,18 @@ def person_edit(request, pk=None):
             p.contract_rate = (c["contract_rate"] or 0) if p.is_contract else 0
             if p.is_contract:
                 p.monthly_salary = 0
-            if c["password"] and user.pk != request.user.pk:
+            if c["password"] and user.pk != request.user.pk and not contract:
                 p.must_change_password = True   # a password someone else knows must be replaced at first login
             p.save()
         record(request, "people.create" if created else "people.update", user.username,
-               f"role {old_role or '-'} -> {c['role']}; active={c['active']}" + ("; password set" if c["password"] else ""))
+               f"role {old_role or '-'} -> {c['role']}; active={c['active']}"
+               + ("; contract, no login" if contract else "; password set" if c["password"] else ""))
         if c["password"] and user.pk == request.user.pk:
             from django.contrib.auth import update_session_auth_hash
             update_session_auth_hash(request, user)
+        if contract:
+            messages.success(request, f"Saved {user.profile.name} (contract, no portal login). Log their work and payments under Contract editors.")
+            return redirect("contractor_detail", pk=user.pk)
         if c["password"] and user.pk != request.user.pk:
             # Show the login details once, on this response only (never stored or put in a cookie).
             resp = render(request, "founder/person_saved.html", {

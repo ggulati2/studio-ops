@@ -30,6 +30,16 @@
       <p class="small muted" style="margin:0">Fees count as earned when the film is delivered.</p></section>{% endif %}
   </div>
   <aside class="aside">
+    {% if u.profile.contract_basis == 'hour' or u.profile.contract_basis == 'day' %}
+    <form method="post" class="card">{% csrf_token %}<input type="hidden" name="action" value="log"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
+      <h2>Log a {% if u.profile.contract_basis == 'hour' %}work session{% else %}day worked{% endif %}</h2>
+      <p class="small muted" style="margin:0">{{ u.profile.name }} has no login, so their {% if u.profile.contract_basis == 'hour' %}hours{% else %}days{% endif %} are logged here. Logging the same date again replaces it.</p>
+      {% with form=work_form %}{% include "_form.html" %}{% endwith %}<button class="btn primary">Log it</button></form>
+    {% if logs %}<section class="card"><h2>Logged in {{ month|date:"F" }}</h2>
+      {% for l in logs %}<div class="title small"><span><b>{{ l.date|date:"D j M" }}</b> · {% if u.profile.contract_basis == 'hour' %}{{ l.hours|hours }} h{% if l.time_in %} ({{ l.time_in|time:"H:i" }}–{{ l.time_out|time:"H:i" }}){% endif %}{% else %}{{ l.get_day_type_display }}{% endif %}{% for t in l.tasks.all %} · {{ t.project }}{% endfor %}</span>
+        <form method="post" action="{% url 'contract_log_delete' l.pk %}">{% csrf_token %}<button class="btn sm danger" data-confirm="Remove {{ l.date|date:'j M' }}?">Remove</button></form></div>{% endfor %}
+    </section>{% endif %}
+    {% endif %}
     <form method="post" class="card">{% csrf_token %}<input type="hidden" name="action" value="pay"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
       <h2>Record a payment</h2>{% include "_form.html" %}<button class="btn primary">Record payment</button></form>
     <section class="card"><h2>Payments</h2>

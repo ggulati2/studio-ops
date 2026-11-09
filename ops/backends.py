@@ -19,3 +19,11 @@ class CaseInsensitiveBackend(ModelBackend):
         if user.check_password(password) and self.user_can_authenticate(user):
             return user
         return None
+
+    def user_can_authenticate(self, user):
+        """Contract editors are kept in the portal for planning and payments but never sign in.
+        Also ends any session such a person still had (get_user checks this too)."""
+        if not super().user_can_authenticate(user):
+            return False
+        prof = getattr(user, "profile", None)
+        return not (prof and prof.employment == "contract")

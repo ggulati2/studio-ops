@@ -384,7 +384,7 @@ class StudioSettingsForm(StyledMixin, forms.ModelForm):
 class PersonForm(StyledMixin, forms.Form):
     first_name = forms.CharField(label="Name", max_length=60)
     last_name = forms.CharField(label="Surname", max_length=60, required=False)
-    username = forms.CharField(label="Login ID", max_length=60,
+    username = forms.CharField(label="Login ID", max_length=60, required=False,
                                help_text="Filled in as Name_Surname while you type. You can change it. Letters, numbers and _ . - only; "
                                          "capitals don't matter when they log in.")
     email = forms.EmailField(required=False)
@@ -425,9 +425,22 @@ class PersonForm(StyledMixin, forms.Form):
                                 contract_rate=p.contract_rate,
                                 role=p.role, pod=p.pod, monthly_salary=p.monthly_salary, joined_on=p.joined_on, active=p.active)
 
+    @property
+    def is_contract(self):
+        return (self.data.get("employment") if self.is_bound else self.initial.get("employment")) == Profile.CONTRACT
+
     def clean_username(self):
         import re
         u = self.cleaned_data["username"].strip()
+        if not u and self.is_contract:
+            # Contract editors never sign in; they still need an internal ID
+            base = re.sub(r"[^A-Za-z0-9]+", "_", f"{self.data.get('first_name', '')} {self.data.get('last_name', '')}".strip()).strip("_") or "contract"
+            u, n = base, 2
+            while User.objects.filter(username__iexact=u).exclude(pk=getattr(self.instance, "pk", None)).exists():
+                u, n = f"{base}_{n}", n + 1
+            return u
+        if not u:
+            raise forms.ValidationError("Enter a login ID.")
         if not re.fullmatch(r"[A-Za-z0-9_.\-]+", u):
             raise forms.ValidationError("Use letters, numbers and _ . - only (no spaces).")
         qs = User.objects.filter(username__iexact=u)
@@ -440,6 +453,8 @@ class PersonForm(StyledMixin, forms.Form):
     def clean_password(self):
         from django.contrib.auth.password_validation import validate_password
         pw = self.cleaned_data.get("password")
+        if self.is_contract:
+            return ""          # contract editors don't get a login
         if not self.instance and not pw:
             raise forms.ValidationError("New people need a first password.")
         if pw:
@@ -586,4 +601,30 @@ class LeaveRequestForm(StyledMixin, forms.ModelForm):
             if clash.exists():
                 c = clash.first()
                 raise forms.ValidationError(f"You already asked for {c.start:%-d %b}–{c.end:%-d %b} ({c.get_status_display().lower()}).")
+        return data
+
+
+class ContractWorkForm(StyledMixin, forms.Form):
+    """Founders log a contract editor's day (contract editors have no login)."""
+    date = forms.DateField(widget=DATE)
+    day_type = forms.ChoiceField(choices=[(DayLog.OFFICE, "Full day"), (DayLog.HALF, "Half day"), (DayLog.WFH, "Remote")],
+                                 initial=DayLog.OFFICE, label="Day")
+    time_in = forms.TimeField(widget=TIME, required=False, label="Start")
+    time_out = forms.TimeField(widget=TIME, required=False, label="End")
+    project = forms.ModelChoiceField(queryset=Project.objects.none(), required=False, label="Film (optional)")
+    notes = forms.CharField(max_length=200, required=False)
+
+    def __init__(self, *args, user=None, hourly=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hourly = hourly
+        if user is not None:
+            self.fields["project"].queryset = Project.objects.filter(editor=user).exclude(status=Project.CLOSED).select_related("agency")
+        if hourly:
+            self.fields["time_in"].required = self.fields["time_out"].required = True
+            self.fields["time_in"].help_text = "Hours are paid from start to end, minus the studio break on days over 5 h."
+
+    def clean(self):
+        data = super().clean()
+        if self.hourly and data.get("time_in") and data.get("time_out") and data["time_in"] == data["time_out"]:
+            self.add_error("time_out", "End must differ from start.")
         return data

@@ -68,14 +68,18 @@
     </select>
     <div class="actions"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
   </form>
-  <div class="scroll"><table style="min-width:1040px">
+  <div class="scroll"><table style="min-width:1040px" data-columns="projects">
     <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
       <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
       <td class="muted">{{ p.agency }}</td>
-      <td>{{ p.editor.profile.name|default:"—" }}</td>
+      <td><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <select name="editor" class="cell-input cell-select{% if not p.editor_id %} empty{% endif %}" data-autosubmit aria-label="Editor for {{ p }}">
+          <option value="">— Unassigned —</option>{% for u in editors %}<option value="{{ u.pk }}"{% if u.pk == p.editor_id %} selected{% endif %}>{{ u.profile.name }}{% if u.profile.is_contract %} (contract){% endif %}</option>{% endfor %}
+          {% if p.editor_id and p.editor not in editors %}<option value="{{ p.editor_id }}" selected disabled>{{ p.editor.profile.name }} (inactive)</option>{% endif %}
+        </select><noscript><button class="btn sm">Save</button></noscript></form></td>
       <td class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <input type="date" name="deadline" value="{{ p.deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Editor's deadline for {{ p }}"{% if p.agency_deadline %}{% endif %}><noscript><button class="btn sm">Save</button></noscript></form>
+        <input type="date" name="deadline" value="{{ p.deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Editor's deadline for {{ p }}"{% if p.agency_deadline %} max="{{ p.agency_deadline|date:'Y-m-d' }}"{% endif %}><noscript><button class="btn sm">Save</button></noscript></form>
         {% if p.flag %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td>
       <td class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
         <input type="date" name="agency_deadline" value="{{ p.agency_deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Agency's deadline for {{ p }}"><noscript><button class="btn sm">Save</button></noscript></form>

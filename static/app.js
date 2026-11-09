@@ -254,6 +254,8 @@
         if (sal) sal.hidden = contract;
         if (cb) cb.hidden = !contract;
         if (cr) cr.hidden = !contract || !basis || basis.value === "project" || !basis.value;
+        ["username", "password"].forEach(function (n) { var r = rowOf(n); if (r) r.hidden = contract; });
+        var note = pf.querySelector("[data-contract-note]"); if (note) note.hidden = !contract;
       }
       Array.prototype.forEach.call(emp, function (r) { r.addEventListener("change", empSync); });
       if (basis) basis.addEventListener("change", empSync);

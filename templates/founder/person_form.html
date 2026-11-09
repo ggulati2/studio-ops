@@ -2,10 +2,11 @@
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="head"><div><a href="{% url 'team' %}" class="small">← Team &amp; attendance</a><h1>{{ title }}</h1>
-<p>Only people you add here can sign in. Pick the role carefully: it decides everything they can see.</p></div></div>
+<p>Only people you add here can sign in. Pick the role carefully: it decides everything they can see. Contract editors don't get a login: you plan their work and track their payments.</p></div></div>
 <form method="post" class="card person-form" style="max-width:860px" data-person-form data-original-role="{{ person.profile.role|default:'' }}"{% if not person %} data-new{% endif %}>
   {% csrf_token %}
   {% include "_form.html" %}
+  <div class="note-box" data-contract-note hidden><b>No portal login for contract editors.</b> They appear in the Planner and on films, and you log their days and payments under <i>Contract editors</i>. Their login ID and password are not needed.</div>
   <div class="founder-warning" data-founder-warning hidden role="alert">
     <b>You're giving founder access.</b>
     <span>This person will see every invoice, salary and client rate, can add or remove people (including you), download all data and use the back office. Only choose this for a business partner.</span>

@@ -157,14 +157,30 @@ class ContractEditors(SeededTestCase):
         ag.post(f"/contract-editors/{k.pk}/", {"action": "fee", "project": p.pk, "fee": "6000", "m": f"{p.closed_on:%Y-%m}"})
         self.assertEqual(S.contract_statement(k, p.closed_on)["earned"], 6000)
 
-    def test_contractor_sees_own_payments_only(self):
+    def test_contract_editor_has_no_login(self):
         k = self._add("day", 1200)
-        k.profile.must_change_password = False; k.profile.save()
+        self.assertFalse(k.has_usable_password())
         from django.test import Client
-        c = Client(); c.login(username="kabir_rao", password="Kite-Mango-4729")
-        self.assertEqual(c.get("/my-payments/").status_code, 200)
-        self.assertEqual(c.get("/contract-editors/").status_code, 403)
-        self.assertEqual(self.login("pratik").get("/my-payments/").status_code, 302)   # full-timers go to payslips
+        self.assertFalse(Client().login(username="kabir_rao", password="Kite-Mango-4729"))
+        # Even an old contract login with a password is refused
+        k.set_password("Kite-Mango-4729"); k.save()
+        self.assertFalse(Client().login(username="kabir_rao", password="Kite-Mango-4729"))
+        # Login ID and password are optional for contract people
+        r = self.login("ag").post("/team/new/", {"first_name": "Riya", "last_name": "Sen", "role": "editor", "employment": "contract",
+                                                 "contract_basis": "project", "monthly_salary": 0, "active": "on"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(U.objects.filter(username="Riya_Sen", profile__employment="contract").exists())
+
+    def test_founder_logs_contract_hours(self):
+        k = self._add("hour", 400)
+        today = timezone.localdate()
+        ag = self.login("ag")
+        ag.post(f"/contract-editors/{k.pk}/", {"action": "log", "date": today.isoformat(), "day_type": "office",
+                                               "time_in": "10:00", "time_out": "14:00", "m": today.strftime("%Y-%m")})
+        self.assertEqual(S.contract_statement(k, today)["earned"], 1600)
+        log = DayLog.objects.get(user=k, date=today)
+        ag.post(f"/contract-editors/day/{log.pk}/delete/")
+        self.assertFalse(DayLog.objects.filter(user=k, date=today).exists())
 
 
 class CopyDown(SeededTestCase):

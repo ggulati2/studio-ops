@@ -2,14 +2,15 @@
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from .. import services as S
 from ..audit import record
-from ..forms import ContractPaymentForm
-from ..models import ContractPayment, Profile, Project
+from ..forms import ContractPaymentForm, ContractWorkForm
+from ..models import ContractPayment, DayLog, Profile, Project, TaskEntry
 from ..rbac import requires
 
-__all__ = ["contractors", "contractor_detail", "contract_payment_delete", "my_payments"]
+__all__ = ["contractors", "contractor_detail", "contract_payment_delete", "contract_log_delete", "my_payments"]
 User = get_user_model()
 
 
@@ -32,8 +33,23 @@ def contractor_detail(request, pk):
     u = get_object_or_404(User, pk=pk, profile__employment=Profile.CONTRACT)
     month = S.parse_month(request.GET.get("m") or request.POST.get("m"))
     form = ContractPaymentForm(request.POST if request.POST.get("action") == "pay" else None)
+    basis = u.profile.contract_basis or "project"
+    work_form = ContractWorkForm(request.POST if request.POST.get("action") == "log" else None, user=u, hourly=basis == "hour",
+                                 initial={"date": S.timezone.localdate()})
     if request.method == "POST":
         action = request.POST.get("action")
+        if action == "log" and work_form.is_valid():
+            w = work_form.cleaned_data
+            log, _ = DayLog.objects.update_or_create(user=u, date=w["date"], defaults={
+                "day_type": w["day_type"], "time_in": w["time_in"], "time_out": w["time_out"], "notes": w["notes"]})
+            if w["project"]:
+                TaskEntry.objects.get_or_create(daylog=log, project=w["project"])
+                if w["project"].status == Project.NOT_STARTED:
+                    Project.objects.filter(pk=w["project"].pk).update(status=Project.IN_PROGRESS)
+            what = f"{log.hours:g} h" if basis == "hour" else log.get_day_type_display()
+            record(request, "contract.work", u.username, f"{w['date']}: {what}")
+            messages.success(request, f"Logged {w['date']:%-d %b} for {u.profile.name}: {what}.")
+            return redirect(f"{request.path}?m={w['date']:%Y-%m}")
         if action == "pay" and form.is_valid():
             pay = form.save(commit=False)
             pay.user, pay.created_by = u, request.user
@@ -55,7 +71,9 @@ def contractor_detail(request, pk):
     st = S.contract_statement(u, month)
     open_jobs = Project.objects.filter(editor=u).exclude(status=Project.CLOSED) if u.profile.contract_basis == "project" else []
     return render(request, "money/contractor.html", {
-        "u": u, "st": st, "month": month, "form": form, "open_jobs": open_jobs,
+        "u": u, "st": st, "month": month, "form": form, "open_jobs": open_jobs, "work_form": work_form,
+        "logs": DayLog.objects.filter(user=u, date__range=(S.month_start(month), S.month_end(month))).prefetch_related("tasks__project")
+        if basis in ("hour", "day") else [],
         "prev": S.add_months(month, -1), "next": S.add_months(month, 1),
         "history": ContractPayment.objects.filter(user=u)[:50]})
 
@@ -68,6 +86,16 @@ def contract_payment_delete(request, pk):
         pay.delete()
         messages.info(request, "Payment removed.")
     return redirect("contractor_detail", pk=pay.user_id)
+
+
+@requires("payroll.manage")
+def contract_log_delete(request, pk):
+    log = get_object_or_404(DayLog, pk=pk, user__profile__employment=Profile.CONTRACT)
+    if request.method == "POST":
+        record(request, "contract.work_deleted", log.user.username, str(log.date))
+        log.delete()
+        messages.info(request, f"Removed {log.date:%-d %b}.")
+    return redirect(f"{reverse('contractor_detail', args=[log.user_id])}?m={log.date:%Y-%m}")
 
 
 @requires("payslips.view_own")
