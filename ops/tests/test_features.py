@@ -652,3 +652,42 @@ class PlannerLive(SeededTestCase):
         p = Project.objects.filter(agency__code__gt="").select_related("agency").first()
         html = self.f.get("/projects/?status=").content.decode()
         self.assertIn(f'title="{p.agency.name}">{p.agency.code}</abbr>', html)
+
+
+class ProjectsLive(SeededTestCase):
+    def setUp(self):
+        self.f = self.login("ag")
+        self.p = Project.objects.filter(status=Project.IN_PROGRESS, editor__isnull=False).first()
+
+    def ajax(self, url, data):
+        r = self.f.post(url, data, HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(r.status_code, 200)
+        return r.json()
+
+    def test_inline_edit_returns_row_and_undo(self):
+        res = self.ajax(f"/projects/{self.p.pk}/status/", {"invoice_amount": "12345"})
+        self.assertTrue(res["ok"])
+        self.assertIn(f'data-pk="{self.p.pk}"', res["row"])
+        self.assertIn('value="12345"', res["row"])
+        self.assertEqual(res["messages"][0]["level"], "success")
+        old = res["undo"]["invoice_amount"]
+        self.ajax(f"/projects/{self.p.pk}/status/", res["undo"])
+        self.p.refresh_from_db()
+        self.assertEqual(str(self.p.invoice_amount), old)
+        bad = self.ajax(f"/projects/{self.p.pk}/status/", {"invoice_amount": "x"})
+        self.assertFalse(bad["ok"])
+        self.assertIsNone(bad["undo"])
+
+    def test_queue_assign_live(self):
+        q = Project.objects.filter(editor__isnull=True).exclude(status="closed").first()
+        pratik = U.objects.get(username="pratik")
+        res = self.ajax(f"/projects/{q.pk}/assign/", {"editor": pratik.pk})
+        self.assertEqual(res["remove"], [f'[data-queue="{q.pk}"]'])
+        q.refresh_from_db()
+        self.assertEqual(q.editor, pratik)
+
+    def test_page_has_live_parts(self):
+        html = self.f.get("/projects/").content.decode()
+        for part in ("queue", "summary", "chips", "clear", "table"):
+            self.assertIn(f'data-live-part="{part}"', html)
+        self.assertIn("data-live-filter", html)

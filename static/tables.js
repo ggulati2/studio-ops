@@ -235,6 +235,7 @@
     if (!window.matchMedia("(min-width: 760px)").matches) return;
     Array.prototype.forEach.call(doc.querySelectorAll("table[data-columns]"), setup);
   }
+  window.StudioTables = { init: init };
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", init); else init();
   window.matchMedia("(min-width: 760px)").addEventListener("change", function (m) { if (m.matches) init(); });
 })();

@@ -161,42 +161,46 @@ def project_status(request, pk):
     if request.method != "POST":
         return redirect(nxt)
     P = request.POST
+    say, undo = [], None
     if "status" in P:
         new = P["status"]
         if new in dict(Project.STATUSES) and new != p.status:
             old = p.get_status_display()
+            undo = {"status": p.status}
             p.status = new
             p.save()
             record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
-            messages.success(request, f"{p}: {old} → {p.get_status_display()}.")
+            say.append(("success", f"{p}: {old} → {p.get_status_display()}."))
     elif "editor" in P:
         raw = P["editor"]
         new = None if not raw else team().filter(pk=raw).first() if raw.isdigit() else False
         if new is False or (raw and new is None):
-            messages.error(request, "Pick an editor from the list.")
+            say.append(("error", "Pick an editor from the list."))
         elif (new.pk if new else None) != p.editor_id:
             old = p.editor.profile.name if p.editor_id else "Unassigned"
+            undo = {"editor": str(p.editor_id or "")}
             p.editor = new
             p.save(update_fields=["editor"])
             now = new.profile.name if new else "Unassigned"
             record(request, "project.editor", str(p), f"{old} -> {now}")
-            messages.success(request, f"{p}: {old} → {now}.")
+            say.append(("success", f"{p}: {old} → {now}."))
             if new:
                 made, short = S.auto_plan(p)
                 if made:
-                    messages.info(request, f"Planner updated: {made} day(s) planned for {now}.")
+                    say.append(("info", f"Planner updated: {made} day(s) planned for {now}."))
                 if short:
-                    messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
+                    say.append(("warning", f"{short} day(s) of work didn't fit before the deadline. Check the Planner."))
     elif "invoice_amount" in P:
         raw = P["invoice_amount"].replace(",", "").strip() or "0"
         if not raw.isdigit() or int(raw) > 100_000_000:
-            messages.error(request, f"{p}: invoice amount must be a whole number.")
+            say.append(("error", f"{p}: invoice amount must be a whole number."))
         elif int(raw) != p.invoice_amount:
             old = p.invoice_amount
+            undo = {"invoice_amount": str(old)}
             p.invoice_amount = int(raw)
             p.save(update_fields=["invoice_amount"])
             record(request, "project.invoice", str(p), f"{old} -> {p.invoice_amount}")
-            messages.success(request, f"{p}: invoice {p.agency.symbol}{old:,} → {p.agency.symbol}{p.invoice_amount:,}.")
+            say.append(("success", f"{p}: invoice {p.agency.symbol}{old:,} → {p.agency.symbol}{p.invoice_amount:,}."))
     else:
         field = "deadline" if "deadline" in P else "agency_deadline" if "agency_deadline" in P else None
         if field:
@@ -208,22 +212,41 @@ def project_status(request, pk):
             ed = new if field == "deadline" else p.deadline
             ad = new if field == "agency_deadline" else p.agency_deadline
             if new is False:
-                messages.error(request, f"{p}: that isn't a valid date.")
+                say.append(("error", f"{p}: that isn't a valid date."))
             elif ed and ad and ed > ad:
-                messages.error(request, f"{p}: the editor's deadline ({ed:%-d %b}) can't be after the agency's ({ad:%-d %b}). Not saved.")
+                say.append(("error", f"{p}: the editor's deadline ({ed:%-d %b}) can't be after the agency's ({ad:%-d %b}). Not saved."))
             elif new != getattr(p, field):
                 old = getattr(p, field)
+                undo = {field: old.isoformat() if old else ""}
                 setattr(p, field, new)
                 p.save(update_fields=[field])
                 record(request, "project.deadline", str(p), f"{label}: {old} -> {new}")
-                messages.success(request, f"{p}: {label.lower()} {old:%-d %b} → {new:%-d %b}." if old and new
-                                 else f"{p}: {label.lower()} {'set to ' + format(new, '%-d %b') if new else 'cleared'}.")
+                say.append(("success", f"{p}: {label.lower()} {old:%-d %b} → {new:%-d %b}." if old and new
+                                 else f"{p}: {label.lower()} {'set to ' + format(new, '%-d %b') if new else 'cleared'}."))
                 if field == "deadline" and new and p.editor_id:
                     made, short = S.auto_plan(p)
                     if made:
-                        messages.info(request, f"Planner updated: {made} day(s) planned for {p.editor.profile.name}.")
+                        say.append(("info", f"Planner updated: {made} day(s) planned for {p.editor.profile.name}."))
                     if short:
-                        messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
+                        say.append(("warning", f"{short} day(s) of work didn't fit before the deadline. Check the Planner."))
+    return _project_reply(request, p, nxt, say, undo)
+
+
+def _project_reply(request, p, nxt, say, undo=None, remove_queue=False):
+    """Fetch requests get JSON with the re-drawn row; plain posts get messages and a redirect."""
+    if request.headers.get("X-Requested-With") == "fetch":
+        from django.http import JsonResponse
+        from django.template.loader import render_to_string
+        p = Project.objects.select_related("agency", "editor__profile", "drive").get(pk=p.pk)
+        row = render_to_string("founder/_project_row.html", {"p": p, "editors": team(), "statuses": Project.STATUSES,
+                                                             "back": nxt}, request=request)
+        bad = any(level == "error" for level, _ in say)
+        return JsonResponse({"ok": not bad, "pk": p.pk, "row": row, "undo": undo if not bad else None,
+                             "undo_url": reverse("project_status", args=[p.pk]),
+                             "messages": [{"level": l, "text": t} for l, t in say],
+                             "remove": [f'[data-queue="{p.pk}"]'] if remove_queue else []})
+    for level, text in say:
+        getattr(messages, level)(request, text)
     return redirect(nxt)
 
 
@@ -285,17 +308,27 @@ def project_edit(request, pk):
 
 @requires("projects.manage")
 def project_assign(request, pk):
+    from django.utils.http import url_has_allowed_host_and_scheme
     p = get_object_or_404(Project, pk=pk)
+    nxt = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        nxt = reverse("projects")
     form = AssignForm(request.POST)
+    say, undo, assigned = [], None, False
     if form.is_valid():
+        undo = {"editor": str(p.editor_id or "")}
         p.editor = User.objects.get(pk=form.cleaned_data["editor"])
         p.save(update_fields=["editor"])
+        assigned = True
+        record(request, "project.editor", str(p), f"Unassigned -> {p.editor.profile.name}")
         made, short = S.auto_plan(p)
-        messages.success(request, f"{p} assigned to {p.editor.profile.name}."
-                         + (f" {made} day(s) added to the Planner." if made else ""))
+        say.append(("success", f"{p} assigned to {p.editor.profile.name}."
+                    + (f" {made} day(s) added to the Planner." if made else "")))
         if short:
-            messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
-    return redirect(request.POST.get("next") or "projects")
+            say.append(("warning", f"{short} day(s) of work didn't fit before the deadline. Check the Planner."))
+    else:
+        say.append(("error", "Pick an editor."))
+    return _project_reply(request, p, nxt, say, undo, remove_queue=assigned)
 
 
 @requires("deadlines.view")

@@ -8,12 +8,12 @@
   </div>
 </div>
 
-{% if queue %}
+<div data-live-part="queue">{% if queue %}
 <section class="card warn">
   <div class="title"><h2 style="color:var(--warn)">Needs an editor · {{ queue|length }}</h2><span class="small" style="color:var(--warn)">Nearest deadline first</span></div>
   {% for p in queue %}
-  <form method="post" action="{% url 'project_assign' p.pk %}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:var(--warn-line)">
-    {% csrf_token %}
+  <form method="post" action="{% url 'project_assign' p.pk %}" data-live data-queue="{{ p.pk }}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:var(--warn-line)">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
     <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>
     <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}{% if p.agency_deadline %} · agency {{ p.agency_deadline|date:"j M" }}{% endif %}</span>
     <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
@@ -21,23 +21,23 @@
   </form>
   {% endfor %}
 </section>
-{% endif %}
+{% endif %}</div>
 
 <section class="card">
   <div class="title">
     <h2>Jobs</h2>
-    <span class="small muted">{{ jobs|length }} film{{ jobs|length|pluralize }}{% if jobs %} · ₹{{ total_value|money }} invoice value{% endif %}</span>
+    <span class="small muted" data-live-part="summary">{{ jobs|length }} film{{ jobs|length|pluralize }}{% if jobs %} · ₹{{ total_value|money }} invoice value{% endif %}</span>
   </div>
-  <div class="chips">
+  <div class="chips" data-live-part="chips">
     <a href="{% qs status='open' %}" class="{% if status == 'open' %}on{% endif %}">Open</a>
     <a href="{% qs status='late' %}" class="{% if status == 'late' %}on{% endif %}">Past deadline</a>
     <a href="{% qs status='revisions' %}" class="{% if status == 'revisions' %}on{% endif %}">Any revisions</a>
     {% for v, l in statuses %}<a href="{% qs status=v %}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}
     <a href="{% qs status='' %}" class="{% if status == '' %}on{% endif %}">All</a>
   </div>
-  <form method="get" class="filters" role="search" aria-label="Filter projects">
+  <form method="get" class="filters" role="search" aria-label="Filter projects" data-live-filter>
     <input type="hidden" name="status" value="{{ status }}">
-    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Search couple, agency, code, drive, brief" aria-label="Search">
+    <input class="input" type="search" name="q" value="{{ q }}" data-live-search placeholder="Search couple, agency, code, drive, brief" aria-label="Search">
     <select class="input" name="agency" data-autosubmit aria-label="Agency"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if f.agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a.name }}{% if a.code %} ({{ a.code }}){% endif %}</option>{% endfor %}</select>
     <select class="input" name="editor" data-autosubmit aria-label="Editor"><option value="">All editors</option><option value="none" {% if f.editor == 'none' %}selected{% endif %}>Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}" {% if f.editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
     <select class="input" name="film" data-autosubmit aria-label="Film type"><option value="">All film types</option>{% for d in films %}<option {% if f.film == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>
@@ -66,31 +66,11 @@
       <option value="agency" {% if f.sort == 'agency' %}selected{% endif %}>Sort: agency</option>
       <option value="couple" {% if f.sort == 'couple' %}selected{% endif %}>Sort: couple A–Z</option>
     </select>
-    <div class="actions"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
+    <div class="actions" data-live-part="clear"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
   </form>
-  <div class="scroll"><table style="min-width:1040px" data-columns="projects">
-    <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
-    <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
-      <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
-      <td class="muted">{% if p.agency.code %}<abbr class="agency-code" title="{{ p.agency }}">{{ p.agency.code }}</abbr>{% else %}{{ p.agency }}{% endif %}</td>
-      <td><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <select name="editor" class="cell-input cell-select{% if not p.editor_id %} empty{% endif %}" data-autosubmit aria-label="Editor for {{ p }}">
-          <option value="">— Unassigned —</option>{% for u in editors %}<option value="{{ u.pk }}"{% if u.pk == p.editor_id %} selected{% endif %}>{{ u.profile.name }}{% if u.profile.is_contract %} (contract){% endif %}</option>{% endfor %}
-          {% if p.editor_id and p.editor not in editors %}<option value="{{ p.editor_id }}" selected disabled>{{ p.editor.profile.name }} (inactive)</option>{% endif %}
-        </select><noscript><button class="btn sm">Save</button></noscript></form></td>
-      <td class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <input type="date" name="deadline" value="{{ p.deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Editor's deadline for {{ p }}"{% if p.agency_deadline %} max="{{ p.agency_deadline|date:'Y-m-d' }}"{% endif %}><noscript><button class="btn sm">Save</button></noscript></form>
-        {% if p.flag %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td>
-      <td class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <input type="date" name="agency_deadline" value="{{ p.agency_deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Agency's deadline for {{ p }}"><noscript><button class="btn sm">Save</button></noscript></form>
-        {% if p.agency_deadline and p.deadline and p.deadline > p.agency_deadline %}<span class="tag bad">after editor's</span>{% endif %}</td>
-      <td><form method="post" action="{% url 'project_status' p.pk %}" class="status-pick">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <select name="status" class="status-select tag {{ p.status|status_class }}" data-autosubmit aria-label="Status of {{ p }}">{% for v, l in statuses %}<option value="{{ v }}"{% if v == p.status %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
-        <noscript><button class="btn sm">Save</button></noscript></form></td>
-      <td class="mono">{{ p.source_label }}</td>
-      <td class="right"><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit money-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <span class="cur" aria-hidden="true">{{ p.agency.symbol }}</span><input type="number" name="invoice_amount" value="{{ p.invoice_amount }}" min="0" step="1" inputmode="numeric" class="cell-input num" data-autosubmit aria-label="Invoice amount for {{ p }} in {{ p.agency.currency }}"><noscript><button class="btn sm">Save</button></noscript></form></td>
-    </tr>{% endwith %}{% empty %}<tr><td colspan="8" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
+  <div class="scroll" data-live-part="table"><table style="min-width:1040px" data-columns="projects">
+    <thead><tr><th data-col="job">Job</th><th data-col="agency">Agency</th><th data-col="editor">Editor</th><th data-col="deadline">Editor's deadline</th><th data-col="agency_deadline">Agency's deadline</th><th data-col="status">Status</th><th data-col="footage">Footage</th><th data-col="invoice" class="right">Invoice</th></tr></thead>
+    <tbody>{% for j in jobs %}{% include "founder/_project_row.html" with p=j.p back=request.get_full_path %}{% empty %}<tr><td colspan="8" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endblock %}
