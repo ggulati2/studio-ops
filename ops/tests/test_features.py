@@ -592,3 +592,63 @@ class ProjectsInlineEdits(SeededTestCase):
         self.post({"status": Project.CLOSED})
         self.p.refresh_from_db()
         self.assertEqual(self.p.first_delivered_on, self.today)
+
+
+class PlannerLive(SeededTestCase):
+    def setUp(self):
+        self.f = self.login("ag")
+        self.pratik = U.objects.get(username="pratik")
+        self.nikhil = U.objects.get(username="nikhil")
+        self.d = next_workday(timezone.localdate() + timedelta(days=2), self.pratik)
+        self.d2 = next_workday(self.d + timedelta(days=1), self.pratik)
+        self.job = Project.objects.filter(editor=self.pratik).exclude(status="closed").first()
+
+    def ajax(self, data):
+        r = self.f.post("/planner/", data, HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(r.status_code, 200)
+        return r.json()
+
+    def test_four_weeks_and_month_editable(self):
+        r = self.f.get("/planner/")
+        self.assertEqual(len(r.context["grid"]), 28)
+        self.assertContains(r, "4 weeks")
+        m = self.f.get("/planner/?view=month")
+        self.assertContains(m, "data-cell")
+        self.assertContains(m, "data-plan-options")
+
+    def test_set_undo_and_move(self):
+        PlanEntry.objects.filter(user=self.pratik, date__in=(self.d, self.d2)).delete()
+        res = self.ajax({"action": "set", "user": self.pratik.pk, "date": self.d.isoformat(), "slot": "1", "value": f"p:{self.job.pk}"})
+        key = f"{self.pratik.pk}:{self.d.isoformat()}"
+        self.assertIn(key, res["cells"])
+        self.assertIn("data-chip", res["cells"][key]["html"])
+        self.assertTrue(PlanEntry.objects.filter(user=self.pratik, date=self.d, project=self.job).exists())
+        # Undo restores what was there (nothing)
+        self.ajax(res["undo"])
+        self.assertFalse(PlanEntry.objects.filter(user=self.pratik, date=self.d, slot=1).exists())
+        # Move to Nikhil's day
+        S.set_plan(self.pratik, self.d, f"p:{self.job.pk}", 1)
+        nd = next_workday(self.d, self.nikhil)
+        PlanEntry.objects.filter(user=self.nikhil, date=nd).delete()
+        res = self.ajax({"action": "move", "from_user": self.pratik.pk, "from_date": self.d.isoformat(), "from_slot": "1",
+                         "to_user": self.nikhil.pk, "to_date": nd.isoformat(), "copy": "0"})
+        self.assertIn("Moved", res["message"])
+        self.assertFalse(PlanEntry.objects.filter(user=self.pratik, date=self.d).exists())
+        self.assertTrue(PlanEntry.objects.filter(user=self.nikhil, date=nd, project=self.job).exists())
+        # Copy keeps the original; a busy target gets it alongside
+        S.set_plan(self.pratik, self.d2, "Training", 1)
+        self.ajax({"action": "move", "from_user": self.nikhil.pk, "from_date": nd.isoformat(), "from_slot": "1",
+                   "to_user": self.pratik.pk, "to_date": self.d2.isoformat(), "copy": "1"})
+        self.assertTrue(PlanEntry.objects.filter(user=self.nikhil, date=nd).exists())
+        self.assertTrue(PlanEntry.objects.filter(user=self.pratik, date=self.d2, slot=2, project=self.job).exists())
+
+    def test_leave_is_locked(self):
+        DayLog.objects.update_or_create(user=self.pratik, date=self.d, defaults={"day_type": DayLog.LEAVE})
+        res = self.ajax({"action": "set", "user": self.pratik.pk, "date": self.d.isoformat(), "slot": "1", "value": "Training"})
+        self.assertFalse(res["ok"])
+        self.assertIn("on leave", res["message"])
+
+    def test_projects_show_agency_nickname(self):
+        p = Project.objects.filter(agency__code__gt="").select_related("agency").first()
+        html = self.f.get("/projects/?status=").content.decode()
+        self.assertIn(f'title="{p.agency.name}">{p.agency.code}</abbr>', html)

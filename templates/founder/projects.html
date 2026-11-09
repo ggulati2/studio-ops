@@ -72,7 +72,7 @@
     <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
       <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
-      <td class="muted">{{ p.agency }}</td>
+      <td class="muted">{% if p.agency.code %}<abbr class="agency-code" title="{{ p.agency }}">{{ p.agency.code }}</abbr>{% else %}{{ p.agency }}{% endif %}</td>
       <td><form method="post" action="{% url 'project_status' p.pk %}" class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
         <select name="editor" class="cell-input cell-select{% if not p.editor_id %} empty{% endif %}" data-autosubmit aria-label="Editor for {{ p }}">
           <option value="">— Unassigned —</option>{% for u in editors %}<option value="{{ u.pk }}"{% if u.pk == p.editor_id %} selected{% endif %}>{{ u.profile.name }}{% if u.profile.is_contract %} (contract){% endif %}</option>{% endfor %}

@@ -1,0 +1,5 @@
+{% for p in c.due %}<div class="due-tag" title="Delivery due: {{ p }}">Due: {{ p.couple }} · {{ p.deliverable }}</div>{% endfor %}
+{% if c.kind %}<span class="kind-label">{% if c.kind == 'leave' %}Leave{% elif c.kind == 'half' %}Half day{% elif c.kind == 'holiday' %}Holiday{% elif c.kind == 'off' %}Weekly off{% elif c.kind == 'wfh' %}WFH{% endif %}</span>{% endif %}
+{% if c.entry %}{% include "founder/_plan_chip.html" with e=c.entry slot=1 %}{% endif %}
+{% if c.also %}{% include "founder/_plan_chip.html" with e=c.also slot=2 %}{% endif %}
+{% if not c.locked %}<button type="button" class="cell-add" data-add data-slot="{% if c.entry %}2{% else %}1{% endif %}" aria-label="{% if c.entry %}Add work alongside{% else %}Plan{% endif %} for {{ c.u.profile.name }} on {{ c.d|date:'D j M' }}">{% if c.entry %}+ alongside{% else %}+ Plan{% endif %}</button>{% endif %}

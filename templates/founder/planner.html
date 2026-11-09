@@ -1,29 +1,30 @@
-{% extends "base.html" %}{% load ops_extras %}
+{% extends "base.html" %}{% load ops_extras static %}
 {% block title %}Planner{% endblock %}
+{% block scripts %}<script src="{% static 'planner.js' %}" defer></script>{% endblock %}
 {% block content %}
-<div class="head">
-  <div><h1>Planner</h1><p>Pick a job in any cell; it saves straight away and shows on that editor's Today screen. Delivery days are marked in red.</p></div>
-  <div class="actions"><div class="seg" role="tablist"><a class="on" href="?start={{ start|date:'Y-m-d' }}" aria-current="page">2 weeks</a><a href="?view=month&m={{ start|date:'Y-m' }}">Month</a></div><a class="btn" href="?start={{ prev|date:'Y-m-d' }}">←</a><b>{{ start|date:"j M" }} – {{ grid.13.d|date:"j M Y" }}</b><a class="btn" href="?start={{ next|date:'Y-m-d' }}">→</a></div>
+<div class="head planner-head">
+  <div><h1>Planner</h1><p>Click a cell to plan it, drag a film to move it (hold <kbd>Alt</kbd> to copy). Changes save instantly and show on each editor's Today screen.</p></div>
+  <div class="actions">
+    <div class="seg" role="tablist" aria-label="View"><a class="on" href="?start={{ start|date:'Y-m-d' }}" aria-current="page">4 weeks</a><a href="?view=month&m={{ start|date:'Y-m' }}">Month</a></div>
+    <div class="pnav"><a class="btn icon" href="?start={{ prev|date:'Y-m-d' }}" aria-label="Previous 4 weeks">←</a>
+      <a class="btn" href="?start={{ this_week|date:'Y-m-d' }}"{% if start == this_week %} aria-current="true"{% endif %}>Today</a>
+      <a class="btn icon" href="?start={{ next|date:'Y-m-d' }}" aria-label="Next 4 weeks">→</a></div>
+    <b class="prange">{{ start|date:"j M" }} – {{ end|date:"j M Y" }}</b>
+  </div>
 </div>
-{% if tray %}<section class="card warn tight" style="flex-direction:row;flex-wrap:wrap;align-items:center"><h3 style="color:var(--warn)">Waiting for an editor</h3>{% for p in tray %}<span class="tag" style="background:var(--card);border:1px dashed #EA580C">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>{% endfor %}</section>{% endif %}
-<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span></div>
-<div class="scroll card" style="padding:0">
-<table class="plan">
-  <thead><tr><th class="day">Day</th>{% for u in people %}<th>{{ u.profile.name }}<div class="small muted" style="font-weight:400">{{ u.profile.pod|default:"" }}</div></th>{% endfor %}</tr></thead>
-  <tbody>{% for row in grid %}<tr>
-    <th class="day" scope="row" style="{% if row.d.weekday == 6 %}background:var(--sunk){% endif %}">{{ row.d|date:"D j M" }}{% if row.holiday %}<div class="small" style="color:var(--info)">{{ row.holiday.name }}</div>{% endif %}{% if row.due %}<div class="due-count">{{ row.due|length }} due</div>{% endif %}</th>
-    {% for c in row.cells %}
-    <td class="{% if c.kind %}k-{{ c.kind }}{% elif c.entry %}has{% endif %}{% if c.due %} due{% endif %}">
-      {% for p in c.due %}<div class="due-tag" title="Delivery due: {{ p }}">Due: {{ p.couple }} · {{ p.deliverable }}</div>{% endfor %}
-      {% if c.kind == 'leave' or c.kind == 'holiday' or c.kind == 'off' %}
-        <span class="small" style="font-weight:700;letter-spacing:.04em">{{ c.kind|upper }}</span>{% if c.entry %}<div class="small">{{ c.entry.text }}</div>{% endif %}
-      {% else %}
-      {% include "founder/_plan_slot.html" with e=c.entry slot=1 %}
-      {% if c.also %}{% include "founder/_plan_slot.html" with e=c.also slot=2 %}
-      {% elif c.entry %}<details class="also"><summary>+ alongside</summary>{% include "founder/_plan_slot.html" with e=None slot=2 %}</details>{% endif %}
-      {% endif %}
-    </td>{% endfor %}
+{% if tray %}<section class="card warn tight tray"><h3>Waiting for an editor</h3>{% for p in tray %}<a class="tag" href="{% url 'project_edit' p.pk %}">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</a>{% endfor %}</section>{% endif %}
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag due-key">Delivery day</span><span class="tag qc">+ alongside</span></div>
+<noscript><div class="msg error">The planner needs JavaScript turned on.</div></noscript>
+<div class="planner" data-planner data-view="weeks" data-url="{% url 'planner' %}">{% csrf_token %}
+<div class="scroll card planner-scroll" style="padding:0">
+<table class="plan plan-weeks no-stack">
+  <thead><tr><th class="day" scope="col">Day</th>{% for u in people %}<th scope="col" class="who-h"><span class="avatar xs" style="background:{{ u.profile.color }}" aria-hidden="true">{{ u.profile.initial }}</span><span>{{ u.profile.name }}<small>{{ u.profile.pod|default:"" }}{% if u.profile.is_contract %} · contract{% endif %}</small></span></th>{% endfor %}</tr></thead>
+  <tbody>{% for row in grid %}<tr class="{% if row.d == today %}is-today{% endif %}{% if row.week_break %} week-break{% endif %}{% if row.d.weekday == 6 %} is-sun{% endif %}">
+    <th class="day" scope="row"><span class="dw">{{ row.d|date:"D" }}</span> <span class="dn">{{ row.d|date:"j M" }}</span>{% if row.holiday %}<div class="small hol">{{ row.holiday.name }}</div>{% endif %}{% if row.due %}<div class="due-count">{{ row.due|length }} due</div>{% endif %}</th>
+    {% for c in row.cells %}<td data-cell data-u="{{ c.u.pk }}" data-d="{{ row.d|date:'Y-m-d' }}" data-name="{{ c.u.profile.name }}" class="{% if c.kind %}k-{{ c.kind }}{% endif %}{% if c.entry %} has{% endif %}{% if c.due %} due{% endif %}{% if c.locked %} locked{% endif %}">{% include "founder/_plan_cell.html" %}</td>{% endfor %}
   </tr>{% endfor %}</tbody>
 </table></div>
-<p class="small muted"><b>+ alongside</b> adds a second film (or revisions on a delivered film) to the same day, for editors working on two things at once. Assigning an editor and deadline in Projects fills their planner automatically (only empty days, enough for the usual hours of that film). <b>⤓</b> copies a cell down to the next working days, skipping weekly offs, holidays and leave. Red marks show delivery days.</p>
+{% include "founder/_plan_options.html" %}
+</div>
+<p class="small muted">Assigning an editor and deadline in Projects fills their planner automatically. In the picker, <b>Copy to next days</b> repeats a cell over the following working days (weekly offs, holidays and leave skipped). Keyboard: arrow keys move between cells, <kbd>Enter</kbd> opens, <kbd>Delete</kbd> clears.</p>
 {% endblock %}

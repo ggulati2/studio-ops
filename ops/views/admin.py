@@ -24,7 +24,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
                         week_start)
 
 User = get_user_model()
-__all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "planner", "deadlines",
+__all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
@@ -296,98 +296,6 @@ def project_assign(request, pk):
         if short:
             messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
     return redirect(request.POST.get("next") or "projects")
-
-
-@requires("planner.manage")
-def planner(request):
-    if request.method == "GET" and request.GET.get("view") == "month":
-        return _planner_month(request)
-    start = request.GET.get("start")
-    try:
-        start = date.fromisoformat(start)
-    except (TypeError, ValueError):
-        start = week_start(timezone.localdate())
-    days = [start + timedelta(days=i) for i in range(14)]
-    people = list(team())
-    if request.method == "POST":
-        u = get_object_or_404(User, pk=request.POST["user"])
-        d = date.fromisoformat(request.POST["date"])
-        val = request.POST.get("value", "")
-        try:  # only when the Copy button itself was pressed (not when the select auto-saves)
-            repeat = max(0, min(int(request.POST.get("repeat", "0") or 0), 60)) if request.POST.get("repeat_go") else 0
-        except ValueError:
-            repeat = 0
-        slot = request.POST.get("slot", "1")
-        if repeat and val.strip():
-            done, last = S.repeat_plan(u, d, val.strip(), repeat, slot)
-            messages.success(request, f"Copied to {done} more working day(s) for {u.profile.name}, up to {last:%-d %b} "
-                                      "(weekly offs, holidays and leave skipped).")
-            return redirect(f"{request.path}?start={start.isoformat()}")
-        S.set_plan(u, d, val, slot)
-        return redirect(f"{request.path}?start={start.isoformat()}")
-    plan = defaultdict(dict)
-    for e in PlanEntry.objects.filter(date__range=(days[0], days[-1])).select_related("project"):
-        plan[(e.user_id, e.date)][e.slot] = e
-    logs = {(l.user_id, l.date): l for l in DayLog.objects.filter(date__range=(days[0], days[-1]))}
-    hols = holidays_between(days[0], days[-1])
-    weekdays = StudioSettings.get().weekdays
-    due = S.deliveries_between(days[0], days[-1])
-    grid = []
-    for d in days:
-        cells = []
-        for u in people:
-            log = logs.get((u.id, d))
-            kind = log.day_type if log and log.day_type in (DayLog.LEAVE, DayLog.HALF, DayLog.WFH, DayLog.HOLIDAY) else ""
-            if not kind and d in hols:
-                kind = "holiday" if hols[d].kind == "full" else "half" if hols[d].kind == "half" else ""
-            if not kind and d.weekday() not in weekdays:
-                kind = "off"
-            mine = [p for p in due.get(d, []) if p.editor_id == u.id]
-            slots = plan.get((u.id, d), {})
-            cells.append({"u": u, "entry": slots.get(1), "also": slots.get(2), "kind": kind, "due": mine})
-        grid.append({"d": d, "cells": cells, "holiday": hols.get(d), "due": due.get(d, [])})
-    open_projects = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency")
-    delivered = (Project.objects.filter(status=Project.CLOSED, closed_on__gte=timezone.localdate() - timedelta(days=120))
-                 .order_by("-closed_on"))
-    return render(request, "founder/planner.html", {
-        "delivered": delivered,
-        "grid": grid, "people": people, "start": start, "prev": start - timedelta(days=14),
-        "next": start + timedelta(days=14), "open_projects": open_projects,
-        "tray": open_projects.filter(editor__isnull=True)})
-
-
-def _planner_month(request):
-    """Whole month at a glance: one row per editor, one column per day. Click a day to edit that week."""
-    month = parse_month(request.GET.get("m"))
-    a, b = month_start(month), month_end(month)
-    days = [a + timedelta(days=i) for i in range((b - a).days + 1)]
-    people = list(team())
-    plan = defaultdict(list)
-    for e in PlanEntry.objects.filter(date__range=(a, b)).select_related("project__agency"):
-        plan[(e.user_id, e.date)].append(e)
-    logs = defaultdict(dict)
-    for l in DayLog.objects.filter(date__range=(a, b)):
-        logs[l.user_id][l.date] = l
-    hols = holidays_between(a, b)
-    due = S.deliveries_between(a, b)
-    today = timezone.localdate()
-    rows = []
-    for u in people:
-        cells, planned, workdays = [], 0, 0
-        for d in days:
-            kind = S.day_kind(u, d, logs[u.id], hols)
-            entries = plan.get((u.id, d), [])
-            off = kind in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF)
-            if not off:
-                workdays += 1
-                planned += 1 if entries else 0
-            cells.append({"d": d, "kind": kind, "entries": entries, "off": off,
-                          "due": [p for p in due.get(d, []) if p.editor_id == u.id], "week": week_start(d)})
-        rows.append({"u": u, "cells": cells, "planned": planned, "workdays": workdays,
-                     "free": workdays - planned})
-    return render(request, "founder/planner_month.html", {
-        "rows": rows, "days": [{"d": d, "holiday": hols.get(d), "due": len(due.get(d, [])), "today": d == today} for d in days],
-        "month": month, "prev": add_months(month, -1), "next": add_months(month, 1)})
 
 
 @requires("deadlines.view")

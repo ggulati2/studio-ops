@@ -93,3 +93,12 @@ def hours(v):
         return v
     return f"{v:.1f}".rstrip("0").rstrip(".") if v else "0"
 
+
+
+@register.filter
+def hue(pk):
+    """A stable colour (0-359) per film, so the same film looks the same everywhere in the planner."""
+    try:
+        return (int(pk) * 137) % 360
+    except (TypeError, ValueError):
+        return 0

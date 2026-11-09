@@ -1,0 +1,13 @@
+{% load ops_extras %}<template data-plan-options>
+  <div class="po-group" data-group="films"><div class="po-h">Films in progress</div>
+    {% for p in open_projects %}<button type="button" class="po" data-v="p:{{ p.pk }}" data-editor="{{ p.editor_id|default:'' }}" data-q="{{ p.couple|lower }} {{ p.deliverable|lower }} {{ p.agency.name|lower }} {{ p.agency.code|lower }} {{ p.editor.profile.name|lower }}" style="--h:{{ p.pk|hue }}"><span class="po-dot"></span><span class="po-t">{{ p }}</span><span class="po-s">{% if p.editor_id %}{{ p.editor.profile.name }}{% else %}No editor yet{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span></button>{% endfor %}
+  </div>
+  {% if delivered %}<div class="po-group" data-group="rev"><div class="po-h">Revisions on a delivered film</div>
+    {% for p in delivered %}<button type="button" class="po" data-v="r:{{ p.pk }}" data-editor="{{ p.editor_id|default:'' }}" data-q="revisions {{ p.couple|lower }} {{ p.deliverable|lower }} {{ p.agency.name|lower }} {{ p.agency.code|lower }}" style="--h:{{ p.pk|hue }}"><span class="po-dot"></span><span class="po-t">Revisions: {{ p }}</span><span class="po-s">delivered {{ p.first_delivered_on|date:"j M" }}</span></button>{% endfor %}
+  </div>{% endif %}
+  <div class="po-group" data-group="other"><div class="po-h">Other</div>
+    <button type="button" class="po" data-v="Back-up" data-q="back-up backup"><span class="po-dot lbl"></span><span class="po-t">Back-up</span></button>
+    <button type="button" class="po" data-v="SAME DAY" data-q="same day edit sde"><span class="po-dot lbl"></span><span class="po-t">Same day edit</span></button>
+    <button type="button" class="po" data-v="Training" data-q="training"><span class="po-dot lbl"></span><span class="po-t">Training</span></button>
+  </div>
+</template>
