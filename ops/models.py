@@ -264,13 +264,11 @@ class Project(models.Model):
               ("client_delay", "Late due to client approval (not our delay)")]
     DELIVERABLES = ["Teaser", "Highlight", "Trailer", "Full Film", "Traditional Film", "Reels",
                     "Same Day Edit", "Event Video", "Ad / Corporate", "Cleanup Shots", "Other"]
-    TIERS = [(1, "Tier 1 – Simple"), (2, "Tier 2 – Cinematic"), (3, "Tier 3 – Premium")]
     CLIENT_STAGES = ["Scheduled", "Editing", "Final checks", "Changes in progress", "Delivered"]
 
     couple = models.CharField("Couple / project", max_length=120)
     deliverable = models.CharField(max_length=30, choices=[(d, d) for d in DELIVERABLES])
     agency = models.ForeignKey(Agency, on_delete=models.PROTECT, related_name="projects")
-    tier = models.PositiveSmallIntegerField(choices=TIERS, default=2)
     editor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
     received_on = models.DateField(default=date.today)
     deadline = models.DateField("Editor's deadline", null=True, blank=True,

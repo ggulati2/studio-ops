@@ -533,3 +533,11 @@ details.also[open]>summary{display:none}
 .cal .day.due[class*="k-"],.plan td.due[class*="k-"],.plan-month td.due[class*="k-"]{box-shadow:inset 3px 0 0 var(--edge),inset 0 -3px 0 var(--red)}
 .plan-month td[class*="k-"] .pk{color:var(--ink);font-weight:600}
 .seg a .muted{margin-left:6px;font-variant-numeric:tabular-nums}
+
+/* status picked straight from the Projects list: looks like its tag, opens like a select */
+.status-pick{margin:0}
+select.status-select.tag{appearance:none;-webkit-appearance:none;cursor:pointer;font:inherit;font-size:var(--t-xs);font-weight:500;padding:3px 24px 3px 10px;border-radius:999px;max-width:100%}
+.status-pick{position:relative;display:inline-block}
+.status-pick::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;margin-top:-4px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);pointer-events:none;color:var(--muted)}
+select.status-select:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.status-select option{color:var(--ink);background:var(--card)}

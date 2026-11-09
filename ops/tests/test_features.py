@@ -29,7 +29,7 @@ class AutoPlanner(SeededTestCase):
         dl = self.today + timedelta(days=20)
         PlanEntry.objects.filter(user=self.harsh, date__gte=self.today).delete()
         r = self.login("ag").post("/projects/new/", {"couple": "Plan Test", "agency": self.agency.pk, "deliverables": ["Trailer"],
-                                                     "tier": 2, "deadline": dl, "editor": self.harsh.pk}, follow=True)
+                                                     "deadline": dl, "editor": self.harsh.pk}, follow=True)
         job = Project.objects.get(couple="Plan Test")
         planned = PlanEntry.objects.filter(project=job, user=self.harsh)
         need = -(-S.hours_remaining(job) // 8)   # usual hours / 8 h, rounded up
@@ -42,7 +42,7 @@ class AutoPlanner(SeededTestCase):
         PlanEntry.objects.filter(user=self.harsh, date__gte=self.today).delete()
         PlanEntry.objects.create(user=self.harsh, date=d, label="Back-up")
         self.login("ag").post("/projects/new/", {"couple": "Keep Test", "agency": self.agency.pk, "deliverables": ["Teaser"],
-                                                 "tier": 2, "deadline": self.today + timedelta(days=15), "editor": self.harsh.pk})
+                                                 "deadline": self.today + timedelta(days=15), "editor": self.harsh.pk})
         self.assertEqual(PlanEntry.objects.get(user=self.harsh, date=d).label, "Back-up")
         job = Project.objects.get(couple="Keep Test")
         shabnam = U.objects.get(username="shabnam")
@@ -209,7 +209,7 @@ class PlannerTwoThings(SeededTestCase):
             PlanEntry.objects.update_or_create(user=harsh, date=d, slot=1, defaults={"label": "Back-up", "project": None})
             d += timedelta(days=1)
         self.login("ag").post("/projects/new/", {"couple": "Busy Test", "agency": Agency.objects.first().pk,
-                                                 "deliverables": ["Reels"], "tier": 1, "deadline": dl, "editor": harsh.pk})
+                                                 "deliverables": ["Reels"], "deadline": dl, "editor": harsh.pk})
         job = Project.objects.get(couple="Busy Test")
         self.assertTrue(PlanEntry.objects.filter(project=job, slot=2).exists())
         self.assertFalse(PlanEntry.objects.filter(project=job, slot=1).exists())
@@ -226,7 +226,7 @@ class NewProjectOptions(SeededTestCase):
         t, f = film_key("Trailer"), film_key("Full Film")
         base = self.today + timedelta(days=10)
         r = self.login("ag").post("/projects/new/", {
-            "couple": "Two Films", "agency": self.agency.pk, "deliverables": ["Trailer", "Full Film"], "tier": 2,
+            "couple": "Two Films", "agency": self.agency.pk, "deliverables": ["Trailer", "Full Film"], 
             "deadline": base, "agency_deadline": base + timedelta(days=3),
             f"f{f}_deadline": base + timedelta(days=12), f"f{f}_agency_deadline": base + timedelta(days=16), f"f{f}_amount": 52000})
         self.assertEqual(r.status_code, 302)
@@ -236,14 +236,14 @@ class NewProjectOptions(SeededTestCase):
 
     def test_editor_deadline_must_not_pass_agency_deadline(self):
         r = self.login("ag").post("/projects/new/", {"couple": "Bad Dates", "agency": self.agency.pk, "deliverables": ["Teaser"],
-                                                     "tier": 2, "deadline": self.today + timedelta(days=9),
+                                                     "deadline": self.today + timedelta(days=9),
                                                      "agency_deadline": self.today + timedelta(days=5)})
         self.assertContains(r, "is after the agency")
         self.assertFalse(Project.objects.filter(couple="Bad Dates").exists())
 
     def test_cloud_source(self):
         self.login("ag").post("/projects/new/", {"couple": "Online Couple", "agency": self.agency.pk, "deliverables": ["Teaser"],
-                                                 "tier": 2, "source": "cloud", "cloud_link": "https://wetransfer.com/x",
+                                                 "source": "cloud", "cloud_link": "https://wetransfer.com/x",
                                                  "editor": U.objects.get(username="pratik").pk})
         p = Project.objects.get(couple="Online Couple")
         self.assertEqual((p.received_online, p.drive_id, p.source_label), (True, None, "Cloud"))
@@ -358,7 +358,7 @@ class ProjectFilters(SeededTestCase):
         self.assertTrue(all(j["p"].editor_id is None for j in r.context["jobs"]))
         r = ag.get("/projects/?status=&source=cloud")
         self.assertTrue(all(j["p"].received_online for j in r.context["jobs"]))
-        r = ag.get("/projects/?status=&due=overdue&tier=2&kind=delayed&q=BRC")
+        r = ag.get("/projects/?status=&due=overdue&kind=delayed&q=BRC")
         self.assertEqual(r.status_code, 200)
 
 
@@ -505,3 +505,28 @@ class RevenueEstimated(SeededTestCase):
         html = r.content.decode()
         self.assertIn("Revenue estimated (INR)", html)
         self.assertIn("Revenue delivered (INR)", html)
+
+
+class ProjectsListChanges(SeededTestCase):
+    def test_no_tier_or_hours_column(self):
+        html = self.login("ag").get("/projects/").content.decode()
+        self.assertNotIn("Tier", html)
+        self.assertNotIn("Hrs vs usual", html)
+
+    def test_change_status_from_the_list(self):
+        from ops.models import AuditEvent
+        p = Project.objects.filter(status=Project.IN_PROGRESS).first()
+        f = self.login("ag")
+        r = f.post(f"/projects/{p.pk}/status/", {"status": Project.ON_HOLD, "next": "/projects/?status=open"})
+        self.assertRedirects(r, "/projects/?status=open", fetch_redirect_response=False)
+        p.refresh_from_db()
+        self.assertEqual(p.status, Project.ON_HOLD)
+        self.assertTrue(AuditEvent.objects.filter(action="project.status").exists())
+        # Delivered sets the delivery date
+        f.post(f"/projects/{p.pk}/status/", {"status": Project.CLOSED})
+        p.refresh_from_db()
+        self.assertIsNotNone(p.closed_on)
+        # Off-site redirects are refused; editors can't use it
+        r = f.post(f"/projects/{p.pk}/status/", {"status": Project.CLOSED, "next": "https://evil.example/"})
+        self.assertEqual(r["Location"], "/projects/")
+        self.assertEqual(self.login("pratik").post(f"/projects/{p.pk}/status/", {"status": Project.QC}).status_code, 403)

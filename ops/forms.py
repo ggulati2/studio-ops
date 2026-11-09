@@ -81,7 +81,7 @@ class ProjectForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Project
-        fields = ["couple", "deliverable", "agency", "tier", "editor", "received_on", "deadline", "agency_deadline", "status",
+        fields = ["couple", "deliverable", "agency", "editor", "received_on", "deadline", "agency_deadline", "status",
                   "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
                   "timing_override", "timing_note"]
         widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
@@ -154,7 +154,6 @@ class NewProjectForm(StyledMixin, forms.Form):
     agency = forms.ModelChoiceField(queryset=Agency.objects.filter(active=True))
     deliverables = forms.MultipleChoiceField(label="Films", choices=[(d, d) for d in Project.DELIVERABLES],
                                              widget=forms.CheckboxSelectMultiple)
-    tier = forms.TypedChoiceField(choices=Project.TIERS, coerce=int, initial=2)
     editor = forms.TypedChoiceField(required=False, coerce=int, empty_value=None,
                                     help_text="Leave unassigned to put it in the 'Needs an editor' queue")
     deadline = forms.DateField(label="Editor's deadline", widget=DATE, required=False,
@@ -188,7 +187,7 @@ class NewProjectForm(StyledMixin, forms.Form):
             for n in ("deadline", "agency_deadline", "amount"):
                 self.fields[f"f{k}_{n}"].widget.attrs["class"] = "input"
 
-    MAIN = ["couple", "agency", "deliverables", "tier", "editor", "deadline", "agency_deadline", "invoice_amount",
+    MAIN = ["couple", "agency", "deliverables", "editor", "deadline", "agency_deadline", "invoice_amount",
             "source", "cloud_link", "is_extra", "extra_basis", "extra_rate", "brief"]
 
     def main_fields(self):

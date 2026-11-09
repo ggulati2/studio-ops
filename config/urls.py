@@ -19,6 +19,7 @@ urlpatterns = [
     path("projects/new/", v.project_new, name="project_new"),
     path("projects/<int:pk>/", v.project_edit, name="project_edit"),
     path("projects/<int:pk>/assign/", v.project_assign, name="project_assign"),
+    path("projects/<int:pk>/status/", v.project_status, name="project_status"),
     path("planner/", v.planner, name="planner"),
     path("deadlines/", v.deadlines, name="deadlines"),
     path("delivered/", v.delivered, name="delivered"),

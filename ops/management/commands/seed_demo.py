@@ -71,10 +71,10 @@ class Command(BaseCommand):
                                                     contents=contents, capacity_tb=4, data_tb=round(random.uniform(1, 3.5), 1),
                                                     received_on=today - timedelta(days=30 - i * 3), location=f"Rack {'ABC'[i % 3]} · {i}")
 
-        def job(couple, deliv, agency, editor, deadline_days, status, drive, tier=2, amount=None, **kw):
+        def job(couple, deliv, agency, editor, deadline_days, status, drive, amount=None, **kw):
             a = ag[agency]
             rate = {r.deliverable: r.amount for r in a.rates.all()}.get(deliv, 10000)
-            return Project.objects.create(couple=couple, deliverable=deliv, agency=a, editor=editor, tier=tier,
+            return Project.objects.create(couple=couple, deliverable=deliv, agency=a, editor=editor,
                                           deadline=today + timedelta(days=deadline_days), status=status,
                                           drive=drives.get(drive), invoice_amount=amount or rate,
                                           received_on=today - timedelta(days=20), **kw)
@@ -84,26 +84,26 @@ class Command(BaseCommand):
         for k in range(8):
             ed = editors[k % 6]
             p = job(f"Past Couple {k + 1}", ["Trailer", "Full Film", "Teaser", "Highlight"][k % 4], "BadalRaja Company", ed,
-                    -25 + k, Project.CLOSED, "HDD-01", tier=2)
+                    -25 + k, Project.CLOSED, "HDD-01")
             p.closed_on = p.deadline - timedelta(days=random.choice([-1, 0, 1, 2]))
             p.project_file_link = "https://drive.google.com/drive/folders/demo"
             p.final_mp4_link = "https://drive.google.com/file/d/demo/view"
             p.save()
             hist.append(p)
         open_jobs = [
-            job("Amit & Tanya", "Full Film", "BadalRaja Company", pratik, -3, Project.REVISIONS, "HDD-01", tier=1),
+            job("Amit & Tanya", "Full Film", "BadalRaja Company", pratik, -3, Project.REVISIONS, "HDD-01"),
             job("Gyan & Surbhi", "Trailer", "Happy Frames", harsh, 2, Project.IN_PROGRESS, "HDD-03"),
-            job("Diwali Reel", "Reels", "Qurbat Films", pratik, 1, Project.QC, "HDD-02", tier=1, is_extra=True,
+            job("Diwali Reel", "Reels", "Qurbat Films", pratik, 1, Project.QC, "HDD-02", is_extra=True,
                 extra_basis="fixed", extra_rate=3000, extra_accepted=True, cut_link="https://drive.google.com/file/d/cut/view"),
-            job("Liz & Chris", "Trailer", "Weddings By Shooting Star", nikhil, 11, Project.TL_REVIEW, "SSD-04", tier=3,
+            job("Liz & Chris", "Trailer", "Weddings By Shooting Star", nikhil, 11, Project.TL_REVIEW, "SSD-04",
                 cut_link="https://drive.google.com/file/d/cut2/view"),
-            job("Liz & Chris", "Full Film", "Weddings By Shooting Star", himanshu, 12, Project.IN_PROGRESS, "SSD-04", tier=3),
-            job("Swiss Couple", "Highlight", "Elysia Films", soham, 9, Project.QC_PASSED, "SSD-05", tier=3, amount=900),
+            job("Liz & Chris", "Full Film", "Weddings By Shooting Star", himanshu, 12, Project.IN_PROGRESS, "SSD-04"),
+            job("Swiss Couple", "Highlight", "Elysia Films", soham, 9, Project.QC_PASSED, "SSD-05", amount=900),
             job("Archana & Daniel", "Trailer", "Cheesecake Films", shabnam, 14, Project.NOT_STARTED, "HDD-06"),
             job("Riya & Arjun", "Teaser", "BadalRaja Company", himanshu, 4, Project.IN_PROGRESS, "HDD-01"),
             job("Jashua & Sonali", "Trailer", "BadalRaja Company", None, 17, Project.NOT_STARTED, None),
             job("Yasaswi & Shehna", "Trailer", "Cheesecake Films", None, 19, Project.NOT_STARTED, "HDD-06"),
-            job("Yasaswi & Shehna", "Reels", "Cheesecake Films", pratik, 16, Project.NOT_STARTED, "HDD-06", tier=1,
+            job("Yasaswi & Shehna", "Reels", "Cheesecake Films", pratik, 16, Project.NOT_STARTED, "HDD-06",
                 is_extra=True, extra_basis="hourly", extra_rate=550),
         ]
         Review.objects.create(project=open_jobs[0], kind="qc", passed=False, issues=["Names, dates and titles spelled correctly"],
@@ -180,10 +180,10 @@ class Command(BaseCommand):
         kabir.last_name = "Rao"; kabir.save()
         kabir.profile.employment, kabir.profile.contract_basis = Profile.CONTRACT, "project"
         kabir.profile.save()
-        done = Project.objects.create(couple="Meera & Dev", deliverable="Teaser", agency=ag["Happy Frames"], tier=2, editor=kabir,
+        done = Project.objects.create(couple="Meera & Dev", deliverable="Teaser", agency=ag["Happy Frames"], editor=kabir,
                                       deadline=today - timedelta(days=6), status=Project.CLOSED, closed_on=today - timedelta(days=7),
                                       invoice_amount=9000, contractor_fee=4000)
-        Project.objects.create(couple="Sana & Imran", deliverable="Highlight", agency=ag["Happy Frames"], tier=2, editor=kabir,
+        Project.objects.create(couple="Sana & Imran", deliverable="Highlight", agency=ag["Happy Frames"], editor=kabir,
                                deadline=today + timedelta(days=12), status=Project.IN_PROGRESS, invoice_amount=16000, contractor_fee=7000)
         ContractPayment.objects.create(user=kabir, paid_on=today - timedelta(days=2), amount=2500, method="upi", reference="UPI 4471")
         # Agency deadlines a few days after the editors' deadlines; one film that came online

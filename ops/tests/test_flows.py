@@ -188,7 +188,7 @@ class Flows(SeededTestCase):
 
     def test_new_project_makes_one_job_per_deliverable(self):
         self.login("ag").post("/projects/new/", {"couple": "Test Couple", "agency": self.agency.pk, "deliverables": ["Trailer", "Teaser"],
-                                                 "tier": 2, "deadline": self.today + timedelta(days=20)})
+                                                 "deadline": self.today + timedelta(days=20)})
         made = Project.objects.filter(couple="Test Couple")
         self.assertEqual(made.count(), 2)
         self.assertEqual(made.get(deliverable="Trailer").invoice_amount, 18000)

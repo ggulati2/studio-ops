@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import models, transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from ..audit import record
@@ -23,7 +24,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
                         week_start)
 
 User = get_user_model()
-__all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_assign", "planner", "deadlines",
+__all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "planner", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
@@ -95,7 +96,7 @@ def projects(request):
     g = request.GET
     status = g.get("status", "open")
     q = g.get("q", "").strip()
-    f = {k: g.get(k, "") for k in ("agency", "editor", "film", "tier", "due", "source", "kind", "sort")}
+    f = {k: g.get(k, "") for k in ("agency", "editor", "film", "due", "source", "kind", "sort")}
     today = timezone.localdate()
     if status == "open":
         qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
@@ -116,8 +117,6 @@ def projects(request):
         qs = qs.filter(editor_id=int(f["editor"]))
     if f["film"] in Project.DELIVERABLES:
         qs = qs.filter(deliverable=f["film"])
-    if f["tier"].isdigit():
-        qs = qs.filter(tier=int(f["tier"]))
     week_end = today + timedelta(days=6 - (today.weekday() + 1) % 7)       # through Saturday
     due = {"overdue": Q(deadline__lt=today), "today": Q(deadline=today), "week": Q(deadline__range=(today, week_end)),
            "14": Q(deadline__range=(today, today + timedelta(days=14))),
@@ -141,18 +140,31 @@ def projects(request):
              "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
     qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
     queue = Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive")
-    bench = benchmarks()
-    jobs = []
-    for p in qs:
-        h = project_hours(p)
-        usual = S.usual_hours(p, bench)
-        jobs.append({"p": p, "hours": h, "usual": usual, "over": round((h / usual - 1) * 100) if usual and h else None})
+    jobs = [{"p": p} for p in qs]
     active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
     return render(request, "founder/projects.html", {
         "jobs": jobs, "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
-        "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES, "tiers": Project.TIERS,
+        "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
         "total_value": sum(j["p"].invoice_amount for j in jobs),
         "assign_form": AssignForm(), "new_form": NewProjectForm()})
+
+
+@requires("projects.manage")
+def project_status(request, pk):
+    """Change a film's status straight from the Projects list."""
+    from django.utils.http import url_has_allowed_host_and_scheme
+    p = get_object_or_404(Project, pk=pk)
+    nxt = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        nxt = reverse("projects")
+    new = request.POST.get("status", "")
+    if request.method == "POST" and new in dict(Project.STATUSES) and new != p.status:
+        old = p.get_status_display()
+        p.status = new
+        p.save()
+        record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
+        messages.success(request, f"{p}: {old} → {p.get_status_display()}.")
+    return redirect(nxt)
 
 
 @requires("projects.manage")
@@ -167,7 +179,7 @@ def project_new(request):
         with transaction.atomic():
             for d, editor_deadline, agency_deadline, amount in form.films():
                 job = Project(
-                    couple=c["couple"], deliverable=d, agency=c["agency"], tier=c["tier"], editor=editor,
+                    couple=c["couple"], deliverable=d, agency=c["agency"], editor=editor,
                     deadline=editor_deadline, agency_deadline=agency_deadline, brief=c["brief"],
                     invoice_amount=amount if amount is not None else rates.get(d, 0),
                     is_extra=c["is_extra"] and bool(editor), extra_basis=c["extra_basis"] or "fixed",

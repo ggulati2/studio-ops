@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Close job{% endblock %}
 {% block content %}
-<div class="head"><div><a class="small" href="{% url 'my_jobs' %}">← My jobs</a><h1>Close job: {{ p }}</h1><p>{{ p.agency }} · Tier {{ p.tier }}{% if p.received_online %} · Cloud{% elif p.drive %} · Drive {{ p.drive }}{% endif %}</p></div></div>
+<div class="head"><div><a class="small" href="{% url 'my_jobs' %}">← My jobs</a><h1>Close job: {{ p }}</h1><p>{{ p.agency }}{% if p.received_online %} · Cloud{% elif p.drive %} · Drive {{ p.drive }}{% endif %}</p></div></div>
 <div class="row">
 <form method="post" class="card grow">{% csrf_token %}
   <h2>Before you can close this job</h2>

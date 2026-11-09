@@ -14,7 +14,7 @@
   {% for p in queue %}
   <form method="post" action="{% url 'project_assign' p.pk %}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:var(--warn-line)">
     {% csrf_token %}
-    <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }} · {{ p.get_tier_display }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>
+    <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>
     <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}{% if p.agency_deadline %} · agency {{ p.agency_deadline|date:"j M" }}{% endif %}</span>
     <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
     <button class="btn primary sm">Assign</button>
@@ -41,7 +41,6 @@
     <select class="input" name="agency" data-autosubmit aria-label="Agency"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if f.agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a.name }}{% if a.code %} ({{ a.code }}){% endif %}</option>{% endfor %}</select>
     <select class="input" name="editor" data-autosubmit aria-label="Editor"><option value="">All editors</option><option value="none" {% if f.editor == 'none' %}selected{% endif %}>Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}" {% if f.editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
     <select class="input" name="film" data-autosubmit aria-label="Film type"><option value="">All film types</option>{% for d in films %}<option {% if f.film == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>
-    <select class="input" name="tier" data-autosubmit aria-label="Tier"><option value="">All tiers</option>{% for v, l in tiers %}<option value="{{ v }}" {% if f.tier == v|stringformat:'s' %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
     <select class="input" name="due" data-autosubmit aria-label="Deadline">
       <option value="">Any deadline</option>
       <option value="overdue" {% if f.due == 'overdue' %}selected{% endif %}>Overdue</option>
@@ -69,19 +68,20 @@
     </select>
     <div class="actions"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
   </form>
-  <div class="scroll"><table style="min-width:1120px">
-    <thead><tr><th>Job</th><th>Agency</th><th>Tier</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th>Hrs vs usual</th><th class="right">Invoice</th></tr></thead>
+  <div class="scroll"><table style="min-width:1040px">
+    <thead><tr><th>Job</th><th>Agency</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% with p=j.p %}<tr>
       <td><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
-      <td class="muted">{{ p.agency }}</td><td>{{ p.tier }}</td>
+      <td class="muted">{{ p.agency }}</td>
       <td>{{ p.editor.profile.name|default:"—" }}</td>
       <td class="nowrap">{{ p.deadline|date:"j M"|default:"—" }} {% if p.flag %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td>
       <td class="nowrap">{% if p.agency_deadline %}{{ p.agency_deadline|date:"j M" }}{% if p.deadline and p.deadline > p.agency_deadline %} <span class="tag bad">after editor's</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td>
+      <td><form method="post" action="{% url 'project_status' p.pk %}" class="status-pick">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <select name="status" class="status-select tag {{ p.status|status_class }}" data-autosubmit aria-label="Status of {{ p }}">{% for v, l in statuses %}<option value="{{ v }}"{% if v == p.status %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        <noscript><button class="btn sm">Save</button></noscript></form></td>
       <td class="mono">{{ p.source_label }}</td>
-      <td>{{ j.hours|hours }}{% if j.usual %} / {{ j.usual|hours }}{% endif %}{% if j.over is not None and j.over > 20 %} <span class="tag bad">+{{ j.over }}%</span>{% endif %}</td>
       <td class="right">{{ p.agency.symbol }}{{ p.invoice_amount|money }}</td>
-    </tr>{% endwith %}{% empty %}<tr><td colspan="10" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
+    </tr>{% endwith %}{% empty %}<tr><td colspan="8" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endblock %}

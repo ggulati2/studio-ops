@@ -4,7 +4,7 @@
 <div class="head"><div><h1>My jobs</h1><p>Send a cut for review when it's ready. Once QC passes, upload the files and close the job.</p></div></div>
 {% for j in jobs %}{% with p=j.p %}
 <section class="card">
-  <div class="title"><div><h2>{{ p }}{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</h2><span class="small muted">{{ p.agency }} · Tier {{ p.tier }}{% if p.received_online %} · Cloud{% elif p.drive %} · Drive {{ p.drive }}{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %} · {{ j.hours|hours }} hrs so far</span></div>
+  <div class="title"><div><h2>{{ p }}{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</h2><span class="small muted">{{ p.agency }}{% if p.received_online %} · Cloud{% elif p.drive %} · Drive {{ p.drive }}{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %} · {{ j.hours|hours }} hrs so far</span></div>
     <span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></div>
   {% if p.received_online %}<div class="small">☁ Footage came online{% if p.cloud_link %} · <a href="{{ p.cloud_link }}" target="_blank" rel="noopener noreferrer">Open download link</a>{% endif %}</div>{% endif %}
   {% if j.delay %}{% with d=j.delay %}

@@ -27,13 +27,13 @@
 <div class="row">
   <section class="aside" aria-label="Queue">
     {% for p in queue %}<a class="card tight" href="?p={{ p.pk }}" style="text-decoration:none;color:inherit;{% if sel.pk == p.pk %}border:2px solid var(--red){% endif %}">
-      <b>{{ p }}</b><span class="small muted">{{ p.agency }} · {{ p.editor.profile.name }} · Tier {{ p.tier }}</span>
+      <b>{{ p }}</b><span class="small muted">{{ p.agency }} · {{ p.editor.profile.name }}</span>
       <span class="small" style="font-weight:600;{% if p.days_left is not None and p.days_left <= 1 %}color:var(--bad){% endif %}">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% endif %}{% if p.reviews.count %} · round {{ p.reviews.count|add:1 }}{% endif %}</span></a>
     {% empty %}<section class="card"><span class="muted">Queue is empty.</span></section>{% endfor %}
   </section>
   {% if sel %}
   <form method="post" action="{% url 'qc_review' sel.pk %}" class="card grow">{% csrf_token %}
-    <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Tier {{ sel.tier }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% elif sel.drive %} · Drive {{ sel.drive }}{% endif %}</span></div></div>
+    <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% elif sel.drive %} · Drive {{ sel.drive }}{% endif %}</span></div></div>
     <div class="card tight" style="background:var(--sunk)">{% if sel.cut_link %}<a href="{{ sel.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open final film ↗</a>{% else %}<span class="small muted">No film link yet. Paste it below.</span>{% endif %}
       {% if sel.brief %}<span class="small">Brief: {{ sel.brief }}</span>{% endif %}<input class="input" type="url" name="cut_link" value="{{ sel.cut_link }}" placeholder="Film link"></div>
     <fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px"><legend style="font-weight:600;margin-bottom:8px">QC checklist: tick anything that's an issue</legend>

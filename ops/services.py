@@ -87,27 +87,25 @@ def project_hours(project):
 
 
 def benchmarks():
-    """Average hours of delivered films by (deliverable, tier)."""
+    """Average hours of delivered films by deliverable."""
     sums = defaultdict(lambda: [0.0, 0])
     for p in Project.objects.filter(status=Project.CLOSED):
         h = project_hours(p)
         if h:
-            sums[(p.deliverable, p.tier)][0] += h
-            sums[(p.deliverable, p.tier)][1] += 1
+            sums[p.deliverable][0] += h
+            sums[p.deliverable][1] += 1
     return {k: round(v[0] / v[1], 1) for k, v in sums.items()}
 
 
-# Starting estimates (hours, Tier 2) until the studio has its own delivered films
-# for a deliverable/tier. Tier 1 ×0.7, Tier 3 ×1.4. Your real averages replace these.
+# Starting estimates (hours) until the studio has its own delivered films of a type.
+# Your real averages replace these.
 DEFAULT_HOURS = {"Teaser": 10, "Highlight": 24, "Trailer": 20, "Full Film": 30, "Traditional Film": 22, "Reels": 3,
                  "Same Day Edit": 8, "Event Video": 16, "Ad / Corporate": 20, "Cleanup Shots": 4, "Other": 8}
-TIER_FACTOR = {1: 0.7, 2: 1.0, 3: 1.4}
 
 
 def usual_hours(project, bench=None):
     bench = bench if bench is not None else benchmarks()
-    return bench.get((project.deliverable, project.tier)) or round(
-        DEFAULT_HOURS.get(project.deliverable, 8) * TIER_FACTOR.get(project.tier, 1), 1)
+    return bench.get(project.deliverable) or float(DEFAULT_HOURS.get(project.deliverable, 8))
 
 
 def hours_remaining(project, bench=None):
@@ -220,7 +218,7 @@ def editor_value(month):
     for (uid, pid), h in hrs.items():
         if pid not in rate_cache:
             p = Project.objects.get(pk=pid)
-            denom = max(project_hours(p), bench.get((p.deliverable, p.tier), 0))
+            denom = max(project_hours(p), bench.get(p.deliverable, 0))
             rate_cache[pid] = (p.invoice_amount / denom) if (denom and p.agency.currency == "INR") else 0
         value[uid] += h * rate_cache[pid]
     return {k: int(v) for k, v in value.items()}
