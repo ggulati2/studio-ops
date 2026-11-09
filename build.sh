@@ -5,6 +5,7 @@ pip install -r requirements.txt
 python manage.py collectstatic --no-input
 python manage.py migrate --no-input
 python manage.py createcachetable
+python manage.py shell -c "from django.core.cache import cache; cache.delete_many(['hours_all', 'nav_badges'])"   # drop caches built by the previous version
 python manage.py secure_supabase      # lock Supabase's public Data API out of every table
 python manage.py check --deploy --fail-level ERROR
 python manage.py ensure_founder

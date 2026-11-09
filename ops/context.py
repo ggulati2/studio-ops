@@ -62,12 +62,34 @@ def _pending_leave(r):
     return LeaveRequest.objects.filter(status=LeaveRequest.PENDING).count()
 
 
+def _badges():
+    """Menu counts and trophy data change rarely but show on every page: one cache
+    read instead of four queries. Dropped on any change (ops/signals.py)."""
+    from django.core.cache import cache
+    from .models import DelayReport, LeaveRequest
+    b = cache.get("nav_badges")
+    if b is None:
+        award = celebrated_award()
+        b = {"delays": DelayReport.objects.filter(status=DelayReport.PENDING).count(),
+             "leave": LeaveRequest.objects.filter(status=LeaveRequest.PENDING).count(),
+             "trophies": dict(trophy_counts()), "award": award,
+             "award_month": award.month if award else None}
+        cache.set("nav_badges", b, 60 * 10)
+    from django.utils import timezone
+    from .services import add_months, month_start
+    if b["award_month"] and b["award_month"] != add_months(month_start(timezone.localdate()), -1):
+        cache.delete("nav_badges")     # a new month started: the celebrated award changes
+        return _badges()
+    return b
+
+
 def nav(request):
     studio = StudioSettings.get()
     if not request.user.is_authenticated:
         return {"studio": studio}
     r = role_of(request.user)
-    award = celebrated_award()
+    b = _badges()
+    award = b["award"]
     return {
         "studio": studio,
         "nav_items": build_menu(request.user, request.path),
@@ -76,9 +98,9 @@ def nav(request):
         "is_founder": r == ADMIN,
         "my_perms": perms_of(request.user),
         "is_contract": bool(getattr(getattr(request.user, "profile", None), "is_contract", False)),
-        "pending_delays": _pending_delays(r),
-        "pending_leave": _pending_leave(r),
-        "my_trophies": trophy_counts().get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
+        "pending_delays": b["delays"] if r == ADMIN else 0,
+        "pending_leave": b["leave"] if r == ADMIN else 0,
+        "my_trophies": b["trophies"].get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
         "celebrating": bool(award and award.user_id == request.user.id),
         "current_award": award,
     }

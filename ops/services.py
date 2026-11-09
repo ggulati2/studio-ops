@@ -76,7 +76,36 @@ def task_hours(qs_daylogs):
     return out
 
 
+def all_project_hours():
+    """{project_id: hours} for every film, in two queries (memoised per request)."""
+    from .perf import memo
+
+    def compute():
+        out = defaultdict(float)
+        for log in DayLog.objects.filter(tasks__isnull=False).distinct().prefetch_related("tasks"):
+            sh = split_hours(log)
+            for t in log.tasks.all():
+                out[t.project_id] += sh.get(t.id, 0)
+        for e in ExtraEntry.objects.all():
+            out[e.project_id] += e.hours
+        return {k: round(v, 1) for k, v in out.items()}
+
+    def load():
+        # Shared across server processes; dropped whenever a day, task, extra entry or film changes
+        from django.core.cache import cache
+        val = cache.get("hours_all")
+        if val is None:
+            val = compute()
+            cache.set("hours_all", val, 60 * 30)
+        return val
+    return memo("hours_all", load)
+
+
 def project_hours(project):
+    from .perf import peek
+    cached = peek("hours_all")
+    if cached is not None:
+        return cached.get(project.id, 0.0)
     total = 0.0
     for log in DayLog.objects.filter(tasks__project=project).distinct().prefetch_related("tasks"):
         sh = split_hours(log)
@@ -88,9 +117,15 @@ def project_hours(project):
 
 def benchmarks():
     """Average hours of delivered films by deliverable."""
+    from .perf import memo
+    return memo("benchmarks", _benchmarks)
+
+
+def _benchmarks():
     sums = defaultdict(lambda: [0.0, 0])
-    for p in Project.objects.filter(status=Project.CLOSED):
-        h = project_hours(p)
+    hours = all_project_hours()
+    for p in Project.objects.filter(status=Project.CLOSED).only("id", "deliverable"):
+        h = hours.get(p.id, 0)
         if h:
             sums[p.deliverable][0] += h
             sums[p.deliverable][1] += 1
@@ -117,7 +152,20 @@ def hours_remaining(project, bench=None):
 
 # ---------------------------------------------------------------- calendar / leave
 def holidays_between(a, b):
-    return {h.date: h for h in Holiday.objects.filter(date__range=(a, b))}
+    from .perf import memo
+    return dict(memo(("hol", a, b), lambda: {h.date: h for h in Holiday.objects.filter(date__range=(a, b))}))
+
+
+def _logs_between(a, b):
+    """{user_id: [DayLog…]} for a date range, with tasks, fetched once per request."""
+    from .perf import memo
+
+    def load():
+        out = defaultdict(list)
+        for l in DayLog.objects.filter(date__range=(a, b)).prefetch_related("tasks"):
+            out[l.user_id].append(l)
+        return out
+    return memo(("logs", a, b), load)
 
 
 def day_kind(user, d, logs=None, hols=None):
@@ -135,18 +183,17 @@ def day_kind(user, d, logs=None, hols=None):
 
 def leave_count(user, month):
     a, b = month_start(month), month_end(month)
-    qs = DayLog.objects.filter(user=user, date__range=(a, b))
-    full = qs.filter(day_type=DayLog.LEAVE).count()
+    logs = _logs_between(a, b).get(user.id, [])
+    full = sum(1 for l in logs if l.day_type == DayLog.LEAVE)
     hols = holidays_between(a, b)
-    half = sum(1 for l in qs.filter(day_type=DayLog.HALF) if not (l.date in hols and hols[l.date].kind == Holiday.HALF))
+    half = sum(1 for l in logs if l.day_type == DayLog.HALF and not (l.date in hols and hols[l.date].kind == Holiday.HALF))
     return Decimal(full) + Decimal(half) / 2
 
 
 def available_days(user, start, end):
     """Working days a person is available in [start, end]: excludes weekly offs,
     holidays and leave; half days count 0.5."""
-    s = StudioSettings.get()
-    logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(start, end))}
+    logs = {l.date: l for l in _logs_between(start, end).get(user.id, [])}
     hols = holidays_between(start, end)
     total = 0.0
     d = start
@@ -162,7 +209,7 @@ def available_days(user, start, end):
 
 def attendance(user, month):
     a, b = month_start(month), month_end(month)
-    logs = list(DayLog.objects.filter(user=user, date__range=(a, b)).prefetch_related("tasks"))
+    logs = _logs_between(a, b).get(user.id, [])
     by = defaultdict(int)
     for l in logs:
         by[l.day_type] += 1
@@ -179,17 +226,29 @@ def attendance(user, month):
 
 
 # ---------------------------------------------------------------- extra work
+def _extras_between(a, b):
+    """({user_id: [ExtraEntry…]}, {user_id: fixed extra pay}) for a range, once per request."""
+    from .perf import memo
+
+    def load():
+        entries, fixed = defaultdict(list), defaultdict(int)
+        for e in ExtraEntry.objects.filter(date__range=(a, b)).select_related("project"):
+            entries[e.user_id].append(e)
+        for p in Project.objects.filter(is_extra=True, extra_basis="fixed", status=Project.CLOSED,
+                                        closed_on__range=(a, b)).only("editor_id", "extra_rate"):
+            fixed[p.editor_id] += p.extra_rate
+        return entries, fixed
+    return memo(("extras", a, b), load)
+
+
 def extra_pay(user, month):
-    a, b = month_start(month), month_end(month)
-    hourly = sum(e.pay for e in ExtraEntry.objects.filter(user=user, date__range=(a, b)).select_related("project"))
-    fixed = sum(p.extra_rate for p in Project.objects.filter(
-        editor=user, is_extra=True, extra_basis="fixed", status=Project.CLOSED, closed_on__range=(a, b)))
-    return hourly + fixed
+    entries, fixed = _extras_between(month_start(month), month_end(month))
+    return sum(e.pay for e in entries.get(user.id, [])) + fixed.get(user.id, 0)
 
 
 def extra_hours(user, month):
-    a, b = month_start(month), month_end(month)
-    return round(sum(e.hours for e in ExtraEntry.objects.filter(user=user, date__range=(a, b))), 1)
+    entries, _ = _extras_between(month_start(month), month_end(month))
+    return round(sum(e.hours for e in entries.get(user.id, [])), 1)
 
 
 # ---------------------------------------------------------------- payroll
@@ -215,9 +274,10 @@ def editor_value(month):
     rate_cache = {}
     value = defaultdict(float)
     hrs = task_hours(DayLog.objects.filter(date__range=(a, b)))
+    films = Project.objects.select_related("agency").in_bulk({pid for _, pid in hrs})
     for (uid, pid), h in hrs.items():
         if pid not in rate_cache:
-            p = Project.objects.get(pk=pid)
+            p = films[pid]
             denom = max(project_hours(p), bench.get(p.deliverable, 0))
             rate_cache[pid] = (p.invoice_amount / denom) if (denom and p.agency.currency == "INR") else 0
         value[uid] += h * rate_cache[pid]

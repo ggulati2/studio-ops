@@ -161,3 +161,12 @@ python manage.py migrate
 python manage.py seed_demo          # optional demo data; logins: ag / nikhil / pratik / qc / drives, password demo-pass-123
 python manage.py runserver
 ```
+
+## Performance
+
+- **Database round-trips are budgeted.** Every main page runs a fixed, small number of queries (Team 17, Dashboard 25, Planner 12), independent of how many films or logged days exist. `ops/tests/test_performance.py` fails CI if a page goes over its budget or starts growing with the data.
+- **Per-request memo** (`ops/perf.py`): studio settings, holidays, a month's day logs and extra work are read once per request. Any save clears it.
+- **Shared caches** (database cache): every film's hours and the menu badges, dropped automatically on any related change (`ops/signals.py`) and on each deploy.
+- **Sessions** are written at most every 5 minutes; database connections are kept for 10 minutes; indexes cover the list filters and date ranges.
+- **Front end:** Geist is served by the app (no Google Fonts), static files are Brotli-compressed with far-future caching, Chrome/Edge preload a page when you hover a link (`/speculation-rules.json`), Projects shows 100 rows at a time with *Show more*, and date pickers in long tables are built as rows scroll into view.
+- **Slow requests** (over 0.8 s) are logged in Render's logs with the page and query count.

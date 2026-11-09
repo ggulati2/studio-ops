@@ -1,4 +1,5 @@
 """Security middleware: headers, forced password change, admin idle timeout."""
+import logging
 import time
 
 from django.conf import settings
@@ -6,11 +7,15 @@ from django.contrib.auth import logout
 from django.shortcuts import redirect
 from django.urls import reverse
 
+SESSION_TOUCH_SECONDS = 300
+SLOW_MS = 800
+log = logging.getLogger("ops.perf")
+
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data:",
     "connect-src 'self'",
     "form-action 'self'",
@@ -31,6 +36,8 @@ class SecurityHeadersMiddleware:
         response.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         if request.user.is_authenticated and not request.path.startswith("/static/"):
             response["Cache-Control"] = "private, no-store"
+            if response.get("Content-Type", "").startswith("text/html"):
+                response["Speculation-Rules"] = '"/speculation-rules.json"'     # hover-to-preload (ops/views/common.py)
         return response
 
 
@@ -52,7 +59,10 @@ class PasswordAndSessionMiddleware:
                 if now - last > settings.ADMIN_IDLE_MINUTES * 60:
                     logout(request)
                     return redirect(f"{reverse('login')}?next={request.path}&timeout=1")
-            request.session["last_seen"] = now
+            # Touch the session at most every 5 minutes instead of writing it on every click.
+            # That still slides the 7-day sign-in and keeps the founders' idle timeout accurate.
+            if now - request.session.get("last_seen", 0) >= SESSION_TOUCH_SECONDS:
+                request.session["last_seen"] = now
             prof = getattr(user, "profile", None)
             if prof and prof.must_change_password and not request.path.startswith(self.ALLOW):
                 return redirect("password_change")
@@ -71,7 +81,8 @@ class AuditMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
-        if request.method == "POST" and request.user.is_authenticated and response.status_code < 400:
+        if (request.method == "POST" and request.user.is_authenticated and response.status_code < 400
+                and not getattr(request, "_audited", False)):      # the view already logged it, in more detail
             match = getattr(request, "resolver_match", None)
             name = match.url_name if match else ""
             if name and name not in self.SKIP:
@@ -83,4 +94,36 @@ class AuditMiddleware:
                     detail += f"{', ' if detail else ''}{sum(len(request.FILES.getlist(k)) for k in request.FILES)} photo(s)"
                 target = " ".join(str(v) for v in match.kwargs.values()) if match.kwargs else ""
                 record(request, f"change.{name}"[:60], target or request.path, detail)
+        return response
+
+
+class RequestMemoMiddleware:
+    """Opens the per-request memo (ops/perf.py), counts database queries, and logs any
+    request slower than SLOW_MS with its query count, so slow pages show up in the logs."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.db import connection
+
+        from . import perf
+        counter = {"n": 0}
+
+        def count(execute, sql, params, many, context):
+            counter["n"] += 1
+            return execute(sql, params, many, context)
+
+        perf.begin()
+        start = time.perf_counter()
+        try:
+            with connection.execute_wrapper(count):
+                response = self.get_response(request)
+        finally:
+            perf.end()
+        ms = (time.perf_counter() - start) * 1000
+        if ms > SLOW_MS and not request.path.startswith("/static/"):
+            log.warning("slow request %s %s: %.0f ms, %d queries", request.method, request.path, ms, counter["n"])
+        if settings.DEBUG:
+            response["Server-Timing"] = f'app;dur={ms:.0f};desc="{counter["n"]} queries"'
         return response

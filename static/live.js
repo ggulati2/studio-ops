@@ -91,7 +91,7 @@
             var box = n.closest('[data-live-part="queue"]');
             n.remove();
             if (box && !box.querySelector("[data-queue]")) box.innerHTML = "";
-            else if (box) { var h = box.querySelector("h2"); if (h) h.textContent = h.textContent.replace(/\d+/, box.querySelectorAll("[data-queue]").length); }
+            else if (box) { var h = box.querySelector("h2"); if (h) h.textContent = h.textContent.replace(/\d+/, function (n) { return Math.max(0, +n - 1); }); }
           }, 250);
         });
       });
@@ -171,6 +171,39 @@
     clearTimeout(timer);
     timer = setTimeout(function () { load(formUrl(), false); }, 280);
   });
+  /* "Show more": append the next batch of rows instead of re-drawing the list */
+  doc.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-live-more]");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+    e.preventDefault();
+    if (a.classList.contains("is-loading")) return;
+    a.classList.add("is-loading");
+    a.textContent = "Loading…";
+    var url = new URL(a.href, location.href);
+    fetch(url.pathname + url.search, { credentials: "same-origin", headers: { "X-Requested-With": "fetch-page" } })
+      .then(function (r) { if (!r.ok) throw new Error(); return r.text(); })
+      .then(function (html) {
+        var next = new DOMParser().parseFromString(html, "text/html");
+        var body = doc.querySelector('[data-live-part="table"] tbody');
+        var added = 0;
+        Array.prototype.forEach.call(next.querySelectorAll('[data-live-part="table"] tbody tr[data-pk]'), function (tr) {
+          if (body.querySelector('tr[data-pk="' + tr.getAttribute("data-pk") + '"]')) return;
+          var row = doc.importNode(tr, true);
+          body.appendChild(row);
+          alignRow(row);
+          added++;
+        });
+        ["more", "summary"].forEach(function (k) {
+          var mine = doc.querySelector('[data-live-part="' + k + '"]'), theirs = next.querySelector('[data-live-part="' + k + '"]');
+          if (mine && theirs) mine.innerHTML = theirs.innerHTML;
+        });
+        enhance(body);
+        history.replaceState({ live: true }, "", url.pathname + url.search);
+        toast(added + " more film" + (added === 1 ? "" : "s") + " shown.");
+      })
+      .catch(function () { location.href = a.href; });
+  });
+
   doc.addEventListener("click", function (e) {
     var a = e.target.closest('[data-live-part="chips"] a, [data-live-part="clear"] a');
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;

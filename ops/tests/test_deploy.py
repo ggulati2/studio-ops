@@ -37,7 +37,7 @@ class RenderSettings(unittest.TestCase):
         db = settings_with({"DATABASE_URL": "postgresql://postgres.ref:pw@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"})
         self.assertEqual(db["ENGINE"], "django.db.backends.postgresql")
         self.assertIn("'sslmode': 'require'", db["OPTIONS"])
-        self.assertEqual(db["CONN_MAX_AGE"], "60")
+        self.assertEqual(db["CONN_MAX_AGE"], "600")
         self.assertEqual(db["CONN_HEALTH_CHECKS"], "True")
 
     def test_transaction_pooler_turns_off_what_it_cant_do(self):

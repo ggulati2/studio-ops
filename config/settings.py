@@ -34,6 +34,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "ops.middleware.RequestMemoMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -68,14 +69,14 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # • Production: Supabase Postgres through its *session* pooler (port 5432). It's
 #   IPv4 (Render has no IPv6) and suits a long-running server: connections are
-#   reused for 60 s and health-checked. TLS is required.
+#   reused for 10 minutes and health-checked. TLS is required.
 # • If the transaction pooler (6543) is ever used instead, prepared statements,
 #   server-side cursors and persistent connections are switched off to match it.
 # • Local: SQLite.
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 if DATABASE_URL:
     local = any(h in DATABASE_URL for h in ("localhost", "127.0.0.1"))
-    _db = dj_database_url.parse(DATABASE_URL, conn_max_age=60, conn_health_checks=True,
+    _db = dj_database_url.parse(DATABASE_URL, conn_max_age=600, conn_health_checks=True,
                                 ssl_require=not local and "sslmode=disable" not in DATABASE_URL)
     if ":6543" in DATABASE_URL:
         _db.setdefault("OPTIONS", {})["prepare_threshold"] = None
@@ -118,7 +119,7 @@ LOGOUT_REDIRECT_URL = "login"
 
 # Sessions: 7 days for the team (sliding), founders signed out after 2 idle hours.
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
-SESSION_SAVE_EVERY_REQUEST = True
+SESSION_SAVE_EVERY_REQUEST = False    # touched every 5 minutes instead (ops.middleware), not on every click
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = True
@@ -154,7 +155,8 @@ LOGGING = {
     "version": 1,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "WARNING"},
-    "loggers": {"django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False}},
+    "loggers": {"django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+                "ops.perf": {"handlers": ["console"], "level": "WARNING", "propagate": False}},
 }
 
 # Tests: fast password hashing (real hashing is deliberately slow).

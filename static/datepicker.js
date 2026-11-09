@@ -381,8 +381,23 @@
     });
   }
 
+  /* Date fields inside long tables are set up just before they scroll into view,
+     so a list with hundreds of rows doesn't build hundreds of pickers up front. */
+  var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      io.unobserve(en.target);
+      Array.prototype.forEach.call(en.target.querySelectorAll('input[type="date"], input[type="month"]'), enhance);
+    });
+  }, { rootMargin: "600px 0px" }) : null;
+
   function enhanceAll(root) {
-    Array.prototype.forEach.call((root || doc).querySelectorAll('input[type="date"], input[type="month"]'), enhance);
+    var inputs = (root || doc).querySelectorAll('input[type="date"], input[type="month"]');
+    Array.prototype.forEach.call(inputs, function (input) {
+      var row = io && input.closest("tbody tr");
+      if (row) { if (!row.dataset.dpWatch) { row.dataset.dpWatch = "1"; io.observe(row); } }
+      else enhance(input);
+    });
   }
 
   doc.addEventListener("mousedown", function (e) {

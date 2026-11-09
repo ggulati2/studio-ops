@@ -6,9 +6,8 @@
 <meta name="theme-color" content="#FFFFFF">
 <meta name="robots" content="noindex,nofollow">
 <title>{% block title %}Studio Ops{% endblock %} · {{ studio.brand_name }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preload" href="{% static 'fonts/Geist-Variable.woff2' %}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{% static 'fonts.css' %}">
 <link rel="stylesheet" href="{% static 'app.css' %}">
 <link rel="icon" href="{% static 'img/redwed-on-light.png' %}">
 <script src="{% static 'theme.js' %}"></script>

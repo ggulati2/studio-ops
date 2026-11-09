@@ -12,7 +12,7 @@ from ..audit import client_ip, record
 from ..models import StoredImage
 from ..rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, has_perm, role_of
 
-__all__ = ["home", "image", "health", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
+__all__ = ["home", "image", "health", "speculation_rules", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
 
 HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", INTERN: "today", QC: "qc_queue", DRIVE: "drives"}
 
@@ -43,6 +43,33 @@ def image(request, pk):
     resp["X-Content-Type-Options"] = "nosniff"
     resp["Content-Disposition"] = "inline"
     return resp
+
+
+SPECULATION_RULES = {
+    # Chrome/Edge start loading a page when you hover a link for a moment (or press on it),
+    # so it opens almost instantly. Only safe GET pages; nothing that downloads or prints.
+    "prefetch": [{
+        "source": "document",
+        "where": {"and": [
+            {"href_matches": "/*"},
+            {"not": {"href_matches": "/logout/*"}},
+            {"not": {"href_matches": "/admin/*"}},
+            {"not": {"href_matches": "/cron/*"}},
+            {"not": {"href_matches": "/settings/backup/*"}},
+            {"not": {"href_matches": "/reports/print/*"}},
+            {"not": {"selector_matches": "[download], [target=_blank], [data-no-prefetch]"}},
+        ]},
+        "eagerness": "moderate",
+    }],
+}
+
+
+def speculation_rules(request):
+    from django.http import JsonResponse
+    r = JsonResponse(SPECULATION_RULES)
+    r["Content-Type"] = "application/speculationrules+json"
+    r["Cache-Control"] = "public, max-age=3600"
+    return r
 
 
 def health(request):

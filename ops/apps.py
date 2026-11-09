@@ -7,3 +7,5 @@ class OpsConfig(AppConfig):
 
     def ready(self):
         from . import audit  # noqa: F401  (connects login/logout signals)
+        from . import signals
+        signals.connect()

@@ -140,14 +140,30 @@ def projects(request):
     sorts = {"deadline": ("deadline", "couple"), "agency_deadline": ("agency_deadline", "deadline"),
              "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
     qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
-    queue = Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive")
-    jobs = [{"p": p} for p in qs]
+    queue = list(Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive"))
+    # Draw PAGE rows at a time; "Show more" adds the next batch without reloading
+    try:
+        show = max(PAGE, min(int(request.GET.get("show", PAGE)), 5000))
+    except ValueError:
+        show = PAGE
+    from django.db.models import Count, Sum
+    agg = qs.order_by().aggregate(n=Count("id", distinct=True), value=Sum("invoice_amount"))
+    total = agg["n"] or 0
+    jobs = [{"p": p} for p in qs[:show]]
     active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
+    more = None
+    if total > show:
+        params = request.GET.copy()
+        params["show"] = show + PAGE
+        more = {"url": "?" + params.urlencode(), "left": total - show, "next": min(PAGE, total - show)}
     return render(request, "founder/projects.html", {
-        "jobs": jobs, "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+        "jobs": jobs, "queue": queue, "total": total, "more": more, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
         "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
-        "total_value": sum(j["p"].invoice_amount for j in jobs),
+        "total_value": agg["value"] or 0,
         "assign_form": AssignForm(), "new_form": NewProjectForm()})
+
+
+PAGE = 100
 
 
 @requires("projects.manage")

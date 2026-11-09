@@ -211,12 +211,13 @@ def extra_delete(request, pk):
 def leaderboard(request):
     counts = trophy_counts()
     people = list(User.objects.filter(profile__active=True).exclude(profile__role=ADMIN).select_related("profile"))
-    last_win = {}
+    last_win, won = {}, defaultdict(list)
     for a in EmployeeOfMonth.objects.all():
         last_win.setdefault(a.user_id, a.month)
+        won[a.user_id].append(a.month)
     people.sort(key=lambda u: (-counts.get(u.id, 0), -(last_win.get(u.id, date.min).toordinal())))
     rows = [{"u": u, "count": counts.get(u.id, 0), "cups": range(counts.get(u.id, 0)),
-             "months": [a.month for a in EmployeeOfMonth.objects.filter(user=u)]} for u in people]
+             "months": won.get(u.id, [])} for u in people]
     podium = [r for r in rows if r["count"]][:3]
     nxt = add_months(month_start(timezone.localdate()), 1)
     return render(request, "team/leaderboard.html", {"rows": rows, "podium": podium, "next_announce": nxt,

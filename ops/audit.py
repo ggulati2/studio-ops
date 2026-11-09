@@ -26,6 +26,8 @@ def record(request, action, target="", detail="", user=None):
         u = user or (request.user if request is not None and getattr(request.user, "is_authenticated", False) else None)
         AuditEvent.objects.create(user=u, username=getattr(u, "username", "") or "", action=action[:60],
                                   target=str(target)[:200], detail=str(detail)[:500], ip=client_ip(request))
+        if request is not None:
+            request._audited = True       # AuditMiddleware then skips its generic entry
     except Exception:  # pragma: no cover
         log.exception("audit write failed")
 

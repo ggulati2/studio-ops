@@ -59,8 +59,10 @@ class StudioSettings(models.Model):
 
     @classmethod
     def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
+        """The single settings row. Read once per request (it's used in every hours and
+        calendar calculation, often hundreds of times per page)."""
+        from .perf import memo
+        return memo("settings", lambda: cls.objects.get_or_create(pk=1)[0])
 
     @property
     def weekdays(self):
@@ -309,6 +311,13 @@ class Project(models.Model):
 
     class Meta:
         ordering = ["deadline", "couple"]
+        # The lists filter and sort on these; cheap now, essential at thousands of films
+        indexes = [models.Index(fields=["status", "deadline"], name="proj_status_deadline"),
+                   models.Index(fields=["deadline"], name="proj_deadline"),
+                   models.Index(fields=["agency_deadline"], name="proj_agency_deadline"),
+                   models.Index(fields=["first_delivered_on"], name="proj_first_delivered"),
+                   models.Index(fields=["closed_on"], name="proj_closed_on"),
+                   models.Index(fields=["created"], name="proj_created")]
 
     def __str__(self):
         code = self.agency.code if self.agency_id and self.agency.code else ""
@@ -424,6 +433,7 @@ class DayLog(models.Model):
     class Meta:
         unique_together = ("user", "date")
         ordering = ["-date"]
+        indexes = [models.Index(fields=["date", "day_type"], name="daylog_date_type")]
 
     def __str__(self):
         return f"{self.user} {self.date}"
@@ -480,6 +490,7 @@ class ExtraEntry(models.Model):
 
     class Meta:
         ordering = ["-date", "-start"]
+        indexes = [models.Index(fields=["date"], name="extra_date")]
 
     @property
     def hours(self):
@@ -515,6 +526,7 @@ class PlanEntry(models.Model):
     class Meta:
         unique_together = ("user", "date", "slot")
         ordering = ["date", "slot"]
+        indexes = [models.Index(fields=["date"], name="plan_date")]
 
     @property
     def is_revision(self):
