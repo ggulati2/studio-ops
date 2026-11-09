@@ -491,3 +491,17 @@ class AdvanceLeave(SeededTestCase):
         req.refresh_from_db()
         self.assertEqual(req.status, LeaveRequest.DECLINED)
         self.assertIn("Big delivery week", self.login("pratik").get("/my-leave/").content.decode())
+
+
+class RevenueEstimated(SeededTestCase):
+    def test_new_project_adds_to_estimate(self):
+        from ops.models import Agency
+        f = self.login("ag")
+        before = f.get("/dashboard/").context["revenue_est"]
+        ag = Agency.objects.filter(currency="INR").first()
+        Project.objects.create(couple="Estimate Test", deliverable="Trailer", agency=ag, invoice_amount=25000)
+        r = f.get("/dashboard/")
+        self.assertEqual(r.context["revenue_est"], before + 25000)
+        html = r.content.decode()
+        self.assertIn("Revenue estimated (INR)", html)
+        self.assertIn("Revenue delivered (INR)", html)

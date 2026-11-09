@@ -60,6 +60,14 @@ def dashboard(request):
         if p.agency.currency == "INR":
             rev_by_agency[p.agency.name] += p.invoice_amount
     total_rev = sum(rev_by_agency.values()) or 0
+    # Revenue estimated: the value of every film logged this month, delivered or not
+    est_inr, est_other = 0, defaultdict(int)
+    for p in Project.objects.filter(created__date__gte=month).select_related("agency"):
+        if p.agency.currency == "INR":
+            est_inr += p.invoice_amount
+        else:
+            est_other[p.agency.currency] += p.invoice_amount
+    pipeline = sum(p.invoice_amount for p in open_jobs if p.agency.currency == "INR")
     ctx = {
         "unassigned": open_jobs.filter(editor__isnull=True).count(),
         "overdue": [p for p in open_jobs if p.days_left is not None and p.days_left < 0],
@@ -68,6 +76,10 @@ def dashboard(request):
         "delivered_count": delivered.count(),
         "on_time_pct": round(sum(1 for p in on_time if not p.delivered_late) / len(on_time) * 100) if on_time else None,
         "revenue": total_rev,
+        "revenue_est": est_inr,
+        "revenue_est_other": sorted(est_other.items()),
+        "revenue_est_count": Project.objects.filter(created__date__gte=month).count(),
+        "pipeline": pipeline,
         "agencies": sorted(({"name": k, "amount": v, "share": round(v / total_rev * 100) if total_rev else 0}
                             for k, v in rev_by_agency.items()), key=lambda x: -x["amount"]),
         "rows": rows,

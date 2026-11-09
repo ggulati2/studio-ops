@@ -13,10 +13,11 @@
   <div class="kpi"><span>Missing logs yesterday</span><b>{{ missing|length }}</b><small>{% for u in missing %}{{ u.profile.name }}{% if not forloop.last %}, {% endif %}{% empty %}Everyone logged{% endfor %}</small></div>
 </div>
 
-<div class="grid">
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(168px,100%),1fr))">
   <div class="kpi"><span>Films delivered (this month)</span><b>{{ delivered_count }}</b></div>
   <div class="kpi"><span>On-time delivery</span><b>{% if on_time_pct is not None %}{{ on_time_pct }}%{% else %}–{% endif %}</b></div>
-  <div class="kpi"><span>Revenue delivered (INR)</span><b>₹{{ revenue|money }}</b></div>
+  <div class="kpi"><span>Revenue estimated (INR)</span><b>₹{{ revenue_est|money }}</b><small>{{ revenue_est_count }} film{{ revenue_est_count|pluralize }} logged this month{% for cur, amt in revenue_est_other %} · +{{ amt|money }} {{ cur }}{% endfor %}</small></div>
+  <div class="kpi"><span>Revenue delivered (INR)</span><b>₹{{ revenue|money }}</b><small>{% if revenue_est %}{% widthratio revenue revenue_est 100 %}% of estimated · {% endif %}₹{{ pipeline|money }} still in open films</small></div>
   <div class="kpi"><span>Outstanding invoices (INR)</span><b>₹{{ outstanding|money }}</b><small><a href="{% url 'invoices' %}">Invoices →</a></small></div>
 </div>
 
