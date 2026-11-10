@@ -223,15 +223,20 @@ def job_submit(request, pk):
 
 @requires("work.log_own")
 def close_job(request, pk):
-    p = get_object_or_404(Project, pk=pk, editor=request.user)
+    """The editor uploads the final files and closes the job, at any stage: closing
+    marks the film Delivered (QC hasn't always been recorded in the portal)."""
+    p = get_object_or_404(Project.objects.exclude(status=Project.CLOSED), pk=pk, editor=request.user)
     form = CloseJobForm(request.POST or None, initial={"project_file_link": p.project_file_link,
                                                        "final_mp4_link": p.final_mp4_link})
-    qc_ok = p.status == Project.QC_PASSED
-    if request.method == "POST" and qc_ok and form.is_valid():
+    qc_ok = p.status in (Project.QC_PASSED, Project.SENT_AGENCY)
+    if request.method == "POST" and form.is_valid():
+        before = p.get_status_display()
         p.project_file_link = form.cleaned_data["project_file_link"]
         p.final_mp4_link = form.cleaned_data["final_mp4_link"]
         p.status = Project.CLOSED      # first delivery date is kept if this was a client revision
         p.save()
+        from ..audit import record
+        record(request, "project.closed", str(p), f"by editor from {before}" + ("" if qc_ok else " (QC not passed in the portal)"))
         if p.drive and not p.drive.open_jobs.exists() and p.drive.status == "in_use":
             p.drive.status = "backup_done" if p.drive.studio_owned else "ready"
             p.drive.save(update_fields=["status"])

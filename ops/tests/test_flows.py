@@ -71,11 +71,21 @@ class Flows(SeededTestCase):
         c.post(f"/my-jobs/{job.pk}/close/", {"project_file_link": "https://drive.google.com/drive/folders/p",
                                              "final_mp4_link": "https://drive.google.com/file/d/y/view", "confirm": "on"})
         job.refresh_from_db(); self.assertEqual(job.status, "closed"); self.assertEqual(job.closed_on, self.today)
-        locked = Project.objects.filter(status="not_started", editor=self.pratik).first()
-        self.login("pratik").post(f"/my-jobs/{locked.pk}/close/", {"project_file_link": "https://drive.google.com/a",
-                                                                   "final_mp4_link": "https://drive.google.com/b", "confirm": "on"})
-        locked.refresh_from_db(); self.assertNotEqual(locked.status, "closed")
-        self.assertEqual(self.login("pratik").get(f"/my-jobs/{job.pk}/close/").status_code, 404)
+        # Any stage can be closed by its editor: it goes straight to Delivered
+        early = Project.objects.filter(status="not_started", editor=self.pratik).first()
+        pc = self.login("pratik")
+        self.assertContains(pc.get("/my-jobs/"), f"/my-jobs/{early.pk}/close/")
+        self.assertContains(pc.get(f"/my-jobs/{early.pk}/close/"), "You can still close it")
+        pc.post(f"/my-jobs/{early.pk}/close/", {"project_file_link": "https://drive.google.com/a",
+                                                "final_mp4_link": "https://drive.google.com/b", "confirm": "on"})
+        early.refresh_from_db(); self.assertEqual(early.status, "closed"); self.assertEqual(early.closed_on, self.today)
+        self.assertEqual(early.final_mp4_link, "https://drive.google.com/b")
+        # Links and the tick box are still required; someone else's job or a closed one can't be touched
+        other = Project.objects.filter(editor=self.pratik).exclude(status="closed").first()
+        r = pc.post(f"/my-jobs/{other.pk}/close/", {"project_file_link": "", "final_mp4_link": ""})
+        other.refresh_from_db(); self.assertNotEqual(other.status, "closed")
+        self.assertEqual(pc.get(f"/my-jobs/{job.pk}/close/").status_code, 404)
+        self.assertEqual(pc.get(f"/my-jobs/{early.pk}/close/").status_code, 404)
 
     def test_invoices_and_payments(self):
         ca = self.login("ag")

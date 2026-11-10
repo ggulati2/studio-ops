@@ -4,10 +4,11 @@
 <div class="head"><div><a class="small" href="{% url 'my_jobs' %}">← My jobs</a><h1>Close job: {{ p }}</h1><p>{{ p.agency }}{% if p.received_online %} · Cloud{% elif p.drive %} · Drive {{ p.drive }}{% endif %}</p></div></div>
 <div class="row">
 <form method="post" class="card grow">{% csrf_token %}
-  <h2>Before you can close this job</h2>
-  <div class="card tight {% if qc_ok %}{% else %}warn{% endif %}"><b>{% if qc_ok %}✓ QC passed{% else %}QC hasn't passed this film yet{% endif %}</b></div>
+  <h2>Final files</h2>
+  {% if qc_ok %}<div class="card tight"><b style="color:var(--ok)">✓ {{ p.get_status_display }}</b></div>
+  {% else %}<div class="card tight warn"><b style="color:var(--warn)">Status now: {{ p.get_status_display }}</b><span class="small">You can still close it. Closing marks the film <b>Delivered</b> straight away, so only do this once the final film has really gone out.</span></div>{% endif %}
   {% include "_form.html" %}
-  <button class="btn primary" {% if not qc_ok %}disabled{% endif %}>Mark job as closed</button>
+  <button class="btn primary">Close job &amp; mark Delivered</button>
 </form>
 <aside class="aside"><section class="card"><h2>Where to upload</h2>
   <span class="small">Company Drive › {{ p.agency }} › {% now "Y" %} ›</span>
