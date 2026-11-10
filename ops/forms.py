@@ -1,4 +1,5 @@
 from django import forms
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 
 from .models import (Agency, ClientRevision, LeaveRequest, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
@@ -83,8 +84,11 @@ class ProjectForm(StyledMixin, forms.ModelForm):
         model = Project
         fields = ["couple", "deliverable", "agency", "editor", "received_on", "deadline", "agency_deadline", "status",
                   "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
-                  "timing_override", "timing_note"]
-        widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "brief": forms.Textarea(attrs={"rows": 3})}
+                  "first_delivered_on", "timing_override", "timing_note"]
+        widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "first_delivered_on": DATE,
+                   "brief": forms.Textarea(attrs={"rows": 3})}
+        labels = {"first_delivered_on": "Sent to agency on"}
+        help_texts = {"first_delivered_on": "The day it was really sent (first delivery). On time = on or before the agency's deadline."}
 
     source = forms.ChoiceField(label="Footage on", required=False)
 
@@ -110,6 +114,9 @@ class ProjectForm(StyledMixin, forms.ModelForm):
         ed, ad = data.get("deadline"), data.get("agency_deadline")
         if ed and ad and ed > ad:
             self.add_error("deadline", f"The editor's deadline ({ed:%-d %b}) is after the agency's ({ad:%-d %b}).")
+        sent = data.get("first_delivered_on")
+        if sent and sent > timezone.localdate():
+            self.add_error("first_delivered_on", "The sent date can't be in the future.")
         return data
 
     def save(self, commit=True):

@@ -76,10 +76,6 @@ def dashboard(request):
             counts[p.editor_id] += 1
     for r in rows:
         r["open"] = counts[r["u"].id]
-    yesterday = today - timedelta(days=1)
-    logged = set(DayLog.objects.filter(date=yesterday).values_list("user_id", flat=True))
-    missing = [u for u in team() if u.id not in logged and yesterday.weekday() in StudioSettings.get().weekdays
-               and yesterday not in holidays_between(yesterday, yesterday)]
     delivered = Project.objects.filter(Q(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__gte=month)
                                        | Q(status=Project.SENT_AGENCY, first_delivered_on__gte=month))
     on_time = [p for p in delivered if p.deadline]
@@ -100,7 +96,6 @@ def dashboard(request):
         "unassigned": open_jobs.filter(editor__isnull=True).count(),
         "overdue": [p for p in open_jobs if p.days_left is not None and p.days_left < 0],
         "due_soon": [p for p in open_jobs if p.days_left is not None and 0 <= p.days_left <= 3],
-        "missing": missing,
         "delivered_count": delivered.count(),
         "on_time_pct": round(sum(1 for p in on_time if not p.delivered_late) / len(on_time) * 100) if on_time else None,
         "revenue": total_rev,
@@ -128,7 +123,7 @@ def project_filter(g):
     if status == "open":
         qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
     elif status == "late":
-        qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY)).filter(deadline__lt=today)
+        qs = qs.exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY, Project.CLIENT_REV)).filter(deadline__lt=today)
     elif status == "revisions":
         qs = qs.filter(status__in=(Project.TL_REVISIONS, Project.REVISIONS, Project.CLIENT_REV))
     elif status:
@@ -145,7 +140,7 @@ def project_filter(g):
     if f["film"] in Project.DELIVERABLES:
         qs = qs.filter(deliverable=f["film"])
     week_end = today + timedelta(days=6 - (today.weekday() + 1) % 7)       # through Saturday
-    due = {"overdue": Q(deadline__lt=today), "today": Q(deadline=today), "week": Q(deadline__range=(today, week_end)),
+    due = {"overdue": Q(deadline__lt=today) & ~Q(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY, Project.CLIENT_REV)), "today": Q(deadline=today), "week": Q(deadline__range=(today, week_end)),
            "14": Q(deadline__range=(today, today + timedelta(days=14))),
            "month": Q(deadline__range=(month_start(today), month_end(today))), "none": Q(deadline__isnull=True),
            "agency_risk": Q(agency_deadline__isnull=False, deadline__gt=models.F("agency_deadline"))}
@@ -212,6 +207,57 @@ def projects(request):
 PAGE = 100
 
 
+def _iso(v):
+    try:
+        return date.fromisoformat(v) if v else None
+    except ValueError:
+        return None
+
+
+def _sent_date(v):
+    """The date a film was really sent to the agency (editors sometimes log it a day or two late).
+    None = not given (today is used), False = not allowed (in the future)."""
+    d = _iso(v)
+    if d and d > timezone.localdate():
+        return False
+    return d
+
+
+def apply_status(p, new, sent_on=None):
+    """Change a film's status. Sent to agency records the real sent date as the delivery date
+    (only the first delivery decides on time / late; re-sends after client changes don't)."""
+    say = []
+    old = p.get_status_display()
+    if p.status == new == Project.SENT_AGENCY:
+        if p.client_revisions.exists():
+            return [("info", f"{p}: the first delivery ({p.first_delivered_on:%-d %b}) decides on time / late, "
+                             "and it has been back with the client since, so that date stays.")]
+        if sent_on == p.first_delivered_on:
+            return []
+    # a correction of the sent date while still "Sent to agency" (and never back from the client) counts too
+    first_time = not p.first_delivered_on or (p.status == new == Project.SENT_AGENCY and bool(sent_on)
+                                               and not p.client_revisions.exists())
+    if new == Project.SENT_AGENCY and first_time:
+        p.first_delivered_on = sent_on or timezone.localdate()
+        p.deadline_at_delivery = p.deadline
+    p.status = new
+    p.save()
+    if new == Project.SENT_AGENCY:
+        when = p.first_delivered_on if first_time else (sent_on or timezone.localdate())
+        msg = (f"{p}: sent date changed to {when:%-d %b}." if old == p.get_status_display()
+               else f"{p}: {old} → Sent to agency on {when:%-d %b}.")
+        if first_time and p.delivered_late is not None:
+            due = p.agency_deadline or p.deadline
+            msg += (f" On time (agency's deadline {due:%-d %b})." if not p.delivered_late
+                    else f" Late: the agency's deadline was {due:%-d %b}.")
+        elif not first_time:
+            msg += f" On time / late stays based on the first delivery ({p.first_delivered_on:%-d %b})."
+        say.append(("success", msg))
+    else:
+        say.append(("success", f"{p}: {old} → {p.get_status_display()}."))
+    return say
+
+
 @requires("projects.manage")
 def project_status(request, pk):
     """Change a film's status, deadlines or invoice amount straight from the Projects list."""
@@ -226,13 +272,24 @@ def project_status(request, pk):
     say, undo = [], None
     if "status" in P:
         new = P["status"]
-        if new in dict(Project.STATUSES) and new != p.status:
+        sent_on = _sent_date(P.get("sent_on"))
+        if sent_on is False:
+            say.append(("error", f"{p}: the sent date can't be in the future."))
+        elif new in dict(Project.STATUSES) and (new != p.status or (new == Project.SENT_AGENCY and sent_on)):
             old = p.get_status_display()
-            undo = {"status": p.status}
-            p.status = new
-            p.save()
-            record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}")
-            say.append(("success", f"{p}: {old} → {p.get_status_display()}."))
+            undo = {"status": p.status, "restore_sent": p.first_delivered_on.isoformat() if p.first_delivered_on else "",
+                    "restore_due": p.deadline_at_delivery.isoformat() if p.deadline_at_delivery else ""}
+            done = apply_status(p, new, sent_on)
+            say.extend(done)
+            if not any(level == "success" for level, _ in done):
+                undo = None
+            record(request, "project.status", str(p), f"{old} -> {p.get_status_display()}"
+                   + (f" (sent {sent_on:%d %b %Y})" if sent_on and new == Project.SENT_AGENCY else ""))
+        if "restore_sent" in P:         # undo of a status change: also put the delivery dates back
+            p.first_delivered_on = _iso(P.get("restore_sent"))
+            p.deadline_at_delivery = _iso(P.get("restore_due"))
+            Project.objects.filter(pk=p.pk).update(first_delivered_on=p.first_delivered_on,
+                                                   deadline_at_delivery=p.deadline_at_delivery)
     elif "editor" in P:
         raw = P["editor"]
         new = None if not raw else team().filter(pk=raw).first() if raw.isdigit() else False

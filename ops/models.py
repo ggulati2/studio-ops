@@ -396,7 +396,10 @@ class Project(models.Model):
         if self.timing_override:
             return self.timing_override == "late"
         first = self.first_delivered_on or (self.closed_on if self.status == self.CLOSED else None)
-        due = self.deadline_at_delivery or self.deadline
+        if self.status == self.CLIENT_REV:      # back with the client's changes: never "late"
+            return False if first else None
+        # On time = sent to the agency on or before the agency's deadline (the editor's if none was set)
+        due = self.agency_deadline or self.deadline_at_delivery or self.deadline
         if not (first and due):
             return None
         return first > due
@@ -423,8 +426,8 @@ class Project(models.Model):
 
     @property
     def days_left(self):
-        if not self.deadline or not self.is_open or self.status == self.SENT_AGENCY:
-            return None
+        if not self.deadline or not self.is_open or self.status in (self.SENT_AGENCY, self.CLIENT_REV):
+            return None     # sent, or with the client's changes: never counted as overdue
         return (self.deadline - timezone.localdate()).days
 
     @property

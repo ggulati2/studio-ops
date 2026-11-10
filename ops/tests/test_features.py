@@ -580,6 +580,7 @@ class ProjectsInlineEdits(SeededTestCase):
 
     def test_sent_to_agency(self):
         self.p.deadline = self.today - timedelta(days=1)
+        self.p.agency_deadline = self.today - timedelta(days=1)
         self.p.save()
         self.post({"status": Project.SENT_AGENCY})
         self.p.refresh_from_db()

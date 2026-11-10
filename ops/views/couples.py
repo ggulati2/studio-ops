@@ -65,7 +65,7 @@ def couple_summary(films, all_films=None):
     total, done = all_films or (len(films), sum(1 for p in films if p.status in DONE))
     total = max(total, len(films))
     return {"n": len(films), "total": total, "hidden": total - len(films), "done": done, "open": len(live),
-            "overdue": sum(1 for p in live if p.deadline and p.deadline < today),
+            "overdue": sum(1 for p in live if p.deadline and p.deadline < today and p.status != Project.CLIENT_REV),
             "next": nxt, "next_days": (nxt - today).days if nxt else None,
             "unassigned": sum(1 for p in live if not p.editor_id),
             "editors": sorted({p.editor.profile.name for p in live if p.editor_id}),
@@ -258,20 +258,28 @@ def couple_action(request, pk):
                 say.append(("warning", f"{short} day(s) of work didn't fit before the deadlines. Check the Planner."))
 
     elif act == "status":
+        from .admin import _sent_date, apply_status
         new = P.get("status", "")
+        sent_on = _sent_date(P.get("sent_on")) if new == Project.SENT_AGENCY else None
         if new not in dict(Project.STATUSES):
             say.append(("error", "Pick a status."))
+        elif sent_on is False:
+            say.append(("error", "The sent date can't be in the future."))
         else:
-            n = 0
+            n, late = 0, []
             with transaction.atomic():
                 for p in films:
                     if p.status != new:
-                        p.status = new
-                        p.save()
+                        apply_status(p, new, sent_on)
                         n += 1
+                        if new == Project.SENT_AGENCY and p.delivered_late:
+                            late.append(p.deliverable)
             label = dict(Project.STATUSES)[new]
-            record(request, "couple.status", str(couple), f"{n} film(s) -> {label}")
-            say.append(("success", f"{couple}: {n} film(s) set to {label}." if n else f"{couple}: already {label}."))
+            when = f" on {sent_on or timezone.localdate():%-d %b}" if new == Project.SENT_AGENCY else ""
+            record(request, "couple.status", str(couple), f"{n} film(s) -> {label}{when}")
+            say.append(("success", f"{couple}: {n} film(s) set to {label}{when}." if n else f"{couple}: already {label}."))
+            if late:
+                say.append(("warning", f"Sent after the agency's deadline: {', '.join(late)}."))
 
     elif act == "shift":
         try:

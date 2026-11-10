@@ -46,9 +46,45 @@
     doc.addEventListener("change", function (e) {
       var el = e.target.closest("[data-autosubmit]");
       if (el && el.form) {
+        // "Sent to agency" first asks for the date it was really sent
+        if (el.dataset.askDate && el.value === el.dataset.askDate && el.form.querySelector("[data-sent-ask]")) {
+          openSentAsk(el.form);
+          return;
+        }
         el.form.classList.add("is-saving");
         if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
       }
+    });
+
+    function openSentAsk(form) {
+      var box = form.querySelector("[data-sent-ask]"), input = box.querySelector("input[name=sent_on]");
+      box.hidden = false;
+      input.disabled = false;
+      form.classList.add("asking");
+      if (window.StudioDatePicker) window.StudioDatePicker.enhance(box);
+      setTimeout(function () { (box.querySelector(".dp-field, input[name=sent_on]") || input).focus(); }, 0);
+    }
+    function closeSentAsk(form) {
+      var box = form.querySelector("[data-sent-ask]");
+      if (!box || box.hidden) return;
+      box.hidden = true;
+      box.querySelector("input[name=sent_on]").disabled = true;
+      form.classList.remove("asking");
+      var sel = form.querySelector("select[data-ask-date]");
+      if (sel) Array.prototype.forEach.call(sel.options, function (o) { if (o.defaultSelected) sel.value = o.value; });
+    }
+    doc.addEventListener("click", function (e) {
+      var c = e.target.closest("[data-sent-cancel]");
+      if (c) { closeSentAsk(c.closest("form")); return; }
+      var ed = e.target.closest("[data-sent-edit]");
+      if (ed) {
+        var f = ed.closest("form"), sel = f.querySelector("select[data-ask-date]");
+        if (sel) sel.value = sel.dataset.askDate;
+        openSentAsk(f);
+      }
+    });
+    doc.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && e.target.closest && e.target.closest("[data-sent-ask]")) closeSentAsk(e.target.closest("form"));
     });
 
     /* Inline dates save when you leave the field or press Enter, not on every keystroke

@@ -248,3 +248,73 @@ class TeamLoadFromPlanner(SeededTestCase):
         html = self.login("ag").get("/dashboard/").content.decode()
         self.assertIn("Team load this week", html)
         self.assertIn("load-days", html)
+
+
+class DeliveryTiming(SeededTestCase):
+    """On time = sent to the agency on or before the agency's deadline; client revisions are never late."""
+
+    def setUp(self):
+        self.f = self.login("ag")
+        self.today = timezone.localdate()
+        self.p = Project.objects.filter(status=Project.IN_PROGRESS, editor__isnull=False).first()
+        self.p.deadline = self.today - timedelta(days=5)          # editor was late…
+        self.p.agency_deadline = self.today - timedelta(days=2)   # …but the agency still got it in time
+        self.p.save()
+
+    def post(self, data):
+        return self.f.post(f"/projects/{self.p.pk}/status/", {**data, "next": "/projects/"}, **FETCH).json()
+
+    def test_sent_date_picked_and_on_time_against_agency_deadline(self):
+        sent = self.today - timedelta(days=3)
+        d = self.post({"status": Project.SENT_AGENCY, "sent_on": sent.isoformat()})
+        self.assertTrue(d["ok"])
+        self.assertIn("On time", d["messages"][0]["text"])
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.status, self.p.first_delivered_on), (Project.SENT_AGENCY, sent))
+        self.assertFalse(self.p.delivered_late)
+        self.assertEqual(self.p.timing_label, "Delivered on time")
+        self.assertIn("sent " + format(sent.day), d["row"])
+        # correcting the date later (still Sent to agency) moves it
+        d = self.post({"status": Project.SENT_AGENCY, "sent_on": self.today.isoformat()})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.first_delivered_on, self.today)
+        self.assertTrue(self.p.delivered_late)
+        # undo puts the dates back
+        undo = d["undo"]
+        self.f.post(f"/projects/{self.p.pk}/status/", {**undo, "next": "/projects/"}, **FETCH)
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.first_delivered_on, sent)
+
+    def test_future_sent_date_refused(self):
+        d = self.post({"status": Project.SENT_AGENCY, "sent_on": (self.today + timedelta(days=1)).isoformat()})
+        self.assertFalse(d["ok"])
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.status, Project.IN_PROGRESS)
+
+    def test_no_sent_date_means_today(self):
+        self.post({"status": Project.SENT_AGENCY})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.first_delivered_on, self.today)
+        self.assertTrue(self.p.delivered_late)
+
+    def test_client_revision_is_never_late_or_overdue(self):
+        Project.objects.filter(pk=self.p.pk).update(status=Project.CLIENT_REV, first_delivered_on=self.today,
+                                                     deadline=self.today - timedelta(days=3))
+        self.p.refresh_from_db()
+        self.assertIsNone(self.p.days_left)
+        self.assertNotEqual(self.p.flag, "Overdue")
+        self.assertFalse(self.p.delivered_late)
+        late = self.f.get("/projects/?view=list&status=late").context["jobs"]
+        self.assertNotIn(self.p.pk, [j["p"].pk for j in late])
+        overdue = self.f.get("/projects/?view=list&status=&due=overdue").context["jobs"]
+        self.assertNotIn(self.p.pk, [j["p"].pk for j in overdue])
+        self.assertNotIn(self.p, self.f.get("/dashboard/").context["overdue"])
+
+    def test_dashboard_has_no_missing_logs(self):
+        self.assertNotContains(self.f.get("/dashboard/"), "Missing logs yesterday")
+
+    def test_edit_form_sent_date(self):
+        from ops.forms import ProjectForm
+        f = ProjectForm(instance=self.p)
+        self.assertIn("first_delivered_on", f.fields)
+        self.assertEqual(f.fields["first_delivered_on"].label, "Sent to agency on")

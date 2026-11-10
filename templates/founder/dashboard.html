@@ -10,7 +10,6 @@
   <a class="kpi warn" href="{% url 'projects' %}" style="text-decoration:none;color:inherit"><span>Needs an editor</span><b>{{ unassigned }}</b><small>Assign from Projects</small></a>
   <a class="kpi {% if overdue %}bad{% endif %}" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Overdue</span><b>{{ overdue|length }}</b><small>{% for p in overdue|slice:":1" %}{{ p }}{% empty %}All on time{% endfor %}</small></a>
   <a class="kpi" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Due in 3 days</span><b>{{ due_soon|length }}</b><small>{% for p in due_soon|slice:":1" %}Next: {{ p }}{% empty %}Nothing close{% endfor %}</small></a>
-  <div class="kpi"><span>Missing logs yesterday</span><b>{{ missing|length }}</b><small>{% for u in missing %}{{ u.profile.name }}{% if not forloop.last %}, {% endif %}{% empty %}Everyone logged{% endfor %}</small></div>
 </div>
 
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(168px,100%),1fr))">

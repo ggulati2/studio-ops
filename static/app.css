@@ -978,3 +978,13 @@ details[open]>summary>.grp-caret{transform:rotate(90deg)}
 .ld.today{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--red-line)}
 .load-key .ld{width:12px;height:12px;border-radius:3px;margin:0 2px 0 8px}
 .load-key .ld:first-child{margin-left:0}
+
+/* Sent to agency: ask for the real sent date */
+.status-pick{position:relative}
+.sent-ask{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;margin-top:6px;padding:8px;border:1px solid var(--info-line);background:var(--info-bg);border-radius:var(--r-sm);min-width:210px}
+.sent-ask label{display:flex;flex-direction:column;gap:3px;color:var(--info)}
+.sent-ask .sent-btns{display:inline-flex;gap:4px}
+form.asking .status-select{box-shadow:0 0 0 2px var(--info-line)}
+.linkbtn.sent-on{display:block;margin-top:3px;color:var(--muted);text-decoration:underline dotted;text-underline-offset:2px;background:none;border:0;padding:0;cursor:pointer;font:inherit;font-size:var(--t-xs)}
+.linkbtn.sent-on:hover{color:var(--ink)}
+.sent-ask[hidden]{display:none}

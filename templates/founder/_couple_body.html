@@ -14,7 +14,8 @@
     <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="status">
       <label class="small">Set all {{ g.s.n }} film{{ g.s.n|pluralize }} shown to
         <select name="status" class="input">{% for v, l in statuses %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
-      <button class="btn primary sm">Apply</button></form></details>
+      <label class="small">Sent to agency on <input type="date" name="sent_on" class="input" value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}"></label>
+      <button class="btn primary sm">Apply</button><span class="small muted">The sent date is used only for “Sent to agency”.</span></form></details>
   <details class="grp-tool"><summary class="btn sm">Move deadlines</summary>
     <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="shift">
       <label class="small">Move <select name="which" class="input"><option value="both">both deadlines</option><option value="editor">editor's deadlines</option><option value="agency">agency's deadlines</option></select></label>
