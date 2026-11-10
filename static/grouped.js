@@ -15,22 +15,49 @@
 
   function root() { return doc.querySelector("[data-groups]"); }
 
+  /* Films of a couple are fetched as soon as the pointer rests on it (or it gets focus),
+     so by the time it is clicked open they are usually already here. */
+  var cache = {};
+  function url(d) { return d.getAttribute("data-src") + location.search; }
+  function get(u) {
+    if (!cache[u]) {
+      cache[u] = fetch(u, { credentials: "same-origin", headers: { "X-Requested-With": "fetch-page" } })
+        .then(function (r) {
+          if (!r.ok || (r.redirected && r.url.indexOf("/login") >= 0)) throw new Error(String(r.status));
+          return r.text();
+        });
+      cache[u].catch(function () { delete cache[u]; });
+    }
+    return cache[u];
+  }
+  function prefetch(e) {
+    var s = e.target.closest && e.target.closest(".grp-couple > summary");
+    if (!s) return;
+    var d = s.parentNode;
+    if (!d.open && d.querySelector(":scope > .grp-body[data-lazy]")) get(url(d));
+  }
+  doc.addEventListener("pointerover", prefetch);
+  doc.addEventListener("focusin", prefetch);
+  /* Anything saved may change what a couple shows: forget fetched copies */
+  doc.addEventListener("submit", function () { cache = {}; }, true);
+
   function loadCouple(d) {
     var body = d.querySelector(":scope > .grp-body[data-lazy]");
     if (!body || d.dataset.loading) return;
     d.dataset.loading = "1";
-    fetch(d.getAttribute("data-src") + location.search, { credentials: "same-origin", headers: { "X-Requested-With": "fetch-page" } })
-      .then(function (r) {
-        if (!r.ok || (r.redirected && r.url.indexOf("/login") >= 0)) throw new Error(String(r.status));
-        return r.text();
-      })
+    get(url(d))
       .then(function (html) {
         var t = doc.createElement("template");
         t.innerHTML = html.trim();
         var n = t.content.firstElementChild;
         if (!n || !d.parentNode) return;
-        d.parentNode.replaceChild(n, d);
-        if (window.StudioDatePicker) window.StudioDatePicker.enhance(n);
+        // keep the opened <details> (no jump): only its body changes
+        var nb = n.querySelector(":scope > .grp-body");
+        body.removeAttribute("data-lazy");
+        body.innerHTML = nb ? nb.innerHTML : "";
+        body.classList.add("live-in");
+        delete d.dataset.loading;
+        if (window.StudioDatePicker) window.StudioDatePicker.enhance(body);
       })
       .catch(function () {
         delete d.dataset.loading;
@@ -83,6 +110,6 @@
   });
 
   /* Filters re-draw the list: open again what was open */
-  doc.addEventListener("studio:parts", restore);
+  doc.addEventListener("studio:parts", function () { cache = {}; restore(); });
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", restore); else restore();
 })();

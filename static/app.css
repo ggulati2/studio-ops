@@ -945,3 +945,24 @@ details[open]>summary>.grp-caret{transform:rotate(90deg)}
   .grp-body{padding:0 6px 10px}
   .grp-agency-body{padding:4px}
 }
+
+/* ------------------------------------------------------------------ fluid filtering and grouped view */
+.live-bar{position:fixed;top:0;left:0;height:2px;width:0;z-index:1300;background:var(--red);opacity:0;pointer-events:none}
+.live-bar.is-on{opacity:1;width:70%;transition:width 1.2s cubic-bezier(.1,.6,.2,1),opacity .1s}
+.live-bar.is-done{opacity:0;width:100%;transition:width .18s ease-out,opacity .3s .18s}
+.live-loading{transition:opacity .2s}
+.live-in{animation:live-in .22s var(--ease)}
+@keyframes live-in{from{opacity:.35;transform:translateY(3px)}to{opacity:1;transform:none}}
+.chips a,.seg a{transition:background .15s,color .15s,border-color .15s,box-shadow .15s}
+.groups{interpolate-size:allow-keywords}
+.groups details::details-content{block-size:0;overflow:hidden;
+  transition:block-size .24s var(--ease),content-visibility .24s allow-discrete}
+.groups details[open]::details-content{block-size:auto}
+.groups .grp-tool::details-content{transition-duration:.18s}
+.grp-couple,.grp-couple>summary{transition:background .15s,margin .2s var(--ease),border-color .2s}
+.grp-loading{animation:grp-pulse 1s ease-in-out infinite alternate}
+@keyframes grp-pulse{from{opacity:.45}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .live-in,.grp-loading{animation:none}
+  .groups details::details-content,.live-bar.is-on,.live-bar.is-done{transition:none}
+}

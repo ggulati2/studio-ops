@@ -242,35 +242,76 @@
   if (!filterForm || !window.fetch || !window.DOMParser) return;
   var pending = null;
 
+  /* A thin progress line at the top; content only dims if the answer takes a moment */
+  var bar = doc.createElement("div");
+  bar.className = "live-bar";
+  bar.setAttribute("aria-hidden", "true");
+  doc.body.appendChild(bar);
+  var dimTimer = null;
+
+  function syncAttrs(el, from) {
+    Array.prototype.slice.call(el.attributes).forEach(function (a) { if (!from.hasAttribute(a.name)) el.removeAttribute(a.name); });
+    Array.prototype.forEach.call(from.attributes, function (a) { el.setAttribute(a.name, a.value); });
+  }
+
+  /* Keep the filter fields in step with a URL (chips, Back/Forward) */
+  function syncForm(url) {
+    var params = new URL(url, location.href).searchParams;
+    Array.prototype.forEach.call(filterForm.elements, function (el) {
+      if (!el.name || el.type === "submit" || el.tagName === "BUTTON") return;
+      var v = params.get(el.name) || "";
+      if (el.name === "status" && !params.has("status")) v = "open";
+      if (el.tagName === "SELECT") {
+        el.value = v;
+        if (el.selectedIndex < 0) el.selectedIndex = 0;
+      } else if (el !== doc.activeElement) {
+        el.value = v;
+      }
+    });
+  }
+
   function load(url, push) {
     if (pending) pending.abort();
-    pending = window.AbortController ? new AbortController() : null;
+    var mine = pending = window.AbortController ? new AbortController() : null;
     var parts = doc.querySelectorAll("[data-live-part]");
-    Array.prototype.forEach.call(parts, function (p) { p.classList.add("live-loading"); });
-    return fetch(url, { credentials: "same-origin", signal: pending && pending.signal, headers: { "X-Requested-With": "fetch-page" } })
+    bar.className = "live-bar is-on";
+    clearTimeout(dimTimer);
+    dimTimer = setTimeout(function () {
+      Array.prototype.forEach.call(parts, function (p) { p.classList.add("live-loading"); });
+    }, 160);
+    if (push) history.pushState({ live: true }, "", url);     // the address changes at once, like a real link
+    return fetch(url, { credentials: "same-origin", signal: mine && mine.signal, headers: { "X-Requested-With": "fetch-page" } })
       .then(function (r) { if (!r.ok || r.redirected && r.url.indexOf("/login") >= 0) throw new Error("reload"); return r.text(); })
       .then(function (html) {
         var next = new DOMParser().parseFromString(html, "text/html");
+        clearTimeout(dimTimer);
         Array.prototype.forEach.call(doc.querySelectorAll("[data-live-part]"), function (p) {
           var n = next.querySelector('[data-live-part="' + p.getAttribute("data-live-part") + '"]');
+          p.classList.remove("live-loading");
           if (!n) return;
+          if (p.innerHTML === n.innerHTML) return;          // nothing changed here: leave it alone (no flicker)
           // tables.js inserts its toolbar just before the table's scroll box; drop the old one
           if (p.getAttribute("data-live-part") === "table") {
-            var bar = p.previousElementSibling;
-            if (bar && bar.classList.contains("cols-bar")) bar.remove();
+            var tb = p.previousElementSibling;
+            if (tb && tb.classList.contains("cols-bar")) tb.remove();
           }
+          syncAttrs(p, n);              // list and grouped views use different wrappers
           p.innerHTML = n.innerHTML;
-          p.classList.remove("live-loading");
           enhance(p);
+          if (p.getAttribute("data-live-part") === "table") {
+            p.classList.remove("live-in");
+            void p.offsetWidth;
+            p.classList.add("live-in");
+          }
         });
         if (window.StudioTables) window.StudioTables.init();
         doc.dispatchEvent(new CustomEvent("studio:parts"));
         filterForm.classList.remove("is-saving");
-        if (push) history.pushState({ live: true }, "", url);
-        else history.replaceState({ live: true }, "", url);
+        if (!push) history.replaceState({ live: true }, "", url);
+        bar.className = "live-bar is-done";
       })
       .catch(function (err) { if (err && err.name === "AbortError") return; location.href = url; })
-      .then(function () { pending = null; });
+      .then(function () { if (pending === mine) pending = null; });
   }
 
   function formUrl() {
@@ -325,9 +366,14 @@
     // keep the filter form in step with the chip's status
     var url = new URL(a.href, location.href);
     var st = filterForm.querySelector('input[name="status"]');
-    if (st) st.value = url.searchParams.get("status") || "";
+    if (st) st.value = url.searchParams.has("status") ? url.searchParams.get("status") : "open";
     var vw = filterForm.querySelector('input[name="view"]');
     if (vw) vw.value = url.searchParams.get("view") || "";
+    // show the choice straight away; the list follows a moment later
+    var group = a.closest("[data-live-part]");
+    if (group && !group.matches('[data-live-part="clear"]')) {
+      Array.prototype.forEach.call(group.querySelectorAll("a"), function (x) { x.classList.toggle("on", x === a); });
+    }
     if (a.closest('[data-live-part="clear"]')) {
       Array.prototype.forEach.call(filterForm.querySelectorAll("select, input[type=search]"), function (el) {
         if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "";
@@ -335,6 +381,10 @@
     }
     load(url.pathname + url.search, true);
   });
-  window.addEventListener("popstate", function () { location.reload(); });
+  /* Back / Forward: re-draw in place too */
+  window.addEventListener("popstate", function () {
+    syncForm(location.href);
+    load(location.pathname + location.search, false);
+  });
   window.StudioLive = { reload: function () { return load(location.pathname + location.search, false); } };
 })();
