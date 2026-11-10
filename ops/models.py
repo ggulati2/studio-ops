@@ -253,6 +253,42 @@ class DriveReturn(models.Model):
 # --------------------------------------------------------------------------
 # Projects (one row = one film / deliverable)
 # --------------------------------------------------------------------------
+def couple_key(name):
+    """How two spellings of the same couple are matched: case, '&'/'and'/'+',
+    punctuation and spacing don't matter ("Amit & Tanya" == "amit and tanya")."""
+    import re
+    s = (name or "").lower().replace("&", " and ").replace("+", " and ")
+    s = re.sub(r"[^a-z0-9\u0900-\u097f]+", " ", s)
+    return " ".join(w for w in s.split() if w not in ("and", "weds", "w")) or (name or "").strip().lower()
+
+
+class Couple(models.Model):
+    """A client of an agency (usually a wedding couple) with all the films made for them."""
+    agency = models.ForeignKey("Agency", on_delete=models.PROTECT, related_name="couples")
+    name = models.CharField("Couple / project", max_length=120)
+    key = models.CharField(max_length=140, editable=False)
+    wedding_date = models.DateField("Wedding / event date", null=True, blank=True)
+    notes = models.CharField(max_length=300, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["agency", "key"], name="couple_unique_per_agency")]
+
+    def save(self, *args, **kwargs):
+        self.name = " ".join(self.name.split())
+        self.key = couple_key(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def for_name(cls, agency, name):
+        obj, _ = cls.objects.get_or_create(agency=agency, key=couple_key(name), defaults={"name": " ".join(name.split())})
+        return obj
+
+
 class Project(models.Model):
     NOT_STARTED, IN_PROGRESS, TL_REVIEW, QC, REVISIONS, QC_PASSED, CLOSED, ON_HOLD = (
         "not_started", "in_progress", "tl_review", "qc", "revisions", "qc_passed", "closed", "on_hold")
@@ -269,6 +305,8 @@ class Project(models.Model):
     CLIENT_STAGES = ["Scheduled", "Editing", "Final checks", "Changes in progress", "Delivered"]
 
     couple = models.CharField("Couple / project", max_length=120)
+    client = models.ForeignKey(Couple, null=True, blank=True, on_delete=models.PROTECT, related_name="films",
+                               verbose_name="couple record")
     deliverable = models.CharField(max_length=30, choices=[(d, d) for d in DELIVERABLES])
     agency = models.ForeignKey(Agency, on_delete=models.PROTECT, related_name="projects")
     editor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
@@ -325,6 +363,12 @@ class Project(models.Model):
 
     def save(self, *args, **kwargs):
         from django.utils import timezone as tz
+        # Every film belongs to a couple record (same agency + same couple name = same couple)
+        if self.agency_id and self.couple and (not self.client_id or self.client.agency_id != self.agency_id
+                                               or self.client.key != couple_key(self.couple)):
+            self.client = Couple.for_name(self.agency, self.couple)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = list(set(kwargs["update_fields"]) | {"client"})
         if self.status == self.SENT_AGENCY and not self.first_delivered_on:
             # Sending the film to the agency is our delivery: on time / late is judged on this date
             self.first_delivered_on, self.deadline_at_delivery = tz.localdate(), self.deadline

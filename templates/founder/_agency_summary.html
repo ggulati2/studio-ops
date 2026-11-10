@@ -1,0 +1,5 @@
+{% load ops_extras %}<span class="grp-caret" aria-hidden="true"></span>
+<span class="grp-name"><b>{{ a.a.name }}</b>{% if a.a.code %} <span class="small muted">{{ a.a.code }}</span>{% endif %}</span>
+<span class="grp-meta small muted">{{ a.s.couples }} couple{{ a.s.couples|pluralize }} · {{ a.s.n }} film{{ a.s.n|pluralize }}{% if a.s.open %} · {{ a.s.open }} open{% endif %}</span>
+<span class="grp-flags">{% if a.s.overdue %}<span class="tag bad">{{ a.s.overdue }} overdue</span>{% endif %}{% if a.s.unassigned %}<span class="tag warn">{{ a.s.unassigned }} need{{ a.s.unassigned|pluralize:"s," }} an editor</span>{% endif %}</span>
+<span class="grp-value small mono">{{ a.a.symbol }}{{ a.s.value|money }}</span>

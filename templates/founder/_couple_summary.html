@@ -1,0 +1,7 @@
+{% load ops_extras %}<span class="grp-caret" aria-hidden="true"></span>
+<span class="grp-name"><b>{{ g.c.name }}</b>{% if g.c.wedding_date %} <span class="small muted">· {{ g.c.wedding_date|date:"j M Y" }}</span>{% endif %}
+  <span class="grp-kinds small muted">{{ g.s.kinds|join:" · " }}</span></span>
+<span class="grp-prog" title="{{ g.s.done }} of {{ g.s.total }} films delivered or sent to the agency"><span class="bar"><i style="width:{{ g.s.pct }}%"></i></span><span class="small">{{ g.s.done }}/{{ g.s.total }}</span></span>
+<span class="grp-next small">{% if g.s.overdue %}<span class="tag bad">{{ g.s.overdue }} overdue</span>{% elif g.s.next %}<span class="{% if g.s.next_days <= 3 %}due-soon{% else %}muted{% endif %}">Next {{ g.s.next|date:"j M" }}</span>{% elif g.s.open %}<span class="muted">No deadline</span>{% elif g.s.n %}<span class="tag ok">All out</span>{% endif %}</span>
+<span class="grp-eds small muted">{% if g.s.unassigned %}<span class="tag warn">{{ g.s.unassigned }} need{{ g.s.unassigned|pluralize:"s," }} editor</span> {% endif %}{{ g.s.editors|join:", " }}</span>
+<span class="grp-value small mono">{% if g.s.hidden %}<span class="faint" title="Films of this couple hidden by the filters">+{{ g.s.hidden }} hidden · </span>{% endif %}{{ g.c.agency.symbol }}{{ g.s.value|money }}</span>

@@ -1,0 +1,17 @@
+{% for a in groups %}
+<details class="grp-agency" data-agency="{{ a.a.pk }}" data-key="a{{ a.a.pk }}"{% if a.open %} open{% endif %}>
+  <summary data-agency-sum="{{ a.a.pk }}">{% include "founder/_agency_summary.html" %}</summary>
+  <div class="grp-agency-body">
+    {% for keep, drop in a.dups %}
+    <div class="grp-dup" data-dup="{{ drop.pk }}-{{ keep.pk }}">
+      <span class="small">Same couple? <b>{{ keep.name }}</b> and <b>{{ drop.name }}</b></span>
+      <form method="post" action="{% url 'couple_action' drop.pk %}" data-live>{% csrf_token %}<input type="hidden" name="qs" value="{{ page_qs }}"><input type="hidden" name="op" value="merge"><input type="hidden" name="into" value="{{ keep.pk }}"><button class="btn sm">Merge into “{{ keep.name }}”</button></form>
+      <form method="post" action="{% url 'couple_action' keep.pk %}" data-live>{% csrf_token %}<input type="hidden" name="qs" value="{{ page_qs }}"><input type="hidden" name="op" value="merge"><input type="hidden" name="into" value="{{ drop.pk }}"><button class="btn sm">Merge into “{{ drop.name }}”</button></form>
+      <button type="button" class="btn sm ghost" data-dup-dismiss>Not the same</button>
+    </div>
+    {% endfor %}
+    {% for g in a.list %}{% include "founder/_couple.html" %}{% endfor %}
+  </div>
+</details>
+{% empty %}<p class="muted grp-empty">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</p>
+{% endfor %}

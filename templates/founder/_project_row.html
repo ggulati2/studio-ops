@@ -1,21 +1,22 @@
 {% load ops_extras %}<tr data-pk="{{ p.pk }}">
-      <td data-col="job"><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
-      <td data-col="agency" class="muted">{% if p.agency.code %}<abbr class="agency-code" title="{{ p.agency }}">{{ p.agency.code }}</abbr>{% else %}{{ p.agency }}{% endif %}</td>
-      <td data-col="editor"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+      {% if layout == "couple" %}<td data-col="film"><a href="{% url 'project_edit' p.pk %}"><b>{{ p.deliverable }}</b></a>{% if p.is_extra %} <span class="tag gold">extra</span>{% endif %}</td>
+      {% else %}<td data-col="job"><a href="{% url 'project_edit' p.pk %}"><b>{{ p }}</b></a>{% if p.is_extra %} <span class="tag gold">extra work</span>{% endif %}</td>
+      <td data-col="agency" class="muted">{% if p.agency.code %}<abbr class="agency-code" title="{{ p.agency }}">{{ p.agency.code }}</abbr>{% else %}{{ p.agency }}{% endif %}</td>{% endif %}
+      <td data-col="editor"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <select name="editor" class="cell-input cell-select{% if not p.editor_id %} empty{% endif %}" data-autosubmit aria-label="Editor for {{ p }}">
           <option value="">— Unassigned —</option>{% for u in editors %}<option value="{{ u.pk }}"{% if u.pk == p.editor_id %} selected{% endif %}>{{ u.profile.name }}{% if u.profile.is_contract %} (contract){% endif %}</option>{% endfor %}
           {% if p.editor_id and p.editor not in editors %}<option value="{{ p.editor_id }}" selected disabled>{{ p.editor.profile.name }} (inactive)</option>{% endif %}
         </select><noscript><button class="btn sm">Save</button></noscript></form></td>
-      <td data-col="deadline" class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+      <td data-col="deadline" class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <input type="date" name="deadline" value="{{ p.deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Editor's deadline for {{ p }}"{% if p.agency_deadline %} max="{{ p.agency_deadline|date:'Y-m-d' }}"{% endif %}><noscript><button class="btn sm">Save</button></noscript></form>
         {% if p.flag %}<span class="tag {{ p.flag|flag_class }}">{{ p.flag }}</span>{% endif %}</td>
-      <td data-col="agency_deadline" class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+      <td data-col="agency_deadline" class="nowrap"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <input type="date" name="agency_deadline" value="{{ p.agency_deadline|date:'Y-m-d' }}" class="cell-input" data-save-on-leave aria-label="Agency's deadline for {{ p }}"><noscript><button class="btn sm">Save</button></noscript></form>
         {% if p.agency_deadline and p.deadline and p.deadline > p.agency_deadline %}<span class="tag bad">after editor's</span>{% endif %}</td>
-      <td data-col="status"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="status-pick">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+      <td data-col="status"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="status-pick">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <select name="status" class="status-select tag {{ p.status|status_class }}" data-autosubmit aria-label="Status of {{ p }}">{% for v, l in statuses %}<option value="{{ v }}"{% if v == p.status %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
         <noscript><button class="btn sm">Save</button></noscript></form></td>
       <td data-col="footage" class="mono">{{ p.source_label }}</td>
-      <td data-col="invoice" class="right"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit money-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+      <td data-col="invoice" class="right"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit money-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <span class="cur" aria-hidden="true">{{ p.agency.symbol }}</span><input type="number" name="invoice_amount" value="{{ p.invoice_amount }}" min="0" step="1" inputmode="numeric" class="cell-input num" data-autosubmit aria-label="Invoice amount for {{ p }} in {{ p.agency.currency }}"><noscript><button class="btn sm">Save</button></noscript></form></td>
     </tr>

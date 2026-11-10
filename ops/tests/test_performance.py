@@ -15,7 +15,7 @@ from .base import SeededTestCase
 U = get_user_model()
 
 FOUNDER_PAGES = {
-    "/dashboard/": 40, "/projects/": 20, "/projects/?status=": 20, "/planner/": 20, "/planner/?view=month": 20,
+    "/dashboard/": 40, "/projects/": 20, "/projects/?status=": 20, "/projects/?view=list&status=": 20, "/planner/": 20, "/planner/?view=month": 20,
     "/team/": 35, "/payroll/": 20, "/deadlines/": 16, "/delivered/": 16, "/reports/": 12, "/invoices/": 18,
     "/delays/": 16, "/qc/": 18, "/leave/": 16, "/contract-editors/": 18, "/agencies/": 16,
 }
@@ -45,7 +45,7 @@ class QueryBudgets(SeededTestCase):
     def test_queries_do_not_grow_with_more_films(self):
         """The heavy pages must cost the same with 40 more films and their logged hours."""
         c = self.login("ag")
-        pages = ["/dashboard/", "/team/", "/planner/", "/projects/?status=", "/payroll/"]
+        pages = ["/dashboard/", "/team/", "/planner/", "/projects/?status=", "/projects/?view=list&status=", "/payroll/"]
         before = {u: self.count(c, u) for u in pages}
         pratik = U.objects.get(username="pratik")
         ag = Project.objects.first().agency
@@ -68,11 +68,11 @@ class ProjectsPaging(SeededTestCase):
         for i in range(110):
             Project.objects.create(couple=f"Bulk {i:03}", deliverable="Reels", agency=ag)
         c = self.login("ag")
-        r = c.get("/projects/?status=")
+        r = c.get("/projects/?view=list&status=")
         self.assertEqual(len(r.context["jobs"]), 100)
         self.assertContains(r, "data-live-more")
         total = r.context["total"]
-        r2 = c.get("/projects/?status=&show=200")
+        r2 = c.get("/projects/?view=list&status=&show=200")
         self.assertEqual(len(r2.context["jobs"]), min(200, total))
 
 

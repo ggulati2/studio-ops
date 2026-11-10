@@ -76,7 +76,7 @@
     form.classList.add("is-saving");
     var row = form.closest("tr");
     if (row) row.classList.add("row-saving");
-    return fetch(form.action, {
+    return fetch(form.getAttribute("action") || form.action, {
       method: "POST", credentials: "same-origin", body: body,
       headers: { "X-Requested-With": "fetch", "X-CSRFToken": csrfOf(form), "Accept": "application/json" }
     }).then(function (r) {
@@ -95,6 +95,26 @@
           }, 250);
         });
       });
+      /* Other pieces of the page the server re-drew (e.g. a couple block and its summary lines) */
+      (res.swap || []).forEach(function (sw) {
+        var el = doc.querySelector(sw.sel);
+        if (!el) return;
+        if (sw.mode === "outer") {
+          var t = doc.createElement("template");
+          t.innerHTML = sw.html.trim();
+          var n = t.content.firstElementChild;
+          if (!n) return;
+          el.parentNode.replaceChild(n, el);
+          enhance(n);
+          n.classList.add("row-flash");
+          setTimeout(function () { n.classList.remove("row-flash"); }, 1100);
+        } else {
+          el.innerHTML = sw.html;
+        }
+      });
+      if (res.refresh) {
+        if (window.StudioLive) window.StudioLive.reload(); else setTimeout(function () { location.reload(); }, 600);
+      }
       var tr = res.row ? swapRow(res.pk, res.row) : null;
       if (!tr && row) row.classList.remove("row-saving");
       var msgs = res.messages || [];
@@ -244,6 +264,7 @@
           enhance(p);
         });
         if (window.StudioTables) window.StudioTables.init();
+        doc.dispatchEvent(new CustomEvent("studio:parts"));
         filterForm.classList.remove("is-saving");
         if (push) history.pushState({ live: true }, "", url);
         else history.replaceState({ live: true }, "", url);
@@ -298,13 +319,15 @@
   });
 
   doc.addEventListener("click", function (e) {
-    var a = e.target.closest('[data-live-part="chips"] a, [data-live-part="clear"] a');
+    var a = e.target.closest('[data-live-part="chips"] a, [data-live-part="clear"] a, [data-live-part="viewswitch"] a');
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
     e.preventDefault();
     // keep the filter form in step with the chip's status
     var url = new URL(a.href, location.href);
     var st = filterForm.querySelector('input[name="status"]');
     if (st) st.value = url.searchParams.get("status") || "";
+    var vw = filterForm.querySelector('input[name="view"]');
+    if (vw) vw.value = url.searchParams.get("view") || "";
     if (a.closest('[data-live-part="clear"]')) {
       Array.prototype.forEach.call(filterForm.querySelectorAll("select, input[type=search]"), function (el) {
         if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "";
@@ -313,4 +336,5 @@
     load(url.pathname + url.search, true);
   });
   window.addEventListener("popstate", function () { location.reload(); });
+  window.StudioLive = { reload: function () { return load(location.pathname + location.search, false); } };
 })();

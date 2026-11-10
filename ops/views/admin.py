@@ -91,10 +91,10 @@ def dashboard(request):
     return render(request, "founder/dashboard.html", ctx)
 
 
-@requires("projects.manage")
-def projects(request):
+def project_filter(g):
+    """The Projects page filters, shared by the list, the grouped view and couple blocks.
+    Returns (queryset, {"status", "q", "f", "active"})."""
     qs = Project.objects.select_related("agency", "editor__profile", "drive")
-    g = request.GET
     status = g.get("status", "open")
     q = g.get("q", "").strip()
     f = {k: g.get(k, "") for k in ("agency", "editor", "film", "due", "source", "kind", "sort")}
@@ -140,27 +140,47 @@ def projects(request):
     sorts = {"deadline": ("deadline", "couple"), "agency_deadline": ("agency_deadline", "deadline"),
              "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
     qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
+    active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
+    return qs, {"status": status, "q": q, "f": f, "active": active}
+
+
+@requires("projects.manage")
+def projects(request):
+    from .couples import grouped_context
+    qs, meta = project_filter(request.GET)
+    status, q, f, active = meta["status"], meta["q"], meta["f"], meta["active"]
+    view = "list" if request.GET.get("view") == "list" else "grouped"
+    switch = {}
+    for v in ("grouped", "list"):
+        params = request.GET.copy()
+        params.pop("show", None)
+        params.pop("view", None)
+        if v == "list":
+            params["view"] = v
+        switch[v] = "?" + params.urlencode()
     queue = list(Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive"))
     # Draw PAGE rows at a time; "Show more" adds the next batch without reloading
     try:
         show = max(PAGE, min(int(request.GET.get("show", PAGE)), 5000))
     except ValueError:
         show = PAGE
-    from django.db.models import Count, Sum
+    ctx = {"queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+           "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
+           "assign_form": AssignForm(), "view": view, "switch": switch}
+    if view == "grouped":
+        ctx.update(grouped_context(request, qs, meta))
+        return render(request, "founder/projects.html", ctx)
+    from django.db.models import Sum
     agg = qs.order_by().aggregate(n=Count("id", distinct=True), value=Sum("invoice_amount"))
     total = agg["n"] or 0
     jobs = [{"p": p} for p in qs[:show]]
-    active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
     more = None
     if total > show:
         params = request.GET.copy()
         params["show"] = show + PAGE
         more = {"url": "?" + params.urlencode(), "left": total - show, "next": min(PAGE, total - show)}
-    return render(request, "founder/projects.html", {
-        "jobs": jobs, "queue": queue, "total": total, "more": more, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
-        "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
-        "total_value": agg["value"] or 0,
-        "assign_form": AssignForm(), "new_form": NewProjectForm()})
+    ctx.update({"jobs": jobs, "total": total, "more": more, "total_value": agg["value"] or 0})
+    return render(request, "founder/projects.html", ctx)
 
 
 PAGE = 100
@@ -254,11 +274,18 @@ def _project_reply(request, p, nxt, say, undo=None, remove_queue=False):
         from django.http import JsonResponse
         from django.template.loader import render_to_string
         p = Project.objects.select_related("agency", "editor__profile", "drive").get(pk=p.pk)
+        layout = "couple" if request.POST.get("layout") == "couple" else ""
         row = render_to_string("founder/_project_row.html", {"p": p, "editors": team(), "statuses": Project.STATUSES,
-                                                             "back": nxt}, request=request)
+                                                             "back": nxt, "layout": layout}, request=request)
         bad = any(level == "error" for level, _ in say)
+        swap = []
+        if layout and p.client_id:      # keep the couple's and agency's summary lines in step
+            from .couples import summary_swaps
+            swap = summary_swaps(request, p, nxt)
+        if undo and layout:
+            undo = dict(undo, layout=layout)
         return JsonResponse({"ok": not bad, "pk": p.pk, "row": row, "undo": undo if not bad else None,
-                             "undo_url": reverse("project_status", args=[p.pk]),
+                             "undo_url": reverse("project_status", args=[p.pk]), "swap": swap,
                              "messages": [{"level": l, "text": t} for l, t in say],
                              "remove": [f'[data-queue="{p.pk}"]'] if remove_queue else []})
     for level, text in say:

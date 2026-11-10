@@ -1,0 +1,4 @@
+<details class="grp-couple{% if g.s.overdue %} is-late{% endif %}" data-couple="{{ g.c.pk }}" data-key="c{{ g.c.pk }}" data-src="{% url 'couple_block' g.c.pk %}"{% if g.open %} open{% endif %}>
+  <summary data-couple-sum="{{ g.c.pk }}">{% include "founder/_couple_summary.html" %}</summary>
+  <div class="grp-body"{% if not g.open %} data-lazy{% endif %}>{% if g.open %}{% include "founder/_couple_body.html" %}{% else %}<p class="grp-loading small muted">Loading films…</p>{% endif %}</div>
+</details>

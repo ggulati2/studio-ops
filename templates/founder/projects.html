@@ -1,5 +1,6 @@
-{% extends "base.html" %}{% load ops_extras %}
+{% extends "base.html" %}{% load ops_extras static %}
 {% block title %}Projects{% endblock %}
+{% block scripts %}<script src="{% static 'grouped.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="head">
   <div><h1>Projects</h1><p>One row per film. Amounts never leave the founder screens.</p></div>
@@ -16,18 +17,22 @@
     {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
     <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>
     <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}{% if p.agency_deadline %} · agency {{ p.agency_deadline|date:"j M" }}{% endif %}</span>
-    <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
-  {% if queue|length > 12 %}<a class="small" href="?status=open&editor=none">See all {{ queue|length }} films without an editor →</a>{% endif %}</select>
+    <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
     <button class="btn primary sm">Assign</button>
   </form>
   {% endfor %}
+  {% if queue|length > 12 %}<a class="small" href="?status=open&amp;editor=none&amp;view=list">See all {{ queue|length }} films without an editor →</a>{% endif %}
 </section>
 {% endif %}</div>
 
 <section class="card">
   <div class="title">
     <h2>Jobs</h2>
-    <span class="small muted" data-live-part="summary">{{ total }} film{{ total|pluralize }}{% if more %} · showing {{ jobs|length }}{% endif %}{% if jobs %} · ₹{{ total_value|money }} invoice value{% endif %}</span>
+    <span class="small muted" data-live-part="summary">{{ total }} film{{ total|pluralize }}{% if view == "grouped" %} · {{ n_couples }} couple{{ n_couples|pluralize }}{% elif more %} · showing {{ jobs|length }}{% endif %}{% if total %} · ₹{{ total_value|money }} invoice value{% endif %}</span>
+    <nav class="seg view-switch" aria-label="How to show films" data-live-part="viewswitch">
+      <a href="{{ switch.grouped }}" class="{% if view == 'grouped' %}on{% endif %}"{% if view == 'grouped' %} aria-current="true"{% endif %}>By agency &amp; couple</a>
+      <a href="{{ switch.list }}" class="{% if view == 'list' %}on{% endif %}"{% if view == 'list' %} aria-current="true"{% endif %}>List</a>
+    </nav>
   </div>
   <div class="chips" data-live-part="chips">
     <a href="{% qs status='open' %}" class="{% if status == 'open' %}on{% endif %}">Open</a>
@@ -37,7 +42,7 @@
     <a href="{% qs status='' %}" class="{% if status == '' %}on{% endif %}">All</a>
   </div>
   <form method="get" class="filters" role="search" aria-label="Filter projects" data-live-filter>
-    <input type="hidden" name="status" value="{{ status }}">
+    <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="view" value="{% if view == 'list' %}list{% endif %}">
     <input class="input" type="search" name="q" value="{{ q }}" data-live-search placeholder="Search couple, agency, code, drive, brief" aria-label="Search">
     <select class="input" name="agency" data-autosubmit aria-label="Agency"><option value="">All agencies</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if f.agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a.name }}{% if a.code %} ({{ a.code }}){% endif %}</option>{% endfor %}</select>
     <select class="input" name="editor" data-autosubmit aria-label="Editor"><option value="">All editors</option><option value="none" {% if f.editor == 'none' %}selected{% endif %}>Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}" {% if f.editor == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
@@ -67,12 +72,13 @@
       <option value="agency" {% if f.sort == 'agency' %}selected{% endif %}>Sort: agency</option>
       <option value="couple" {% if f.sort == 'couple' %}selected{% endif %}>Sort: couple A–Z</option>
     </select>
-    <div class="actions" data-live-part="clear"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
+    <div class="actions" data-live-part="clear"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}{% if view == 'list' %}&amp;view=list{% endif %}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
   </form>
-  <div class="scroll" data-live-part="table"><table style="min-width:1040px" data-columns="projects">
+  {% if view == "grouped" %}<div class="groups" data-live-part="table" data-groups>{% include "founder/_groups.html" %}</div>
+  {% else %}<div class="scroll" data-live-part="table"><table style="min-width:1040px" data-columns="projects">
     <thead><tr><th data-col="job">Job</th><th data-col="agency">Agency</th><th data-col="editor">Editor</th><th data-col="deadline">Editor's deadline</th><th data-col="agency_deadline">Agency's deadline</th><th data-col="status">Status</th><th data-col="footage">Footage</th><th data-col="invoice" class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% include "founder/_project_row.html" with p=j.p back=request.get_full_path %}{% empty %}<tr><td colspan="8" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
-  </table></div>
+  </table></div>{% endif %}
   <div data-live-part="more" class="more-row">{% if more %}<a class="btn" href="{{ more.url }}" data-live-more>Show {{ more.next }} more <span class="muted">({{ more.left }} left)</span></a>{% endif %}</div>
 </section>
 {% endblock %}

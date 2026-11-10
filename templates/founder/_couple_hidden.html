@@ -1,0 +1,1 @@
+{% csrf_token %}<input type="hidden" name="qs" value="{{ page_qs }}">{% for p in g.films %}<input type="hidden" name="ids" value="{{ p.pk }}">{% endfor %}

@@ -887,3 +887,61 @@ table.ph .ph-tot .small{font-size:11px}
 .miss-tip.fixed{position:fixed}
 table.ph .ph-who{white-space:nowrap;min-width:200px}
 table.ph .ph-who .who-miss{flex-wrap:nowrap}
+
+/* ------------------------------------------------------------------ Projects: grouped by agency → couple → films */
+.view-switch{margin-left:auto}
+.groups{display:flex;flex-direction:column;gap:10px}
+.grp-agency{border:1px solid var(--line);border-radius:var(--r);background:var(--card)}
+.grp-agency>summary,.grp-couple>summary{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;user-select:none}
+.grp-agency>summary::-webkit-details-marker,.grp-couple>summary::-webkit-details-marker,.grp-tool>summary::-webkit-details-marker{display:none}
+.grp-agency>summary{padding:14px 16px;border-radius:var(--r)}
+.grp-agency>summary:hover,.grp-couple>summary:hover{background:var(--row-hover)}
+.grp-agency[open]>summary{border-bottom:1px solid var(--line);border-radius:var(--r) var(--r) 0 0}
+.grp-agency>summary .grp-name b{font-size:.9375rem}
+.grp-caret{width:16px;height:16px;flex:none;display:inline-grid;place-items:center;color:var(--faint);transition:transform .18s var(--ease)}
+.grp-caret::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg)}
+details[open]>summary>.grp-caret{transform:rotate(90deg)}
+.grp-name{min-width:0;flex:1 1 220px;display:flex;align-items:baseline;flex-wrap:wrap;gap:0 6px}
+.grp-meta{flex:0 1 auto}
+.grp-flags{display:inline-flex;gap:6px;flex-wrap:wrap}
+.grp-value{margin-left:auto;color:var(--muted);white-space:nowrap}
+.grp-agency-body{padding:6px 8px 8px;display:flex;flex-direction:column}
+.grp-couple{border-radius:var(--r-sm);border-left:3px solid transparent}
+.grp-couple+.grp-couple{border-top:1px solid var(--line2)}
+.grp-couple.is-late{border-left-color:var(--bad-line)}
+.grp-couple>summary{padding:10px 10px 10px 8px;border-radius:var(--r-sm)}
+.grp-couple[open]{background:var(--bg);margin:4px 0;border:1px solid var(--line);border-left:3px solid var(--line)}
+.grp-couple[open].is-late{border-left-color:var(--bad)}
+.grp-couple[open]+.grp-couple{border-top:0}
+.grp-kinds{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+.grp-prog{display:inline-flex;align-items:center;gap:6px;flex:none}
+.grp-prog .bar{width:64px;height:6px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);overflow:hidden}
+.grp-prog .bar i{display:block;height:100%;background:var(--ok);border-radius:999px}
+.grp-next{flex:none;min-width:84px}
+.grp-next .due-soon{color:var(--warn);font-weight:600}
+.grp-eds{flex:0 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp-body{padding:0 10px 12px}
+.grp-loading{padding:6px 4px;margin:0}
+.grp-table{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);min-width:860px}
+.grp-table td[data-col="film"]{white-space:nowrap}
+.grp-hidden,.grp-notes{margin:8px 2px 0}
+.grp-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:flex-start}
+.grp-tool>summary{list-style:none}
+.grp-tool[open]{flex-basis:100%;order:9}
+.grp-tool[open]>summary{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.grp-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card)}
+.grp-form label{display:flex;flex-direction:column;gap:4px}
+.grp-form label.grow{flex:1 1 260px}
+.grp-form .input{min-height:36px}
+.grp-dup{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;margin:4px 0;border:1px dashed var(--warn-line);background:var(--warn-bg);border-radius:var(--r-sm)}
+.grp-dup form{margin:0}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink)}
+.grp-empty{padding:12px 4px}
+@media (max-width:759.98px){
+  .view-switch{margin-left:0}
+  .grp-agency>summary{padding:12px}
+  .grp-eds,.grp-value{flex-basis:auto;margin-left:0}
+  .grp-body{padding:0 6px 10px}
+  .grp-agency-body{padding:4px}
+}

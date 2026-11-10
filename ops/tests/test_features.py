@@ -281,7 +281,7 @@ class NewProjectOptions(SeededTestCase):
                     self.assertNotIn(secret.isoformat(), body)
         nikhil_pod = self.login("nikhil").get("/pod/").content.decode()
         self.assertNotIn(secret.strftime("%-d %b"), nikhil_pod)
-        self.assertContains(self.login("ag").get("/projects/?status="), secret.isoformat())
+        self.assertContains(self.login("ag").get("/projects/?view=list&status="), secret.isoformat())
 
 
 class RevisionsAndTags(SeededTestCase):
@@ -363,18 +363,18 @@ class ProjectFilters(SeededTestCase):
         ag = self.login("ag")
         brc = Agency.objects.get(name="BadalRaja Company")
         pratik = U.objects.get(username="pratik")
-        r = ag.get(f"/projects/?status=&agency={brc.pk}&editor={pratik.pk}&film=Teaser&sort=newest")
+        r = ag.get(f"/projects/?view=list&status=&agency={brc.pk}&editor={pratik.pk}&film=Teaser&sort=newest")
         jobs = [j["p"] for j in r.context["jobs"]]
         self.assertTrue(all(p.agency_id == brc.pk and p.editor_id == pratik.pk and p.deliverable == "Teaser" for p in jobs))
         self.assertContains(r, "Clear 3 filters")
-        r = ag.get("/projects/?status=late")
+        r = ag.get("/projects/?view=list&status=late")
         today = timezone.localdate()
         self.assertTrue(all(j["p"].deadline < today and j["p"].is_open for j in r.context["jobs"]))
-        r = ag.get("/projects/?status=&editor=none")
+        r = ag.get("/projects/?view=list&status=&editor=none")
         self.assertTrue(all(j["p"].editor_id is None for j in r.context["jobs"]))
-        r = ag.get("/projects/?status=&source=cloud")
+        r = ag.get("/projects/?view=list&status=&source=cloud")
         self.assertTrue(all(j["p"].received_online for j in r.context["jobs"]))
-        r = ag.get("/projects/?status=&due=overdue&kind=delayed&q=BRC")
+        r = ag.get("/projects/?view=list&status=&due=overdue&kind=delayed&q=BRC")
         self.assertEqual(r.status_code, 200)
 
 
@@ -525,7 +525,7 @@ class RevenueEstimated(SeededTestCase):
 
 class ProjectsListChanges(SeededTestCase):
     def test_no_tier_or_hours_column(self):
-        html = self.login("ag").get("/projects/").content.decode()
+        html = self.login("ag").get("/projects/?view=list").content.decode()
         self.assertNotIn("Tier", html)
         self.assertNotIn("Hrs vs usual", html)
 
@@ -574,7 +574,7 @@ class ProjectsInlineEdits(SeededTestCase):
         self.post({"invoice_amount": "abc"})
         self.p.refresh_from_db()
         self.assertEqual(self.p.invoice_amount, 42500)
-        html = self.f.get("/projects/").content.decode()
+        html = self.f.get("/projects/?view=list").content.decode()
         self.assertIn('name="invoice_amount"', html)
         self.assertIn('name="agency_deadline"', html)
 
@@ -650,7 +650,7 @@ class PlannerLive(SeededTestCase):
 
     def test_projects_show_agency_nickname(self):
         p = Project.objects.filter(agency__code__gt="").select_related("agency").first()
-        html = self.f.get("/projects/?status=").content.decode()
+        html = self.f.get("/projects/?view=list&status=").content.decode()
         self.assertIn(f'title="{p.agency.name}">{p.agency.code}</abbr>', html)
 
 
