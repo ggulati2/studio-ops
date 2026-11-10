@@ -23,7 +23,7 @@ services:
       - key: FOUNDER_PASSWORD
         sync: false
       - key: ALLOWED_HOSTS
-        value: localhost
+        value: localhost,redwed.in,www.redwed.in
       - key: TIME_ZONE
         value: Asia/Kolkata
       - key: ADMIN_IDLE_MINUTES

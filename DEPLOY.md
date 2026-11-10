@@ -72,6 +72,14 @@ Sign up at **cron-job.org** and create two cronjobs:
 
 The daily job marks past-due invoices **Overdue**, clears expired sign-ins and, by touching the database, stops Supabase pausing the project during quiet weeks such as Diwali. Without the right header it returns 401 and does nothing.
 
+## Custom domain: redwed.in
+
+The app answers on **https://redwed.in** and **https://www.redwed.in** (allowed in `config/settings.py`; a different domain can be set with the `STUDIO_DOMAINS` environment variable, comma-separated).
+
+1. Render → the service → **Settings → Custom Domains**: add `redwed.in` and `www.redwed.in`. Render shows the DNS records and issues the HTTPS certificate once DNS points at it.
+2. GoDaddy → DNS: an **A** record for `@` with Render's IP, and a **CNAME** for `www` pointing at `<your-app>.onrender.com`, as Render shows.
+3. On cron-job.org, the two calls in step 4 can use `https://redwed.in/health/` and `https://redwed.in/cron/daily/`. The onrender.com address keeps working too.
+
 ## 5. First-time setup inside the app (15 min)
 
 1. **Settings:**
