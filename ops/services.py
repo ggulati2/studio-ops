@@ -422,10 +422,11 @@ def auto_plan(project, start=None):
     import math
     from .models import PlanEntry
     today = timezone.localdate()
-    if not project.pk or project.is_extra:
+    if not project.pk:
         return 0, 0
-    PlanEntry.objects.filter(project=project, date__gte=today).exclude(user_id=project.editor_id).delete()
-    if not (project.editor_id and project.deadline and project.is_open):
+    (PlanEntry.objects.filter(project=project, date__gte=today).exclude(label="Revisions")
+     .exclude(user_id=project.editor_id).delete())          # days left on someone else after a reassignment
+    if project.is_extra or not (project.editor_id and project.deadline and project.is_open):
         return 0, 0
     start = max(start or today, project.received_on or today, today)
     if start > project.deadline:
@@ -451,6 +452,42 @@ def auto_plan(project, start=None):
                 made += 1
             d += timedelta(days=1)
     return made, max(need - have - made, 0)
+
+
+def plan_mismatches(limit=40):
+    """Planner days ahead where a film is planned for someone who isn't its editor on Projects
+    (or the film has no editor). Revisions are left out: anyone may be given those.
+    Returns [{project, user, days, first}] grouped per film and person."""
+    from django.db.models import F
+    from .models import PlanEntry
+    today = timezone.localdate()
+    qs = (PlanEntry.objects.filter(date__gte=today, project__isnull=False).exclude(label="Revisions")
+          .exclude(project__status__in=(Project.CLOSED, Project.SENT_AGENCY, Project.ON_HOLD))
+          .exclude(project__editor_id=F("user_id"))
+          .select_related("project__agency", "project__editor__profile", "user__profile").order_by("date"))
+    out = {}
+    for e in qs[:500]:
+        g = out.setdefault((e.project_id, e.user_id), {"project": e.project, "user": e.user, "days": 0, "first": e.date})
+        g["days"] += 1
+    return list(out.values())[:limit]
+
+
+def plan_others(projects):
+    """Tag each film with the people planned on it in the days ahead who aren't its editor."""
+    from .models import PlanEntry
+    projects = list(projects)
+    ids = [p.pk for p in projects]
+    if not ids:
+        return projects
+    today = timezone.localdate()
+    names = defaultdict(set)
+    for e in (PlanEntry.objects.filter(project_id__in=ids, date__gte=today).exclude(label="Revisions")
+              .select_related("user__profile")):
+        names[e.project_id].add((e.user_id, e.user.profile.name))
+    for p in projects:
+        p.plan_others = sorted(n for uid, n in names.get(p.pk, ()) if uid != p.editor_id and p.is_open
+                               and p.status != Project.SENT_AGENCY)
+    return projects
 
 
 def repeat_plan(user, start, value, days, slot=1):

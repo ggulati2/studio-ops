@@ -318,3 +318,92 @@ class DeliveryTiming(SeededTestCase):
         f = ProjectForm(instance=self.p)
         self.assertIn("first_delivered_on", f.fields)
         self.assertEqual(f.fields["first_delivered_on"].label, "Sent to agency on")
+
+
+class PlannerMatchesProjects(SeededTestCase):
+    """Planner and Projects agree on who is editing a film."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import PlanEntry
+        from ops.services import is_workday_for
+        U = get_user_model()
+        self.PE = PlanEntry
+        self.f = self.login("ag")
+        self.pratik, self.nikhil = U.objects.get(username="pratik"), U.objects.get(username="nikhil")
+        self.today = timezone.localdate()
+        d = self.today + timedelta(days=3)
+        while not (is_workday_for(self.pratik, d) and is_workday_for(self.nikhil, d)):
+            d += timedelta(days=1)
+        self.d = d
+        self.PE.objects.filter(user__in=[self.pratik, self.nikhil], date__gte=self.today).delete()
+        self.p = Project.objects.create(couple="Plan Check", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                        editor=self.pratik, deadline=self.today + timedelta(days=20))
+
+    def plan(self, user, value, **extra):
+        return self.f.post("/planner/", {"user": user.pk, "date": self.d.isoformat(), "value": value, **extra},
+                           **FETCH).json()
+
+    def test_planning_unassigned_film_makes_that_person_the_editor(self):
+        Project.objects.filter(pk=self.p.pk).update(editor=None)
+        r = self.plan(self.nikhil, f"p:{self.p.pk}")
+        self.assertIn("Nikhil is now its editor", r["message"])
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.editor, self.nikhil)
+        # Undo puts the cell back and the film back to unassigned
+        self.f.post("/planner/", r["undo"], **FETCH)
+        self.p.refresh_from_db()
+        self.assertIsNone(self.p.editor_id)
+
+    def test_mismatch_is_flagged_and_fixed(self):
+        r = self.plan(self.nikhil, f"p:{self.p.pk}")
+        self.assertIn("editor on Projects is Pratik", r["message"])
+        self.assertIn("Make Nikhil the editor", r["mismatch"])
+        self.assertIn("mismatch", next(iter(r["cells"].values()))["html"])
+        html = self.f.get("/projects/?view=list&status=").content.decode()
+        self.assertIn("⚠ Planner: Nikhil", html)
+        # Move the day to the editor on Projects
+        r = self.f.post("/planner/", {"action": "fix", "op": "move", "project": self.p.pk, "user": self.nikhil.pk}, **FETCH).json()
+        self.assertTrue(r["ok"])
+        self.assertFalse(self.PE.objects.filter(project=self.p, user=self.nikhil).exists())
+        self.assertTrue(self.PE.objects.filter(project=self.p, user=self.pratik, date=self.d).exists())
+        self.assertNotIn("Make Nikhil", r["mismatch"])
+        # …or make the planned person the editor
+        self.plan(self.nikhil, f"p:{self.p.pk}")
+        r = self.f.post("/planner/", {"action": "fix", "op": "make", "project": self.p.pk, "user": self.nikhil.pk}, **FETCH).json()
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.editor, self.nikhil)
+        self.assertFalse(self.PE.objects.filter(project=self.p, user=self.pratik, date__gte=self.today).exists())
+
+    def test_revisions_by_someone_else_are_fine(self):
+        self.plan(self.nikhil, f"r:{self.p.pk}")
+        from ops.services import plan_mismatches
+        self.assertFalse(any(m["project"].pk == self.p.pk for m in plan_mismatches()))
+
+    def test_done_on_hold_or_unassigned_clears_days_ahead(self):
+        past = self.today - timedelta(days=1)
+        self.PE.objects.create(user=self.pratik, date=past, project=self.p)
+        self.PE.objects.create(user=self.pratik, date=self.d, project=self.p)
+        self.PE.objects.create(user=self.nikhil, date=self.d, project=self.p, label="Revisions")
+        self.p.status = Project.SENT_AGENCY
+        self.p.save()
+        self.assertFalse(self.PE.objects.filter(project=self.p, date=self.d, label="").exists())
+        self.assertTrue(self.PE.objects.filter(project=self.p, date=past).exists())          # history stays
+        self.assertTrue(self.PE.objects.filter(project=self.p, label="Revisions").exists())  # revisions stay
+        self.p.status = Project.IN_PROGRESS
+        self.p.save()
+        self.PE.objects.create(user=self.pratik, date=self.d, project=self.p)
+        self.f.post(f"/projects/{self.p.pk}/status/", {"editor": "", "next": "/projects/"}, **FETCH)
+        self.assertFalse(self.PE.objects.filter(project=self.p, date=self.d, label="").exists())
+
+    def test_extra_work_follows_its_editor(self):
+        Project.objects.filter(pk=self.p.pk).update(is_extra=True)
+        self.p.refresh_from_db()
+        self.PE.objects.create(user=self.pratik, date=self.d, project=self.p)
+        self.f.post(f"/projects/{self.p.pk}/status/", {"editor": self.nikhil.pk, "next": "/projects/"}, **FETCH)
+        self.assertFalse(self.PE.objects.filter(project=self.p, user=self.pratik, date=self.d).exists())
+
+    def test_planner_shows_strip(self):
+        self.plan(self.nikhil, f"p:{self.p.pk}")
+        self.assertContains(self.f.get("/planner/"), "planned for someone who isn")
+        self.assertContains(self.f.get("/planner/?view=month"), "data-plan-mismatch")

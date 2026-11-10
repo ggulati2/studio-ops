@@ -14,6 +14,7 @@
 </div>
 <div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag due-key">Delivery day</span><span class="tag qc">+ alongside</span></div>
 <noscript><div class="msg error">The planner needs JavaScript turned on.</div></noscript>
+<div data-plan-mismatch>{% include "founder/_plan_mismatch.html" %}</div>
 <div class="planner" data-planner data-view="month" data-url="{% url 'planner' %}?view=month">{% csrf_token %}
 <div class="scroll card planner-scroll" style="padding:0">
 <table class="plan-month no-stack">

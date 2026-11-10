@@ -69,6 +69,10 @@
         setTimeout(function () { td.classList.remove("flash"); }, 900);
       });
       if (view === "month") recountMonth();
+      if (res.mismatch !== undefined) {
+        var box = doc.querySelector("[data-plan-mismatch]");
+        if (box) box.innerHTML = res.mismatch;
+      }
       if (res.message) {
         toast(res.message, { error: !res.ok, undo: res.undo ? function () {
           var u = res.undo, d = Object.assign({}, u);
@@ -407,4 +411,12 @@
     // only scroll when today would otherwise be off to the right
     if (todayCol.offsetLeft + todayCol.offsetWidth > sc.clientWidth) sc.scrollLeft = Math.max(0, todayCol.offsetLeft - 260);
   }
+  /* Planner vs Projects: settle a mismatch in one click */
+  doc.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-fix]");
+    if (!b) return;
+    b.disabled = true;
+    post({ action: "fix", op: b.getAttribute("data-fix"), project: b.getAttribute("data-project"), user: b.getAttribute("data-user") })
+      .then(function () { b.disabled = false; });
+  });
 })();

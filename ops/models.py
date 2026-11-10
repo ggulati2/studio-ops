@@ -384,6 +384,21 @@ class Project(models.Model):
         super().save(*args, **kwargs)
         if self.status == self.CLOSED and self.pk:      # a client revision just went back out
             self.client_revisions.filter(completed_on__isnull=True).update(completed_on=tz.localdate())
+        self.unplan_future()
+
+    def unplan_future(self):
+        """Keep the Planner honest: a film that is out (sent / delivered), on hold or has no
+        editor isn't planned for anyone in the days ahead. Past days stay as history, and
+        planned revisions (on delivered films) are left alone."""
+        from django.utils import timezone as tz
+        today = tz.localdate()
+        if self.status in (self.CLOSED, self.SENT_AGENCY, self.ON_HOLD):
+            when = models.Q(date__gt=today)
+        elif not self.editor_id:
+            when = models.Q(date__gte=today)
+        else:
+            return 0
+        return PlanEntry.objects.filter(when, project_id=self.pk).exclude(label="Revisions").delete()[0]
 
     @property
     def can_submit(self):

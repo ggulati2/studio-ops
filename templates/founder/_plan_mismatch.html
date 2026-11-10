@@ -1,0 +1,7 @@
+{% if mismatches %}<details class="card warn tight plan-mismatch" open>
+  <summary><b>⚠ {{ mismatches|length }} film{{ mismatches|length|pluralize }} planned for someone who isn't the editor on Projects</b> <span class="small">Pick who's right, or leave it if someone is really helping out.</span></summary>
+  <ul class="pm-list">{% for m in mismatches %}
+    <li><span class="pm-what"><b>{{ m.project }}</b> · planned for <b>{{ m.user.profile.name }}</b> ({{ m.days }} day{{ m.days|pluralize }} from {{ m.first|date:"j M" }}) · editor on Projects: {% if m.project.editor_id %}<b>{{ m.project.editor.profile.name }}</b>{% else %}<b>none</b>{% endif %}</span>
+      <span class="pm-btns"><button type="button" class="btn sm primary" data-fix="make" data-project="{{ m.project.pk }}" data-user="{{ m.user.pk }}">Make {{ m.user.profile.name }} the editor</button>{% if m.project.editor_id %}<button type="button" class="btn sm" data-fix="move" data-project="{{ m.project.pk }}" data-user="{{ m.user.pk }}">Move the days to {{ m.project.editor.profile.name }}</button>{% endif %}</span></li>
+  {% endfor %}</ul>
+</details>{% endif %}

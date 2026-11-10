@@ -17,6 +17,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from .. import services as S
+from ..audit import record
 from ..models import DayLog, PlanEntry, Project, StudioSettings
 from ..rbac import requires
 from ..services import add_months, holidays_between, month_end, month_start, parse_month, team, week_start
@@ -37,7 +38,8 @@ class _Ctx:
     def __init__(self, people, a, b):
         self.people, self.a, self.b = people, a, b
         self.plan = defaultdict(dict)
-        for e in PlanEntry.objects.filter(date__range=(a, b), user__in=people).select_related("project__agency"):
+        for e in (PlanEntry.objects.filter(date__range=(a, b), user__in=people)
+                  .select_related("project__agency", "project__editor__profile")):
             self.plan[(e.user_id, e.date)][e.slot] = e
         self.logs = defaultdict(dict)
         for l in DayLog.objects.filter(date__range=(a, b), user__in=people):
@@ -87,6 +89,70 @@ def _value_label(value):
     return f["label"] or "nothing"
 
 
+def _adopt(request, u, value):
+    """A film planned for someone while it has no editor makes them its editor.
+    Returns (message, undo extras)."""
+    f = S.plan_fields(value)
+    if not f["project_id"] or f["label"] == "Revisions":
+        return "", {}
+    p = Project.objects.select_related("editor__profile").filter(pk=f["project_id"]).first()
+    if not p or not p.is_open or p.status == Project.SENT_AGENCY:
+        return "", {}
+    if not p.editor_id:
+        p.editor = u
+        p.save(update_fields=["editor"])
+        record(request, "project.editor", str(p), f"Unassigned -> {u.profile.name} (from the Planner)")
+        return f" {u.profile.name} is now its editor on Projects.", {"unassign": p.pk}
+    if p.editor_id != u.pk:
+        return f" Note: the editor on Projects is {p.editor.profile.name}.", {}
+    return "", {}
+
+
+def _fix(request):
+    """Settle a Planner/Projects mismatch: make the planned person the editor, or move the days to the editor."""
+    P = request.POST
+    p = get_object_or_404(Project.objects.select_related("editor__profile"), pk=P.get("project"))
+    u = get_object_or_404(User, pk=P.get("user"))
+    today = timezone.localdate()
+    before = {(e.user_id, e.date) for e in PlanEntry.objects.filter(project=p, date__gte=today)}
+    if P.get("op") == "make":
+        old = p.editor.profile.name if p.editor_id else "Unassigned"
+        p.editor = u
+        p.save(update_fields=["editor"])
+        made, short = S.auto_plan(p)
+        record(request, "project.editor", str(p), f"{old} -> {u.profile.name} (Planner fix)")
+        msg = f"{u.profile.name} is now the editor of {p}." + (f" {made} more day(s) planned." if made else "")
+        if short:
+            msg += f" {short} day(s) didn't fit before the deadline."
+    elif P.get("op") == "move":
+        if not p.editor_id:
+            return [], f"{p} has no editor on Projects to move the days to.", False
+        moved, skipped = 0, []
+        for e in PlanEntry.objects.filter(project=p, user=u, date__gte=today).exclude(label="Revisions"):
+            taken = set(PlanEntry.objects.filter(user=p.editor, date=e.date).values_list("slot", flat=True))
+            mine = PlanEntry.objects.filter(user=p.editor, date=e.date, project=p).exists()
+            if S.day_kind(p.editor, e.date) in LOCKED or (not mine and len(taken) >= PlanEntry.MAX_SLOTS):
+                skipped.append(f"{e.date:%-d %b}")
+                continue
+            if not mine:
+                S.set_plan(p.editor, e.date, e.value, 1 if 1 not in taken else 2)
+            S.set_plan(u, e.date, "", e.slot)
+            moved += 1
+        record(request, "planner.move", str(p), f"{moved} day(s) {u.profile.name} -> {p.editor.profile.name}")
+        msg = f"Moved {moved} day(s) of {p} from {u.profile.name} to {p.editor.profile.name}."
+        if skipped:
+            msg += f" Not moved (leave or day full): {', '.join(skipped)}."
+    else:
+        return [], "Unknown fix.", False
+    after = {(e.user_id, e.date) for e in PlanEntry.objects.filter(project=p, date__gte=today)}
+    users = {x.pk: x for x in User.objects.filter(pk__in={k[0] for k in before | after})}
+    return [(users[k[0]], k[1]) for k in sorted(before | after, key=lambda k: (k[1], k[0])) if k[0] in users], msg, True
+
+
+def _mismatch_html(request):
+    return render_to_string("founder/_plan_mismatch.html", {"mismatches": S.plan_mismatches()}, request=request)
+
+
 def _post(request):
     """Apply one planner change. Returns (changed [(user, date)], message, undo-or-None)."""
     P = request.POST
@@ -116,6 +182,8 @@ def _post(request):
         verb = "Copied" if copy else "Moved"
         where = "alongside other work" if slot == 2 else ""
         msg = f"{verb} {text} to {dst_u.profile.name}, {dst_d:%a %-d %b}" + (f" ({where})" if where else "") + "."
+        if dst_u.pk != src_u.pk:
+            msg += _adopt(request, dst_u, value)[0]
         return [(src_u, src_d), (dst_u, dst_d)], msg, None
 
     u = get_object_or_404(User, pk=P.get("user"))
@@ -143,7 +211,9 @@ def _post(request):
         undo = {"user": u.pk, "date": d.isoformat(), "restore": [before.value if before else "", before_also.value]}
     who = f"{u.profile.name}, {d:%a %-d %b}"
     if val:
-        msg = f"{_value_label(val)} planned for {who}" + (" (alongside)." if slot == "2" else ".")
+        note, extra = _adopt(request, u, val)
+        undo.update(extra)
+        msg = f"{_value_label(val)} planned for {who}" + (" (alongside)." if slot == "2" else ".") + note
     else:
         msg = f"Cleared {who}."
     return [(u, d)], msg, undo
@@ -164,8 +234,15 @@ def planner(request):
                     if v:
                         PlanEntry.objects.create(user=u, date=d, slot=i, **S.plan_fields(v))
             changed, msg, undo = ([(u, d)] if d else []), "Undone.", None
+        elif request.POST.get("action") == "fix":
+            changed, msg, ok = _fix(request)
+            undo = None
+            if not ok and _is_ajax(request):
+                return JsonResponse({"ok": False, "message": msg, "cells": {}, "undo": None})
         else:
             changed, msg, undo = _post(request)
+        if request.POST.get("unassign", "").isdigit():      # undo of a plan that had made someone the editor
+            Project.objects.filter(pk=request.POST["unassign"], editor_id=request.POST.get("user")).update(editor=None)
         if _is_ajax(request):
             changed = [(u, d) for u, d in dict.fromkeys(changed)]
             out = {}
@@ -173,7 +250,8 @@ def planner(request):
                 ctx = _Ctx([u for u, _ in changed], min(d for _, d in changed), max(d for _, d in changed))
                 for u, d in changed:
                     out[f"{u.pk}:{d.isoformat()}"] = _cell_payload(ctx, u, d, view)
-            return JsonResponse({"ok": bool(changed) or not msg, "message": msg, "cells": out, "undo": undo})
+            return JsonResponse({"ok": bool(changed) or not msg, "message": msg, "cells": out, "undo": undo,
+                                 "mismatch": _mismatch_html(request)})
         if msg:
             messages.success(request, msg)
         return redirect(S.safe_next(request, request.POST.get("back"), request.get_full_path()))
@@ -182,7 +260,7 @@ def planner(request):
 
 def _common(people):
     open_projects, delivered = _options()
-    return {"open_projects": open_projects, "delivered": delivered, "people": people,
+    return {"open_projects": open_projects, "delivered": delivered, "people": people, "mismatches": S.plan_mismatches(),
             "tray": [p for p in open_projects if not p.editor_id], "today": timezone.localdate()}
 
 

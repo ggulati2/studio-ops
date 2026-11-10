@@ -12,6 +12,7 @@
     <b class="prange">{{ start|date:"j M" }} – {{ end|date:"j M Y" }}</b>
   </div>
 </div>
+<div data-plan-mismatch>{% include "founder/_plan_mismatch.html" %}</div>
 {% if tray %}<section class="card warn tight tray"><h3>Waiting for an editor</h3>{% for p in tray %}<a class="tag" href="{% url 'project_edit' p.pk %}">{{ p }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</a>{% endfor %}</section>{% endif %}
 <div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag due-key">Delivery day</span><span class="tag qc">+ alongside</span></div>
 <noscript><div class="msg error">The planner needs JavaScript turned on.</div></noscript>

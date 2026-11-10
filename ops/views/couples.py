@@ -142,6 +142,8 @@ def grouped_context(request, qs, meta):
     n_couples = sum(len(a["list"]) for a in groups)
     expand = len(groups) == 1 or bool(meta["q"]) or bool(meta["f"]["agency"])
     inline = bool(meta["q"]) and n_couples <= INLINE_OPEN
+    if inline:
+        S.plan_others(films)
     for a in groups:
         a["open"] = expand
         a["dups"] = look_alikes(a["list"]) if not meta["q"] else []
@@ -155,7 +157,7 @@ def grouped_context(request, qs, meta):
 
 def _couple_group(couple, params):
     qs, _ = project_filter(params)
-    films = list(qs.filter(client=couple).select_related("client"))
+    films = S.plan_others(qs.filter(client=couple).select_related("client"))
     return {"c": couple, "films": films, "s": couple_summary(films, _totals([couple.pk]).get(couple.pk))}
 
 

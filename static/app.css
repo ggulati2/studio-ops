@@ -988,3 +988,13 @@ form.asking .status-select{box-shadow:0 0 0 2px var(--info-line)}
 .linkbtn.sent-on{display:block;margin-top:3px;color:var(--muted);text-decoration:underline dotted;text-underline-offset:2px;background:none;border:0;padding:0;cursor:pointer;font:inherit;font-size:var(--t-xs)}
 .linkbtn.sent-on:hover{color:var(--ink)}
 .sent-ask[hidden]{display:none}
+
+/* Planner vs Projects mismatches */
+.plan-mismatch>summary{cursor:pointer;color:var(--warn);list-style:none;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.plan-mismatch>summary::-webkit-details-marker{display:none}
+.pm-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pm-list li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;padding:8px 10px;border:1px solid var(--warn-line);border-radius:var(--r-sm);background:var(--card);font-size:var(--t-sm)}
+.pm-btns{display:inline-flex;gap:6px;flex-wrap:wrap}
+.chip.mismatch{outline:2px dashed var(--warn);outline-offset:-2px}
+.chip.mismatch .ct::before{content:"⚠ ";color:var(--warn)}
+.plan-also{display:block;margin-top:2px;font-size:var(--t-xs);color:var(--warn)}

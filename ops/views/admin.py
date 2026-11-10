@@ -194,7 +194,7 @@ def projects(request):
     from django.db.models import Sum
     agg = qs.order_by().aggregate(n=Count("id", distinct=True), value=Sum("invoice_amount"))
     total = agg["n"] or 0
-    jobs = [{"p": p} for p in qs[:show]]
+    jobs = [{"p": p} for p in S.plan_others(qs[:show])]
     more = None
     if total > show:
         params = request.GET.copy()
@@ -356,7 +356,7 @@ def _project_reply(request, p, nxt, say, undo=None, remove_queue=False):
     if request.headers.get("X-Requested-With") == "fetch":
         from django.http import JsonResponse
         from django.template.loader import render_to_string
-        p = Project.objects.select_related("agency", "editor__profile", "drive").get(pk=p.pk)
+        p = S.plan_others([Project.objects.select_related("agency", "editor__profile", "drive").get(pk=p.pk)])[0]
         layout = "couple" if request.POST.get("layout") == "couple" else ""
         row = render_to_string("founder/_project_row.html", {"p": p, "editors": team(), "statuses": Project.STATUSES,
                                                              "back": nxt, "layout": layout}, request=request)
