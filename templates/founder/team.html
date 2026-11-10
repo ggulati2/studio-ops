@@ -5,11 +5,19 @@
   <div><h1>Team &amp; attendance</h1><p>{{ month|date:"F Y" }} so far. Available hours already exclude leave, holidays and half days.</p></div>
   <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn primary" href="{% url 'person_new' %}">+ Add a person</a></div>
 </div>
-<section class="card"><h2>Attendance</h2><div class="scroll"><table style="min-width:980px">
-  <thead><tr><th>Person</th><th>Role</th><th>Office</th><th>WFH</th><th>Half</th><th>Leave</th><th>Late</th><th>Hours worked</th><th>Available</th><th>Utilization</th><th>Logged to jobs</th><th></th></tr></thead>
+<section class="card"><h2>Attendance</h2><div class="scroll"><table style="min-width:1100px">
+  <thead><tr><th>Person</th><th>Role</th><th>Pod</th><th>Office</th><th>WFH</th><th>Half</th><th>Leave</th><th>Late</th><th>Hours worked</th><th>Available</th><th>Utilization</th><th>Logged to jobs</th><th></th></tr></thead>
   <tbody>{% for r in rows %}<tr>
     <td><b>{{ r.u.profile.name }}</b>{% if not r.u.profile.active %} <span class="tag">inactive</span>{% endif %}</td>
-    <td class="muted">{{ r.u.profile.get_role_display }}{% if r.u.profile.pod %} · {{ r.u.profile.pod }}{% endif %}</td>
+    <td class="muted">{{ r.u.profile.get_role_display }}</td>
+    <td>{% if can_edit_people %}<form method="post" action="{% url 'person_pod' r.u.pk %}" class="pod-pick" data-pod-form>{% csrf_token %}
+      <select name="pod" class="cell-input cell-select{% if not r.u.profile.pod_id %} empty{% endif %}" data-pod-select aria-label="Pod for {{ r.u.profile.name }}">
+        <option value="">— No pod —</option>{% for p in pods %}<option value="{{ p.pk }}"{% if p.pk == r.u.profile.pod_id %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        <option value="__new__">+ New pod…</option>
+      </select>
+      <span class="pod-new" data-pod-new hidden><input class="input" name="new_pod" maxlength="40" placeholder="New pod name" aria-label="New pod name" autocomplete="off"><button class="btn sm primary">Add</button><button type="button" class="btn sm" data-pod-cancel>Cancel</button></span>
+      <noscript><button class="btn sm">Save</button></noscript></form>
+    {% else %}{{ r.u.profile.pod|default:"—" }}{% endif %}</td>
     <td>{{ r.att.office }}</td><td>{{ r.att.wfh }}</td><td>{{ r.att.half }}</td>
     <td {% if r.att.leaves_counted > studio.free_leaves_per_month %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.att.leaves_counted|hours }}</td>
     <td {% if r.att.late >= 2 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ r.att.late }}</td>

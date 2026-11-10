@@ -31,6 +31,7 @@ urlpatterns = [
     path("invoices/<int:pk>/", v.invoice_print, name="invoice_print"),
     path("invoices/<int:pk>/update/", v.invoice_update, name="invoice_update"),
     path("team/", v.team_view, name="team"),
+    path("team/<int:pk>/pod/", v.person_pod, name="person_pod"),
     path("team/new/", v.person_edit, name="person_new"),
     path("team/<int:pk>/", v.person_edit, name="person_edit"),
     path("extra-work/", v.extra_admin, name="extra_admin"),

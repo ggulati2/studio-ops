@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ..audit import record
-from ..rbac import ADMIN, requires
+from ..rbac import ADMIN, has_perm, requires
 from ..forms import (AgencyForm, AssignForm, EOTMForm, HolidayForm, NewProjectForm, PersonForm, ProjectForm,
                      StudioSettingsForm)
 from ..models import (Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Invoice, PlanEntry, Pod,
@@ -25,7 +25,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
 
 User = get_user_model()
 __all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
-           "delivered", "reports", "report_print", "team_view", "person_edit", "extra_admin", "eotm",
+           "delivered", "reports", "report_print", "team_view", "person_edit", "person_pod", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
 
@@ -488,7 +488,52 @@ def team_view(request):
                      "util": round(att["job_hours"] / avail * 100) if avail else None,
                      "value": value, "multiple": round(value / sal, 1) if sal else None})
     return render(request, "founder/team.html", {"rows": rows, "month": month, "prev": add_months(month, -1),
-                                               "next": add_months(month, 1), "pods": Pod.objects.all()})
+                                               "next": add_months(month, 1), "pods": list(Pod.objects.all()),
+                                               "can_edit_people": has_perm(request.user, "people.manage")})
+
+
+@requires("people.manage")
+def person_pod(request, pk):
+    """Change someone's pod from the Team page (or create a new pod on the way)."""
+    from django.http import JsonResponse
+    u = get_object_or_404(User.objects.select_related("profile", "profile__pod"), pk=pk, profile__isnull=False)
+    fetch = request.headers.get("X-Requested-With") == "fetch"
+
+    def reply(ok, msg, undo=None, status=200):
+        if fetch:
+            return JsonResponse({"ok": ok, "message": msg, "undo": undo, "pod_id": u.profile.pod_id,
+                                 "pods": [{"id": p.pk, "name": p.name} for p in Pod.objects.all()]}, status=status)
+        (messages.success if ok else messages.error)(request, msg)
+        return redirect("team")
+
+    if request.method != "POST":
+        return redirect("team")
+    raw = request.POST.get("pod", "")
+    new_name = " ".join(request.POST.get("new_pod", "").split())[:40]
+    if raw == "__new__":
+        if not new_name:
+            return reply(False, "Type a name for the new pod.")
+        pod = Pod.objects.filter(name__iexact=new_name).first()
+        if not pod:
+            pod = Pod.objects.create(name=new_name)
+            record(request, "pod.created", pod.name)
+    elif raw:
+        pod = Pod.objects.filter(pk=raw).first() if raw.isdigit() else None
+        if not pod:
+            return reply(False, "That pod no longer exists. Reload the page.")
+    else:
+        pod = None
+    old = u.profile.pod
+    if (old and old.pk) == (pod and pod.pk):
+        return reply(True, "")
+    u.profile.pod = pod
+    u.profile.save(update_fields=["pod"])
+    record(request, "person.pod", u.username, f"{old or 'no pod'} -> {pod or 'no pod'}")
+    name = u.profile.name
+    msg = f"{name} moved to {pod}." if pod else f"{name} is no longer in a pod."
+    if pod and raw == "__new__":
+        msg = f"Created {pod} and moved {name} into it."
+    return reply(True, msg, undo={"pod": str(old.pk) if old else ""})
 
 
 @requires("people.manage")

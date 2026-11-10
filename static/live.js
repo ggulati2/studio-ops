@@ -124,6 +124,99 @@
     });
   });
 
+  /* ---------------------------------------------------------------- Team: pod per person */
+  function podPost(form, data) {
+    var fd = new FormData();
+    fd.append("csrfmiddlewaretoken", csrfOf(form));
+    Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
+    form.classList.add("is-saving");
+    return fetch(form.action, { method: "POST", body: fd, credentials: "same-origin",
+      headers: { "X-Requested-With": "fetch", "X-CSRFToken": csrfOf(form), "Accept": "application/json" } })
+      .then(function (r) {
+        if (r.status === 403) throw new Error("Your session has ended. Reload the page and sign in again.");
+        if (!r.ok) throw new Error("Couldn't save (" + r.status + ").");
+        return r.json();
+      })
+      .then(function (res) {
+        form.classList.remove("is-saving");
+        syncPodOptions(res.pods);
+        var sel = form.querySelector("[data-pod-select]");
+        if (res.ok) {
+          sel.value = res.pod_id == null ? "" : String(res.pod_id);
+          sel.setAttribute("data-current", sel.value);
+          sel.classList.toggle("empty", !sel.value);
+          var row = form.closest("tr");
+          if (row && res.message) { row.classList.add("row-flash"); setTimeout(function () { row.classList.remove("row-flash"); }, 1100); }
+          closeNew(form);
+        } else {
+          sel.value = sel.getAttribute("data-current") || "";
+        }
+        if (res.message) toast(res.message, { level: res.ok ? "success" : "error",
+          undo: res.ok && res.undo ? function () { podPost(form, res.undo); } : null });
+        return res;
+      })
+      .catch(function (err) {
+        form.classList.remove("is-saving");
+        var sel = form.querySelector("[data-pod-select]");
+        sel.value = sel.getAttribute("data-current") || "";
+        toast(err.message, { level: "error" });
+      });
+  }
+  /* A pod created on one row appears in every row's list straight away */
+  function syncPodOptions(pods) {
+    if (!pods) return;
+    Array.prototype.forEach.call(doc.querySelectorAll("[data-pod-select]"), function (sel) {
+      var keep = sel.value, newOpt = sel.querySelector('option[value="__new__"]');
+      Array.prototype.forEach.call(sel.querySelectorAll("option"), function (o) {
+        if (o.value && o.value !== "__new__") o.remove();
+      });
+      pods.forEach(function (p) {
+        var o = doc.createElement("option"); o.value = p.id; o.textContent = p.name;
+        sel.insertBefore(o, newOpt);
+      });
+      sel.value = keep;
+    });
+  }
+  function openNew(form) {
+    var box = form.querySelector("[data-pod-new]"), sel = form.querySelector("[data-pod-select]");
+    sel.hidden = true; box.hidden = false;
+    var inp = box.querySelector("input"); inp.value = ""; inp.focus();
+  }
+  function closeNew(form) {
+    var box = form.querySelector("[data-pod-new]"), sel = form.querySelector("[data-pod-select]");
+    if (!box || box.hidden) return;
+    box.hidden = true; sel.hidden = false;
+    sel.value = sel.getAttribute("data-current") || "";
+  }
+  Array.prototype.forEach.call(doc.querySelectorAll("[data-pod-select]"), function (sel) { sel.setAttribute("data-current", sel.value); });
+  doc.addEventListener("change", function (e) {
+    var sel = e.target.closest && e.target.closest("[data-pod-select]");
+    if (!sel) return;
+    var form = sel.form;
+    if (sel.value === "__new__") { openNew(form); return; }
+    podPost(form, { pod: sel.value });
+  });
+  doc.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches("form[data-pod-form]") || !window.fetch) return;
+    e.preventDefault();
+    var box = form.querySelector("[data-pod-new]");
+    if (box && !box.hidden) {
+      var name = box.querySelector("input").value.trim();
+      if (!name) { box.querySelector("input").focus(); return; }
+      podPost(form, { pod: "__new__", new_pod: name });
+    } else {
+      podPost(form, { pod: form.querySelector("[data-pod-select]").value });
+    }
+  });
+  doc.addEventListener("click", function (e) {
+    var c = e.target.closest("[data-pod-cancel]");
+    if (c) closeNew(c.closest("form"));
+  });
+  doc.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && e.target.closest && e.target.closest("[data-pod-new]")) closeNew(e.target.closest("form"));
+  });
+
   /* ---------------------------------------------------------------- live filters */
   var filterForm = doc.querySelector("form[data-live-filter]");
   if (!filterForm || !window.fetch || !window.DOMParser) return;

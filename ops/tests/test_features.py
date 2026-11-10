@@ -752,3 +752,47 @@ class QuickLogFromMonth(SeededTestCase):
         fut = self.c.get(f"/my-month/log/{(self.today + timedelta(days=3)).isoformat()}/", HTTP_X_REQUESTED_WITH="fetch")
         self.assertEqual(fut.status_code, 400)
         self.assertEqual(self.login("ag").get(self.url).status_code, 403)
+
+
+class TeamPods(SeededTestCase):
+    def setUp(self):
+        self.f = self.login("ag")
+        self.p = U.objects.get(username="pratik")
+
+    def ajax(self, data):
+        r = self.f.post(f"/team/{self.p.pk}/pod/", data, HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(r.status_code, 200)
+        return r.json()
+
+    def test_dropdown_on_team_page(self):
+        html = self.f.get("/team/").content.decode()
+        self.assertIn(f'action="/team/{self.p.pk}/pod/"', html)
+        self.assertIn("+ New pod…", html)
+
+    def test_move_create_undo_and_clear(self):
+        from ops.models import AuditEvent, Pod
+        old = self.p.profile.pod
+        other = Pod.objects.exclude(pk=getattr(old, "pk", None)).first()
+        res = self.ajax({"pod": other.pk})
+        self.assertTrue(res["ok"])
+        self.p.profile.refresh_from_db()
+        self.assertEqual(self.p.profile.pod, other)
+        # Undo puts them back
+        self.ajax(res["undo"])
+        self.p.profile.refresh_from_db()
+        self.assertEqual(self.p.profile.pod, old)
+        # New pod, created once even if typed in another case
+        res = self.ajax({"pod": "__new__", "new_pod": "  Pod   Reels "})
+        self.assertIn("Created Pod Reels", res["message"])
+        self.assertIn("Pod Reels", [p["name"] for p in res["pods"]])
+        self.ajax({"pod": "__new__", "new_pod": "pod reels"})
+        self.assertEqual(Pod.objects.filter(name__iexact="pod reels").count(), 1)
+        self.assertFalse(self.ajax({"pod": "__new__", "new_pod": ""})["ok"])
+        self.ajax({"pod": ""})
+        self.p.profile.refresh_from_db()
+        self.assertIsNone(self.p.profile.pod)
+        self.assertTrue(AuditEvent.objects.filter(action="pod.created").exists())
+
+    def test_only_people_managers(self):
+        r = self.login("pratik").post(f"/team/{self.p.pk}/pod/", {"pod": ""})
+        self.assertEqual(r.status_code, 403)

@@ -833,3 +833,10 @@ form.is-saving .status-select,form.is-saving .cell-select{opacity:.55}
   @keyframes qdsheet{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
 }
 @media (prefers-reduced-motion:reduce){.qd-body,.log-now .dot,.cal .day.just-logged{animation:none}}
+/* Team: pod per person */
+.pod-pick{display:inline-flex;align-items:center;gap:6px;margin:0}
+.pod-pick .cell-select{max-width:12em}
+.pod-pick select[hidden],.pod-new[hidden]{display:none}
+.pod-new{display:inline-flex;align-items:center;gap:6px;animation:qdin .18s ease}
+.pod-new .input{width:9.5em;min-height:32px;padding:4px 8px}
+form.pod-pick.is-saving{opacity:.6;pointer-events:none}
