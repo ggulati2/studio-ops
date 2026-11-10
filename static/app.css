@@ -847,3 +847,43 @@ form.pod-pick.is-saving{opacity:.6;pointer-events:none}
 .rcodes{columns:2;gap:24px;font-size:15px;margin:4px 0;padding-left:22px;line-height:1.9}
 .ok-card{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
 .twostep-nag{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:10px 14px;border-radius:var(--r);border:1px solid var(--warn);background:var(--warn-bg,var(--sunk));font-size:var(--t-sm)}
+
+/* Team & attendance: not-logged dates on hover, productive hours by day */
+.who-miss{position:relative;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;outline:none}
+.who-miss.has{cursor:help}
+.who-miss.has>b{text-decoration:underline dotted var(--bad);text-underline-offset:4px}
+.miss-count{font-size:11px;font-weight:700;color:var(--bad);background:var(--bad-bg);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.miss-tip{position:absolute;left:0;top:calc(100% + 6px);z-index:50;min-width:220px;max-width:320px;display:flex;flex-direction:column;gap:8px;
+  background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12.5px;font-weight:400;
+  box-shadow:0 14px 34px -10px rgba(0,0,0,.3);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility .12s;white-space:normal}
+.who-miss.has:hover .miss-tip,.who-miss.has:focus .miss-tip,.who-miss.has:focus-within .miss-tip{opacity:1;visibility:visible;transform:none}
+.who-miss.has:focus-visible{box-shadow:0 0 0 2px var(--red);border-radius:6px}
+.miss-dates{display:flex;flex-wrap:wrap;gap:4px}
+.miss-dates span{background:var(--bad-bg);color:var(--bad);border-radius:6px;padding:2px 7px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ph-scroll{overflow:auto}
+table.ph{border-collapse:separate;border-spacing:2px;width:max-content;min-width:100%}
+table.ph th,table.ph td{padding:0;border:0;background:none}
+table.ph thead th{font-size:10.5px;font-weight:600;color:var(--muted);text-align:center;min-width:30px;line-height:1.15;padding:2px 0}
+table.ph thead th span{display:block;font-weight:500;opacity:.7}
+table.ph thead th.off{opacity:.55}
+table.ph thead th.today{color:var(--red)}
+table.ph .ph-who{position:sticky;left:0;z-index:2;background:var(--card);text-align:left;padding:4px 12px 4px 2px;min-width:150px;font-size:var(--t-sm);font-weight:500}
+table.ph .ph-tot{text-align:right;padding:4px 10px;white-space:nowrap;font-size:var(--t-sm);min-width:96px}
+table.ph .ph-tot .small{font-size:11px}
+.ph-d{height:30px;min-width:30px;text-align:center;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;border-radius:6px;background:var(--sunk)!important;color:var(--muted);cursor:default}
+.ph-d.l1{background:color-mix(in srgb,var(--ok) 18%,var(--card))!important;color:var(--ink)}
+.ph-d.l2{background:color-mix(in srgb,var(--ok) 32%,var(--card))!important;color:var(--ink)}
+.ph-d.l3{background:color-mix(in srgb,var(--ok) 50%,var(--card))!important;color:var(--ink)}
+.ph-d.l4{background:color-mix(in srgb,var(--ok) 72%,var(--card))!important;color:#fff}
+.ph-d.miss{background:var(--bad-bg)!important;color:var(--bad);box-shadow:inset 0 0 0 1.5px var(--bad)}
+.ph-d.k{background:repeating-linear-gradient(135deg,var(--sunk) 0 4px,transparent 4px 8px)!important;color:var(--muted)}
+.ph-d.fut{opacity:.35}
+.ph-key{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--muted)}
+.ph-key .ph-c{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;font-size:10px;font-weight:700;margin-left:6px;background:var(--sunk)}
+.ph-key .ph-c.l1{background:color-mix(in srgb,var(--ok) 18%,var(--card))}
+.ph-key .ph-c.l4{background:color-mix(in srgb,var(--ok) 72%,var(--card))}
+.ph-key .ph-c.miss{background:var(--bad-bg);color:var(--bad);box-shadow:inset 0 0 0 1.5px var(--bad)}
+.ph-key .ph-c.k{background:repeating-linear-gradient(135deg,var(--sunk) 0 3px,transparent 3px 6px)}
+.miss-tip.fixed{position:fixed}
+table.ph .ph-who{white-space:nowrap;min-width:200px}
+table.ph .ph-who .who-miss{flex-wrap:nowrap}

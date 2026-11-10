@@ -5,10 +5,11 @@
   <div><h1>Team &amp; attendance</h1><p>{{ month|date:"F Y" }} so far. Available hours already exclude leave, holidays and half days.</p></div>
   <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn primary" href="{% url 'person_new' %}">+ Add a person</a></div>
 </div>
+{% if missing_total %}<div class="missing-bar" role="note"><span><b>{{ missing_total }}</b> working day{{ missing_total|pluralize }} with nothing logged this month. Hover a name (or tap it) to see the dates.</span></div>{% endif %}
 <section class="card"><h2>Attendance</h2><div class="scroll"><table style="min-width:1100px">
-  <thead><tr><th>Person</th><th>Role</th><th>Pod</th><th>Office</th><th>WFH</th><th>Half</th><th>Leave</th><th>Late</th><th>Hours worked</th><th>Available</th><th>Utilization</th><th>Logged to jobs</th><th></th></tr></thead>
+  <thead><tr><th>Person</th><th>Role</th><th>Pod</th><th>Office</th><th>WFH</th><th>Half</th><th>Leave</th><th>Late</th><th>Productive hours</th><th>Available</th><th>Utilization</th><th>Logged to jobs</th><th></th></tr></thead>
   <tbody>{% for r in rows %}<tr>
-    <td><b>{{ r.u.profile.name }}</b>{% if not r.u.profile.active %} <span class="tag">inactive</span>{% endif %}</td>
+    <td>{% include "founder/_who_missing.html" with tip="a" %}</td>
     <td class="muted">{{ r.u.profile.get_role_display }}</td>
     <td>{% if can_edit_people %}<form method="post" action="{% url 'person_pod' r.u.pk %}" class="pod-pick" data-pod-form>{% csrf_token %}
       <select name="pod" class="cell-input cell-select{% if not r.u.profile.pod_id %} empty{% endif %}" data-pod-select aria-label="Pod for {{ r.u.profile.name }}">
@@ -21,12 +22,27 @@
     <td>{{ r.att.office }}</td><td>{{ r.att.wfh }}</td><td>{{ r.att.half }}</td>
     <td {% if r.att.leaves_counted > studio.free_leaves_per_month %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.att.leaves_counted|hours }}</td>
     <td {% if r.att.late >= 2 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ r.att.late }}</td>
-    <td>{{ r.att.hours|hours }}</td><td>{{ r.avail|hours }}</td><td>{% if r.util is not None %}{{ r.util }}%{% else %}–{% endif %}</td>
+    <td><b>{{ r.att.hours|hours }}</b>{% if r.avg %}<div class="small muted">{{ r.avg|hours }} h/day</div>{% endif %}</td><td>{{ r.avail|hours }}</td><td>{% if r.util is not None %}{{ r.util }}%{% else %}–{% endif %}</td>
     <td {% if r.att.logged_pct is not None and r.att.logged_pct < 80 %}style="color:var(--warn)"{% endif %}>{% if r.att.logged_pct is not None %}{{ r.att.logged_pct }}%{% else %}–{% endif %}</td>
     <td><a class="btn sm" href="{% url 'person_edit' r.u.pk %}">Edit</a></td>
   </tr>{% endfor %}</tbody>
 </table></div>
 <p class="small muted" style="margin:0">Logged to jobs under 80% = office time not logged against any job: idle, waiting for footage, or missed logging.</p></section>
+
+<section class="card" aria-labelledby="ph">
+  <div class="title"><div><h2 id="ph">Productive hours, day by day</h2><span class="small muted">Office time minus the break on days over 5 h. Target {{ hpd|hours }} h a day. Team total {{ team_hours|hours }} h.</span></div>
+    <div class="ph-key small" aria-hidden="true"><span class="ph-c l1"></span>under {{ hpd|hours }} h <span class="ph-c l4"></span>{{ hpd|hours }} h+ <span class="ph-c miss">!</span>not logged <span class="ph-c k">L</span>leave / off</div></div>
+  <div class="scroll ph-scroll"><table class="ph no-stack">
+    <thead><tr><th class="ph-who" scope="col">Person</th><th class="ph-tot" scope="col">Total</th>
+      {% for c in days %}<th scope="col" class="{% if c.today %}today{% endif %}{% if c.off or c.hol %} off{% endif %}" title="{{ c.d|date:'l j F' }}{% if c.hol %} · {{ c.hol.name }}{% endif %}"><span>{{ c.d|date:"D"|slice:":1" }}</span>{{ c.d.day }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <th class="ph-who" scope="row">{% include "founder/_who_missing.html" with tip="b" %}</th>
+      <td class="ph-tot"><b>{{ r.att.hours|hours }}</b><span class="small muted"> / {{ r.target|hours }}</span>{% if r.avg %}<div class="small muted">{{ r.avg|hours }} h/day</div>{% endif %}</td>
+      {% for c in r.strip %}<td class="ph-d{% if c.missing %} miss{% elif c.h %} l{{ c.level }}{% elif c.kind %} k{% endif %}{% if c.future %} fut{% endif %}"
+        title="{{ c.d|date:'D j M' }}: {% if c.missing %}not logged{% elif c.log %}{{ c.log.get_day_type_display }}{% if c.h %}, {{ c.h|hours }} h productive{% endif %}{% if c.log.time_in %} ({{ c.log.time_in|time:'H:i' }}–{{ c.log.time_out|time:'H:i' }}){% endif %}{% elif c.kind %}{{ c.kind|capfirst }}{% elif c.future %}coming up{% else %}nothing logged{% endif %}">{% if c.missing %}!{% elif c.h %}{{ c.h|floatformat:"-1" }}{% elif c.kind == 'leave' %}L{% elif c.kind == 'half' %}½{% elif c.kind == 'holiday' %}H{% endif %}</td>{% endfor %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
 
 <section class="card">
   <div class="title"><h2>Value of work vs salary</h2><span class="small muted">Only founders see this</span></div>

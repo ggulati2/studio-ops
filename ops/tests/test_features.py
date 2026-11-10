@@ -796,3 +796,28 @@ class TeamPods(SeededTestCase):
     def test_only_people_managers(self):
         r = self.login("pratik").post(f"/team/{self.p.pk}/pod/", {"pod": ""})
         self.assertEqual(r.status_code, 403)
+
+
+class TeamMissingAndHours(SeededTestCase):
+    def test_not_logged_dates_and_productive_hours(self):
+        from ops.services import day_kind
+        pratik = U.objects.get(username="pratik")
+        today = timezone.localdate()
+        d = today - timedelta(days=1)
+        while day_kind(pratik, d) != "":
+            d -= timedelta(days=1)
+        DayLog.objects.filter(user=pratik, date=d).delete()
+        r = self.login("ag").get(f"/team/?m={d:%Y-%m}")
+        row = next(x for x in r.context["rows"] if x["u"] == pratik)
+        self.assertIn(d, row["missing"])
+        html = r.content.decode()
+        self.assertIn("Not logged in", html)
+        self.assertIn(f"{d:%a} {d.day} {d:%b}", html)
+        self.assertIn("Productive hours, day by day", html)
+        self.assertIn('class="ph-d miss', html)
+        # Contract editors never count as missing (they don't log themselves)
+        for x in r.context["rows"]:
+            if x["u"].profile.is_contract:
+                self.assertEqual(x["missing"], [])
+        # Totals match attendance
+        self.assertAlmostEqual(sum(c["h"] for c in row["strip"]), row["att"]["hours"], places=0)

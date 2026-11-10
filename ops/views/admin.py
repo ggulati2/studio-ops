@@ -478,18 +478,46 @@ def team_view(request):
     month = parse_month(request.GET.get("m"))
     hpd = float(StudioSettings.get().hours_per_day)
     values = editor_value(month)
+    today = timezone.localdate()
+    a, b = month_start(month), month_end(month)
+    days = [a + timedelta(days=i) for i in range((b - a).days + 1)]
+    hols = holidays_between(a, b)
+    from ..services import _logs_between, day_kind
+    all_logs = _logs_between(a, b)
     rows = []
     for u in User.objects.filter(profile__isnull=False).exclude(profile__role=Profile.ADMIN).select_related("profile", "profile__pod").order_by("profile__pod__name", "first_name"):
         att = attendance(u, month)
-        avail = available_days(u, month_start(month), min(month_end(month), timezone.localdate())) * hpd
+        avail = available_days(u, a, min(b, today)) * hpd
         value = values.get(u.id, 0)
         sal = u.profile.monthly_salary
+        logs = {l.date: l for l in all_logs.get(u.id, [])}
+        # Day by day: productive hours, and working days that passed with nothing logged.
+        # Contract editors don't log themselves, so they're never "missing".
+        track = u.profile.active and not u.profile.is_contract and has_perm(u, "work.log_own")
+        strip, missing = [], []
+        for d in days:
+            log = logs.get(d)
+            kind = day_kind(u, d, logs, hols)
+            miss = track and not log and d < today and kind not in (DayLog.OFF, DayLog.HOLIDAY)
+            if miss:
+                missing.append(d)
+            h = float(log.hours) if log and log.hours else 0.0
+            strip.append({"d": d, "h": h, "kind": "" if kind in ("", DayLog.OFFICE) else kind, "log": log,
+                          "missing": miss, "future": d > today, "level": min(4, int(h / hpd * 4 + 0.5)) if h else 0})
+        worked = sum(1 for c in strip if c["h"])
         rows.append({"u": u, "att": att, "avail": round(avail, 1),
                      "util": round(att["job_hours"] / avail * 100) if avail else None,
-                     "value": value, "multiple": round(value / sal, 1) if sal else None})
-    return render(request, "founder/team.html", {"rows": rows, "month": month, "prev": add_months(month, -1),
-                                               "next": add_months(month, 1), "pods": list(Pod.objects.all()),
-                                               "can_edit_people": has_perm(request.user, "people.manage")})
+                     "value": value, "multiple": round(value / sal, 1) if sal else None,
+                     "missing": missing, "strip": strip, "worked": worked,
+                     "avg": round(att["hours"] / worked, 1) if worked else None,
+                     "target": round(worked * hpd, 1)})
+    return render(request, "founder/team.html", {
+        "rows": rows, "month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
+        "pods": list(Pod.objects.all()), "can_edit_people": has_perm(request.user, "people.manage"),
+        "days": [{"d": d, "hol": hols.get(d), "off": d.weekday() not in StudioSettings.get().weekdays,
+                  "today": d == today} for d in days],
+        "hpd": hpd, "missing_total": sum(len(r["missing"]) for r in rows),
+        "team_hours": round(sum(r["att"]["hours"] for r in rows), 1)})
 
 
 @requires("people.manage")

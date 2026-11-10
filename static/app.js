@@ -361,3 +361,29 @@
     });
   });
 })();
+
+/* Team & attendance: keep the "not logged" date list fully visible even inside
+   scrolling tables (it's positioned against the window, next to the name). */
+(function () {
+  "use strict";
+  function place(host) {
+    var tip = host.querySelector(".miss-tip");
+    if (!tip) return;
+    var r = host.getBoundingClientRect();
+    tip.classList.add("fixed");
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+  document.addEventListener("mouseover", function (e) {
+    var host = e.target.closest && e.target.closest(".who-miss.has");
+    if (host) place(host);
+  });
+  document.addEventListener("focusin", function (e) {
+    var host = e.target.closest && e.target.closest(".who-miss.has");
+    if (host) place(host);
+  });
+})();
