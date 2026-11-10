@@ -212,3 +212,39 @@ class CoupleActions(_WithCouple):
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r["Location"], "/projects/?status=&q=Meera")
         self.assertEqual(Project.objects.filter(client=self.c, status="qc").count(), 4)
+
+
+class TeamLoadFromPlanner(SeededTestCase):
+    """Dashboard 'Team load this week': every working day with a film/revisions planned = Full."""
+
+    def test_full_vs_can_take_more(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import DayLog, PlanEntry, StudioSettings
+        from ops.services import week_start
+        from ops.views.admin import week_load
+        U = get_user_model()
+        today = timezone.localdate()
+        a = week_start(today)
+        days = [a + timedelta(days=i) for i in range(7)]
+        work = [d for d in days if d.weekday() in StudioSettings.get().weekdays]
+        pratik, harsh = U.objects.get(username="pratik"), U.objects.get(username="harsh")
+        PlanEntry.objects.filter(user__in=[pratik, harsh], date__range=(a, days[-1])).delete()
+        DayLog.objects.filter(user__in=[pratik, harsh], date__range=(a, days[-1])).delete()
+        film = Project.objects.filter(status=Project.IN_PROGRESS).first()
+        for d in work:
+            PlanEntry.objects.create(user=pratik, date=d, slot=1, project=film)
+        for d in work[:3]:
+            PlanEntry.objects.create(user=harsh, date=d, slot=1, project=film)
+        PlanEntry.objects.create(user=harsh, date=work[3], slot=1, label="Back-up")
+        rows = {r["u"].username: r for r in week_load([pratik, harsh], today)[0]}
+        self.assertEqual((rows["pratik"]["status"], rows["pratik"]["free"]), ("Full", 0))
+        self.assertEqual(rows["harsh"]["status"], "Can take more")
+        self.assertEqual((rows["harsh"]["assigned"], rows["harsh"]["free"]), (3, len(work) - 3))
+        # a day on leave isn't a free day
+        PlanEntry.objects.filter(user=pratik, date=work[0]).delete()
+        DayLog.objects.create(user=pratik, date=work[0], day_type=DayLog.LEAVE)
+        r = week_load([pratik], today)[0][0]
+        self.assertEqual((r["status"], r["work"]), ("Full", len(work) - 1))
+        html = self.login("ag").get("/dashboard/").content.decode()
+        self.assertIn("Team load this week", html)
+        self.assertIn("load-days", html)

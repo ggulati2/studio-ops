@@ -29,11 +29,38 @@ __all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "pr
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
 
-def _load(user):
-    """Booked hours left vs available hours this week."""
-    ws = week_start(timezone.localdate())
-    avail = available_days(user, ws, ws + timedelta(days=6)) * float(StudioSettings.get().hours_per_day)
-    return avail
+def week_load(people, today):
+    """Team load this week, straight from the Planner: a working day is "assigned" when a
+    film or revisions are planned on it; anything else (Back-up, nothing) is free.
+    Every working day assigned = Full; any free day = Can take more."""
+    a = week_start(today)
+    days = [a + timedelta(days=i) for i in range(7)]
+    logs = S._logs_between(days[0], days[-1])
+    hols = holidays_between(days[0], days[-1])
+    plan = defaultdict(lambda: defaultdict(list))
+    for e in (PlanEntry.objects.filter(date__range=(days[0], days[-1]), user__in=people)
+              .select_related("project__agency").order_by("date", "slot")):
+        plan[e.user_id][e.date].append(e)
+    out = []
+    for u in people:
+        mine = {l.date: l for l in logs.get(u.id, [])}
+        cells, work, assigned = [], 0, 0
+        for d in days:
+            kind = S.day_kind(u, d, mine, hols)
+            off = kind in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF)
+            films = [e for e in plan[u.id][d] if e.project_id]
+            other = [e.label for e in plan[u.id][d] if not e.project_id and e.label]
+            if not off:
+                work += 1
+                assigned += 1 if films else 0
+            label = {DayLog.LEAVE: "Leave", DayLog.HOLIDAY: "Holiday", DayLog.OFF: "Weekly off"}.get(kind, "")
+            cells.append({"d": d, "off": off, "assigned": bool(films) and not off, "today": d == today,
+                          "past": d < today, "what": " + ".join(e.text for e in films) or ", ".join(other) or label
+                          or "Nothing assigned", "backup": bool(other) and not films})
+        free = work - assigned
+        status = "On leave" if not work else "Full" if not free else "Can take more"
+        out.append({"u": u, "cells": cells, "work": work, "assigned": assigned, "free": free, "status": status})
+    return out, days
 
 
 @requires("dashboard.view")
@@ -41,15 +68,14 @@ def dashboard(request):
     today = timezone.localdate()
     month = month_start(today)
     open_jobs = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "editor__profile")
-    bench = benchmarks()
-    rows = []
-    for u in team():
-        mine = [p for p in open_jobs if p.editor_id == u.id]
-        left = sum(hours_remaining(p, bench) for p in mine)
-        avail = _load(u)
-        util = round(left / avail * 100) if avail else None
-        rows.append({"u": u, "open": len(mine), "left": round(left, 1), "avail": avail, "util": util,
-                     "status": "Overloaded" if util and util >= 100 else "Full" if util and util >= 80 else "Can take more"})
+    people = list(team())
+    rows, week_days = week_load(people, today)
+    counts = defaultdict(int)
+    for p in open_jobs:
+        if p.editor_id:
+            counts[p.editor_id] += 1
+    for r in rows:
+        r["open"] = counts[r["u"].id]
     yesterday = today - timedelta(days=1)
     logged = set(DayLog.objects.filter(date=yesterday).values_list("user_id", flat=True))
     missing = [u for u in team() if u.id not in logged and yesterday.weekday() in StudioSettings.get().weekdays
@@ -84,7 +110,7 @@ def dashboard(request):
         "pipeline": pipeline,
         "agencies": sorted(({"name": k, "amount": v, "share": round(v / total_rev * 100) if total_rev else 0}
                             for k, v in rev_by_agency.items()), key=lambda x: -x["amount"]),
-        "rows": rows,
+        "rows": rows, "week_days": week_days, "week_start": week_days[0],
         "outstanding": sum(i.balance for i in Invoice.objects.exclude(status__in=("paid", "draft")).filter(currency="INR")),
         "award": celebrated_award(),
     }

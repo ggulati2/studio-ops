@@ -27,17 +27,18 @@
 
 <div class="row">
   <section class="card grow">
-    <div class="title"><h2>Team load this week</h2><a class="small" href="{% url 'team' %}">Team & attendance →</a></div>
-    <div class="scroll"><table>
-      <thead><tr><th>Editor</th><th>Pod</th><th style="width:34%">Booked work vs free hours this week</th><th>Open jobs</th><th>Status</th></tr></thead>
+    <div class="title"><h2>Team load this week</h2><span class="small muted">{{ week_start|date:"j M" }} – {{ week_days|last|date:"j M" }} · from the <a href="{% url 'planner' %}?start={{ week_start|date:'Y-m-d' }}">Planner</a></span></div>
+    <div class="scroll"><table class="load-table">
+      <thead><tr><th>Editor</th><th>Pod</th><th>Days assigned</th><th class="load-days-h">{% for d in week_days %}<span>{{ d|date:"D"|slice:":2" }}</span>{% endfor %}</th><th>Open jobs</th><th>Status</th></tr></thead>
       <tbody>{% for r in rows %}<tr>
-        <td><b>{{ r.u.profile.name }}</b></td><td class="muted">{{ r.u.profile.pod|default:"–" }}{% if r.u.profile.role == 'tl' %} · TL{% endif %}</td>
-        <td><div style="display:flex;gap:8px;align-items:center"><div class="bar" style="flex:1"><i class="{% if r.util >= 100 %}bad{% elif r.util >= 80 %}warn{% else %}ok{% endif %}" style="width:{% if r.util > 100 %}100{% else %}{{ r.util|default:0 }}{% endif %}%"></i></div><span class="small muted">{{ r.left|hours }} / {{ r.avail|hours }} h</span></div></td>
+        <td><b>{{ r.u.profile.name }}</b></td><td class="muted nowrap">{{ r.u.profile.pod|default:"–" }}{% if r.u.profile.role == 'tl' %} · TL{% endif %}</td>
+        <td class="nowrap">{% if r.work %}<b>{{ r.assigned }}</b> <span class="muted">of {{ r.work }}</span>{% if r.free %} <span class="small" style="color:var(--ok)">· {{ r.free }} free</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td><div class="load-days" role="list" aria-label="{{ r.u.profile.name }}, this week">{% for c in r.cells %}<span role="listitem" class="ld{% if c.off %} off{% elif c.assigned %} on{% elif c.backup %} backup{% else %} free{% endif %}{% if c.today %} today{% endif %}" title="{{ c.d|date:'D j M' }}: {{ c.what }}"><span class="sr">{{ c.d|date:'D j M' }}: {{ c.what }}</span></span>{% endfor %}</div></td>
         <td>{{ r.open }}</td>
-        <td><span class="tag {% if r.status == 'Overloaded' %}bad{% elif r.status == 'Full' %}warn{% else %}ok{% endif %}">{{ r.status }}</span></td>
-      </tr>{% empty %}<tr><td colspan="5" class="muted">Add your team under Team & attendance.</td></tr>{% endfor %}</tbody>
+        <td><span class="tag {% if r.status == 'Full' %}warn{% elif r.status == 'Can take more' %}ok{% endif %}">{{ r.status }}</span></td>
+      </tr>{% empty %}<tr><td colspan="6" class="muted">Add your team under Team & attendance.</td></tr>{% endfor %}</tbody>
     </table></div>
-    <p class="small muted" style="margin:0">Booked work = usual hours for each open film (from your own delivered films) minus hours already logged.</p>
+    <p class="small muted load-key" style="margin:0"><span class="ld on"></span> film or revisions planned <span class="ld backup"></span> Back-up <span class="ld free"></span> nothing planned <span class="ld off"></span> leave / holiday / weekly off · <b>Full</b> = every working day this week has work; any free or Back-up day = <b>Can take more</b>. Hover a day to see what's planned.</p>
   </section>
   <section class="card aside">
     <h2>Agencies this month</h2>

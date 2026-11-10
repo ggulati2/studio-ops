@@ -966,3 +966,15 @@ details[open]>summary>.grp-caret{transform:rotate(90deg)}
   .live-in,.grp-loading{animation:none}
   .groups details::details-content,.live-bar.is-on,.live-bar.is-done{transition:none}
 }
+
+/* Dashboard: team load this week (from the Planner) */
+.load-days,.load-days-h{display:flex;gap:4px}
+.load-days-h span{width:22px;text-align:center}
+.ld{display:inline-block;width:22px;height:22px;border-radius:6px;border:1px solid var(--line);background:var(--card);flex:none;vertical-align:middle}
+.ld.on{background:var(--ink);border-color:var(--ink)}
+.ld.backup{background:var(--warn-bg);border-color:var(--warn-line)}
+.ld.free{background:var(--card);border-style:dashed;border-color:var(--field-hover)}
+.ld.off{background:repeating-linear-gradient(135deg,var(--sunk) 0 4px,var(--line2) 4px 8px);border-color:var(--line2)}
+.ld.today{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--red-line)}
+.load-key .ld{width:12px;height:12px;border-radius:3px;margin:0 2px 0 8px}
+.load-key .ld:first-child{margin-left:0}
