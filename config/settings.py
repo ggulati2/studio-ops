@@ -128,6 +128,7 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = True
 ADMIN_IDLE_MINUTES = int(os.environ.get("ADMIN_IDLE_MINUTES", "120"))
+STAFF_IDLE_MINUTES = int(os.environ.get("STAFF_IDLE_MINUTES", str(12 * 60)))
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.ScryptPasswordHasher",
                     "django.contrib.auth.hashers.PBKDF2PasswordHasher"]
 

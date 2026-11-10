@@ -52,6 +52,8 @@ Both services run in **Singapore**. Render has no India region, and keeping the 
 
 *Forgot the founder password?* In Render → Environment, change `FOUNDER_PASSWORD`, add `FOUNDER_RESET_PASSWORD` = `1`, then **Manual Deploy**. Remove `FOUNDER_RESET_PASSWORD` afterwards.
 
+*Lost the phone with the authenticator app and the recovery codes?* Another founder can reset it on your person page. If you're the only founder: add `FOUNDER_RESET_2FA` = `1` in Render → Environment, **Manual Deploy**, sign in with your password, turn two-step sign-in on again, then remove `FOUNDER_RESET_2FA`.
+
 ## 3. Turn on the safety nets in GitHub (5 min)
 
 In the repo → **Settings**:

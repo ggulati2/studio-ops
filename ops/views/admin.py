@@ -587,8 +587,10 @@ def person_edit(request, pk=None):
             return resp
         messages.success(request, f"Saved {user.profile.name}.")
         return redirect("team")
-    return render(request, "founder/person_form.html", {"form": form, "person": user,
-                                                        "title": f"Edit {user.profile.name}" if user else "Add a person"})
+    from ..models import TwoFactor
+    return render(request, "founder/person_form.html", {
+        "form": form, "person": user, "title": f"Edit {user.profile.name}" if user else "Add a person",
+        "two_step_on": bool(user and TwoFactor.objects.filter(user=user, enabled_on__isnull=False).exists())})
 
 
 @requires("extra.manage")
@@ -715,7 +717,21 @@ def settings_view(request):
 
 @requires("backup.download")
 def backup(request):
-    """Download every record as one JSON file (restore with `manage.py loaddata`)."""
+    """Download every record as one JSON file (restore with `manage.py loaddata`).
+    The file holds salaries, bank details and invoices, so the founder confirms their
+    password first, and password hashes are left out of it."""
+    from django.core.cache import cache
+    key = f"backup-pw:{request.user.pk}"
+    if request.method != "POST":
+        return render(request, "founder/backup_confirm.html", {})
+    if cache.get(key, 0) >= 5:
+        messages.error(request, "Too many wrong passwords. Try again in 15 minutes.")
+        return redirect("settings")
+    if not request.user.check_password(request.POST.get("password", "")):
+        cache.set(key, cache.get(key, 0) + 1, 15 * 60)
+        record(request, "backup.denied", "wrong password")
+        return render(request, "founder/backup_confirm.html", {"error": True}, status=403)
+    cache.delete(key)
     record(request, "backup.download", "full JSON backup")
     import io
     from django.core.management import call_command
@@ -731,6 +747,9 @@ def backup(request):
     for r in rows:                       # drop links to the photos left out, so the file restores cleanly
         for f in ("photos", "photo"):
             r["fields"].pop(f, None)
+        if r.get("model") == "auth.user":   # never put password hashes in a file on someone's laptop
+            r["fields"]["password"] = "!"
+    rows = [r for r in rows if r.get("model") != "ops.twofactor"]
     resp = HttpResponse(gzip.compress(json.dumps(rows, indent=1).encode()), content_type="application/gzip")
     resp["Content-Disposition"] = f'attachment; filename="studio-ops-backup-{timezone.localdate():%Y-%m-%d}.json.gz"'
     return resp

@@ -13,4 +13,7 @@
   </div>
   <div class="actions"><button class="btn primary">Save</button><a class="btn" href="{% url 'team' %}">Cancel</a></div>
 </form>
+{% if person and two_step_on %}<form method="post" action="{% url 'two_step_reset' person.pk %}" class="card tight" style="max-width:860px;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap" data-confirm="Reset {{ person.profile.name }}'s two-step sign-in? They'll sign in with just their password until they turn it on again.">{% csrf_token %}
+  <span class="small"><span class="tag ok">Two-step sign-in on</span> Lost their phone and recovery codes? Reset it so they can sign in with their password.</span>
+  <button class="btn sm danger">Reset two-step sign-in</button></form>{% endif %}
 {% endblock %}

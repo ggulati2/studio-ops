@@ -69,7 +69,7 @@ class RbacTable(SeededTestCase):
 
     def test_every_view_declares_its_guard(self):
         """No page can be added without a permission (except the few public/self-service ones)."""
-        open_ok = {"login", "logout", "health", "home", "image", "password_change", "payslip", "cron_daily", "speculation_rules"}  # speculation_rules: static link-preload hints, no data; payslip: owner or payroll.manage, checked inside
+        open_ok = {"login", "logout", "health", "home", "image", "password_change", "payslip", "cron_daily", "speculation_rules", "login_verify", "two_step", "backoffice_login"}  # speculation_rules: static link-preload hints, no data; login_verify: second sign-in step; two_step: own account; backoffice_login: redirect to login; payslip: owner or payroll.manage, checked inside
 
         def walk(patterns, prefix=""):
             for p in patterns:

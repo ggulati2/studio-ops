@@ -23,4 +23,8 @@ class Command(BaseCommand):
         u.is_staff = u.is_superuser = u.is_active = True
         u.save()
         Profile.objects.get_or_create(user=u, defaults={"role": Profile.ADMIN})
+        if os.environ.get("FOUNDER_RESET_2FA") == "1":       # lost phone and recovery codes
+            from ops.models import TwoFactor
+            TwoFactor.objects.filter(user=u).delete()
+            self.stdout.write("Two-step sign-in cleared for the founder.")
         self.stdout.write(f"Founder '{u.username}' {'created' if created else 'checked'}.")

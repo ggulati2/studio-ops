@@ -73,6 +73,7 @@
         {% if is_contract %}<a href="{% url 'my_payments' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payments</a>
         {% else %}<a href="{% url 'my_payslips' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#wallet"/></svg>My payslips</a>{% endif %}
       {% endif %}
+      <a href="{% url 'two_step' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#shield"/></svg>Two-step sign-in</a>
       <a href="{% url 'password_change' %}"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#key"/></svg>Change password</a>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}
         <button class="linkbtn"><svg class="ico" aria-hidden="true"><use href="{{ ICONS }}#logout"/></svg>Log out</button>
@@ -82,6 +83,7 @@
 
   <main id="main" tabindex="-1">
     <div class="wrap">
+      {% if needs_two_step and request.resolver_match.url_name != 'two_step' %}<div class="twostep-nag" role="note"><span><b>Protect the founder account:</b> turn on two-step sign-in so a stolen password alone can't open salaries, bank details and invoices.</span><a class="btn sm primary" href="{% url 'two_step' %}">Set it up (2 min)</a></div>{% endif %}
       {% if messages %}<div class="msgs" role="status" aria-live="polite">{% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}</div>{% endif %}
       {% block content %}{% endblock %}
     </div>

@@ -212,7 +212,11 @@ def job_submit(request, pk):
     """Editor says the cut is ready → goes to their TL (or straight to QC if they are a TL)."""
     p = get_object_or_404(Project, pk=pk, editor=request.user)
     if request.method == "POST" and p.status in Project.WORKABLE:
-        link = request.POST.get("cut_link", "").strip()
+        raw = request.POST.get("cut_link", "").strip()
+        link = S.safe_web_link(raw)
+        if raw and not link:
+            messages.error(request, "That review link isn't a web address. Paste the full link starting with https://")
+            return redirect("my_jobs")
         if link:
             p.cut_link = link
         p.status = Project.QC if request.role == TL else Project.TL_REVIEW
@@ -314,7 +318,7 @@ def congrats(request):
         Congrats.objects.get_or_create(award=award, user=request.user,
                                        defaults={"message": request.POST.get("message", "")[:200]})
         messages.success(request, f"Congrats sent to {award.user.profile.name}!")
-    return redirect(request.POST.get("next") or "home")
+    return redirect(S.safe_next(request, request.POST.get("next"), reverse("home")))
 
 
 @requires("pod.review")

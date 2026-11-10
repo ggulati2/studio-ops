@@ -15,7 +15,7 @@ from django.test import override_settings
 from ops.models import AuditEvent, HardDrive
 from ops.services import store_image
 
-from .base import SeededTestCase
+from .base import PW, SeededTestCase
 from .test_flows import jpeg
 
 ROOT = Path(settings.BASE_DIR)
@@ -81,7 +81,10 @@ class Cron(SeededTestCase):
 class Backup(SeededTestCase):
     def test_backup_is_small_and_restorable(self):
         HardDrive.objects.first().photos.add(store_image(jpeg(400, 300)))
-        r = self.login("ag").get("/settings/backup/")
+        c = self.login("ag")
+        self.assertContains(c.get("/settings/backup/"), "Confirm and download")        # GET only asks
+        self.assertEqual(c.post("/settings/backup/", {"password": "wrong"}).status_code, 403)
+        r = c.post("/settings/backup/", {"password": PW})
         self.assertEqual(r["Content-Type"], "application/gzip")
         data = gzip.decompress(r.content)
         self.assertLess(len(r.content), 4_500_000)
@@ -90,6 +93,8 @@ class Backup(SeededTestCase):
         self.assertNotIn("ops.storedimage", models)
         self.assertNotIn("ops.auditevent", models)
         self.assertFalse(any("photos" in x["fields"] or "photo" in x["fields"] for x in rows))
+        users = [x for x in rows if x["model"] == "auth.user"]
+        self.assertTrue(users and all(x["fields"]["password"] == "!" for x in users))   # no password hashes in the file
         self.assertTrue(AuditEvent.objects.filter(action="backup.download").exists())
 
 

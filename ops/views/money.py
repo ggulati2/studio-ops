@@ -69,7 +69,8 @@ def invoice_update(request, pk):
         inv.status, inv.received = new, received
         inv.save()
         messages.success(request, f"{inv.number} updated: {inv.get_status_display()}, balance {inv.symbol}{inv.balance:,}.")
-    return redirect(request.POST.get("next") or "invoices")
+    from ..services import safe_next
+    return redirect(safe_next(request, request.POST.get("next"), "/invoices/"))
 
 
 @requires("invoices.manage")
@@ -162,6 +163,8 @@ def payroll(request):
 @requires("payroll.manage")
 def payroll_save(request):
     """Save adjustments (draft) or finalize: freezes every figure into payslips."""
+    if request.method != "POST":          # never change payroll from a plain link
+        return redirect("payroll")
     month = parse_month(request.POST.get("m"))
     run, _ = PayrollMonth.objects.get_or_create(month=month)
     if run.finalized:

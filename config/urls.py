@@ -7,6 +7,9 @@ from ops import views as v
 
 urlpatterns = [
     path("login/", v.ThrottledLogin.as_view(), name="login"),
+    path("login/code/", v.login_verify, name="login_verify"),
+    path("account/two-step/", v.two_step, name="two_step"),
+    path("team/<int:pk>/reset-two-step/", v.two_step_reset, name="two_step_reset"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("password/", v.PasswordChange.as_view(), name="password_change"),
     path("health/", v.health, name="health"),
@@ -85,6 +88,8 @@ urlpatterns = [
     path("my-leave/<int:pk>/cancel/", v.leave_cancel, name="leave_cancel"),
     path("leave/", v.leave_requests, name="leave_requests"),
     path("leave/<int:pk>/decide/", v.leave_decide, name="leave_decide"),
+    # The back office has its own login form with no lockout; send it to ours instead
+    path("backoffice/login/", v.backoffice_login, name="backoffice_login"),
     path("backoffice/", admin.site.urls),
 ]
 

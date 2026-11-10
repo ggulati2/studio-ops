@@ -62,6 +62,11 @@ def _pending_leave(r):
     return LeaveRequest.objects.filter(status=LeaveRequest.PENDING).count()
 
 
+def _has_two_step(user):
+    from .models import TwoFactor
+    return TwoFactor.objects.filter(user=user, enabled_on__isnull=False).exists()
+
+
 def _badges():
     """Menu counts and trophy data change rarely but show on every page: one cache
     read instead of four queries. Dropped on any change (ops/signals.py)."""
@@ -98,6 +103,7 @@ def nav(request):
         "is_founder": r == ADMIN,
         "my_perms": perms_of(request.user),
         "is_contract": bool(getattr(getattr(request.user, "profile", None), "is_contract", False)),
+        "needs_two_step": r == ADMIN and not _has_two_step(request.user),
         "pending_delays": b["delays"] if r == ADMIN else 0,
         "pending_leave": b["leave"] if r == ADMIN else 0,
         "my_trophies": b["trophies"].get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,

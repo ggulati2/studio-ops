@@ -176,8 +176,7 @@ def planner(request):
             return JsonResponse({"ok": bool(changed) or not msg, "message": msg, "cells": out, "undo": undo})
         if msg:
             messages.success(request, msg)
-        back = request.POST.get("back") or request.get_full_path()
-        return redirect(back if back.startswith("/") and not back.startswith("//") else "planner")
+        return redirect(S.safe_next(request, request.POST.get("back"), request.get_full_path()))
     return _month(request) if view == "month" else _weeks(request)
 
 

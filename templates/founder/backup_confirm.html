@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Download backup{% endblock %}
+{% block content %}
+<div class="head"><div><a class="small" href="{% url 'settings' %}">← Settings</a><h1>Download full backup</h1>
+<p>The file contains every record: salaries, bank and PAN details, invoices and attendance. Keep it somewhere safe and delete it when you're done. Passwords are not included; after a restore everyone gets a new password from a founder.</p></div></div>
+<form method="post" class="card" style="max-width:460px" autocomplete="off">{% csrf_token %}
+  {% if error %}<div class="msg error" role="alert">That password isn't right.</div>{% endif %}
+  <label class="field">Your password<input class="input" type="password" name="password" autocomplete="current-password" required autofocus></label>
+  <button class="btn primary">Confirm and download</button>
+</form>
+{% endblock %}

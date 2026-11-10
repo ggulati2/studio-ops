@@ -168,7 +168,8 @@ class Audit(SeededTestCase):
         self.assertTrue(AuditEvent.objects.filter(action="change.planner", username="ag").exists())
         self.login("pratik").get("/payroll/")
         self.assertTrue(AuditEvent.objects.filter(action="access.denied", username="pratik", target="/payroll/").exists())
-        ag.get("/settings/backup/")
+        from .base import PW
+        ag.post("/settings/backup/", {"password": PW})
         self.assertTrue(AuditEvent.objects.filter(action="backup.download").exists())
         # never store secrets
         self.assertFalse(AuditEvent.objects.filter(detail__icontains="password=").exists())

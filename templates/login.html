@@ -1,7 +1,7 @@
 {% load static %}<!doctype html>
 <html lang="en-IN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFFFF"><meta name="robots" content="noindex,nofollow">
-<title>Sign in · {{ studio.brand_name }}</title>
+<title>{% block title %}Sign in{% endblock %} · {{ studio.brand_name }}</title>
 <link rel="preload" href="{% static 'fonts/Geist-Variable.woff2' %}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{% static 'fonts.css' %}">
 <link rel="stylesheet" href="{% static 'app.css' %}">
@@ -18,9 +18,11 @@
     <img class="logo-dark" src="{% static 'img/redwed-on-dark.png' %}" alt="{{ studio.brand_name }}">
     <span>Studio Ops</span>
   </div>
+{% block form %}
   <form method="post" class="card" novalidate>
     {% csrf_token %}
     <h1 class="login-title">Sign in</h1>
+    {% if messages %}{% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
     {% if timed_out %}<div class="msg warning">You were signed out after a while without activity. Sign in again to continue.</div>{% endif %}
     {% if locked %}<div class="msg error">Too many wrong attempts. Try again in 15 minutes, or ask a founder to reset your password.</div>
     {% elif form.errors %}<div class="msg error">That login name and password don't match. Check for capital letters and try again.</div>{% endif %}
@@ -30,4 +32,5 @@
     <button class="btn primary">Sign in</button>
     <p class="small muted" style="margin:0">Only people a founder has added can sign in. Forgot your password? A founder can set a new one for you.</p>
   </form>
+{% endblock %}
 </div></main></body></html>

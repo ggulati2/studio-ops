@@ -12,7 +12,7 @@ from ..audit import client_ip, record
 from ..models import StoredImage
 from ..rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, has_perm, role_of
 
-__all__ = ["home", "image", "health", "speculation_rules", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
+__all__ = ["home", "image", "health", "backoffice_login", "speculation_rules", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
 
 HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", INTERN: "today", QC: "qc_queue", DRIVE: "drives"}
 
@@ -70,6 +70,14 @@ def speculation_rules(request):
     r["Content-Type"] = "application/speculationrules+json"
     r["Cache-Control"] = "public, max-age=3600"
     return r
+
+
+def backoffice_login(request):
+    """Django admin's own login has no lockout (and no two-step check). Use ours."""
+    from django.shortcuts import redirect
+    from django.utils.http import urlencode
+    from ..services import safe_next
+    return redirect(f"/login/?{urlencode({'next': safe_next(request, request.GET.get('next'), '/backoffice/')})}")
 
 
 def health(request):
@@ -132,6 +140,12 @@ class ThrottledLogin(auth_views.LoginView):
         return super().form_invalid(form)
 
     def form_valid(self, form):
+        user = form.get_user()
+        from ..models import TwoFactor
+        if TwoFactor.objects.filter(user=user, enabled_on__isnull=False).exists():
+            # Password right: now the code from their authenticator app (account.login_verify)
+            from .account import start_second_step
+            return start_second_step(self.request, user, self.get_success_url())
         cache.delete(self._keys()[0])
         return super().form_valid(form)
 

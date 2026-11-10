@@ -357,7 +357,34 @@ def store_image(upload, max_side=1600, quality=78):
 
 
 def is_company_drive_link(url):
-    return bool(url) and ("drive.google.com" in url or "docs.google.com" in url)
+    """A real https Google Drive / Docs address (checked on the host name, so
+    https://evil.site/?drive.google.com doesn't pass)."""
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    return u.scheme == "https" and (u.hostname or "").lower() in ("drive.google.com", "docs.google.com")
+
+
+def safe_web_link(url):
+    """The link if it's a plain http(s) web address, else None (no javascript:, data: etc.)."""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import URLValidator
+    url = (url or "").strip()[:500]
+    try:
+        URLValidator(schemes=["http", "https"])(url)
+    except ValidationError:
+        return None
+    return url
+
+
+def safe_next(request, url, fallback):
+    """Only follow a 'go back to' address inside this site."""
+    from django.utils.http import url_has_allowed_host_and_scheme
+    if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return url
+    return fallback
 
 
 # ---------------------------------------------------------------- planner automation

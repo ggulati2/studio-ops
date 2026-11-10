@@ -170,3 +170,14 @@ python manage.py runserver
 - **Sessions** are written at most every 5 minutes; database connections are kept for 10 minutes; indexes cover the list filters and date ranges.
 - **Front end:** Geist is served by the app (no Google Fonts), static files are Brotli-compressed with far-future caching, Chrome/Edge preload a page when you hover a link (`/speculation-rules.json`), Projects shows 100 rows at a time with *Show more*, and date pickers in long tables are built as rows scroll into view.
 - **Slow requests** (over 0.8 s) are logged in Render's logs with the page and query count.
+
+## Security hardening (November 2026 review)
+
+- **Two-step sign-in** (authenticator app, TOTP) for anyone, nudged for founders; 10 one-time recovery codes stored hashed; codes can't be replayed; 5 wrong codes restart sign-in, 10 per 15 min lock the second step. Founders can reset someone's two-step sign-in; `FOUNDER_RESET_2FA=1` recovers the founder (DEPLOY.md).
+- **Back office login** (`/backoffice/login/`) redirects to the normal, throttled login, so it can't be used to guess passwords or skip two-step sign-in.
+- **No state change from a link:** payroll save is POST-only (a GET used to reset the month's adjustments).
+- **Links:** review links must be http(s) web addresses; "company Drive" links are checked on the exact host name; "go back to" redirects stay on this site.
+- **Backup download** asks for the founder's password again (5 tries per 15 min) and leaves password hashes out of the file.
+- **Sessions:** founders signed out after 2 h idle, everyone else after 12 h (`STAFF_IDLE_MINUTES`), so shared studio PCs don't stay signed in overnight.
+- **Dependencies pinned** to exact versions; Dependabot proposes updates and CI runs pip-audit.
+

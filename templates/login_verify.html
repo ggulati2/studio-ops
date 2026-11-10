@@ -1,0 +1,22 @@
+{% extends "login.html" %}
+{% block title %}Enter your code{% endblock %}
+{% block form %}
+  <form method="post" class="card" novalidate autocomplete="off">
+    {% csrf_token %}
+    <h1 class="login-title">Two-step sign-in</h1>
+    {% if error %}<div class="msg error" role="alert">{{ error }}</div>{% endif %}
+    {% if recovery %}
+      <p class="small" style="margin:0">Hi {{ name }}. Type one of the recovery codes you saved when you turned on two-step sign-in. Each works once.</p>
+      <input type="hidden" name="mode" value="recovery">
+      <label>Recovery code<input class="input mono" name="code" autocapitalize="none" spellcheck="false" autofocus required placeholder="xxxx-xxxx-xxxx"></label>
+      <button class="btn primary">Sign in</button>
+      <a class="small" href="?">Use the code from my app instead</a>
+    {% else %}
+      <p class="small" style="margin:0">Hi {{ name }}. Open your authenticator app and type the 6-digit code for <b>Red Wed Studio</b>.</p>
+      <label>6-digit code<input class="input mono code-input" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" autofocus required></label>
+      <button class="btn primary">Sign in</button>
+      <a class="small" href="?recovery=1">Lost your phone? Use a recovery code</a>
+    {% endif %}
+    <a class="small muted" href="{% url 'login' %}">← Start again</a>
+  </form>
+{% endblock %}

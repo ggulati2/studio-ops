@@ -840,3 +840,10 @@ form.is-saving .status-select,form.is-saving .cell-select{opacity:.55}
 .pod-new{display:inline-flex;align-items:center;gap:6px;animation:qdin .18s ease}
 .pod-new .input{width:9.5em;min-height:32px;padding:4px 8px}
 form.pod-pick.is-saving{opacity:.6;pointer-events:none}
+/* two-step sign-in */
+.qr{display:inline-block;background:#fff;border-radius:12px;padding:6px;align-self:flex-start;box-shadow:0 0 0 1px var(--line)}
+.qr svg{display:block;width:220px;height:220px}
+.code-input{font-size:20px;letter-spacing:.2em;text-align:center}
+.rcodes{columns:2;gap:24px;font-size:15px;margin:4px 0;padding-left:22px;line-height:1.9}
+.ok-card{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.twostep-nag{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:10px 14px;border-radius:var(--r);border:1px solid var(--warn);background:var(--warn-bg,var(--sunk));font-size:var(--t-sm)}

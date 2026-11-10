@@ -807,3 +807,19 @@ class LeaveRequest(models.Model):
     @property
     def days(self):
         return 0.5 if self.half_day else (self.end - self.start).days + 1
+
+
+class TwoFactor(models.Model):
+    """Two-step sign-in with an authenticator app (TOTP, RFC 6238)."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="two_factor")
+    secret = models.CharField(max_length=64)               # base32
+    enabled_on = models.DateTimeField(null=True, blank=True)
+    last_step = models.BigIntegerField(default=0)          # a code can't be used twice
+    recovery_codes = models.JSONField(default=list)        # salted hashes of one-time codes
+
+    @property
+    def enabled(self):
+        return self.enabled_on is not None
+
+    def __str__(self):
+        return f"Two-step sign-in for {self.user}"

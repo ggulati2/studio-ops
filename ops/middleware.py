@@ -43,7 +43,8 @@ class SecurityHeadersMiddleware:
 
 class PasswordAndSessionMiddleware:
     """• People whose password was set by a founder must choose their own first.
-    • Founders are signed out after ADMIN_IDLE_MINUTES without activity."""
+    • Founders are signed out after ADMIN_IDLE_MINUTES without activity, everyone else after
+      STAFF_IDLE_MINUTES (a working day), so a shared studio PC doesn't stay signed in overnight."""
     ALLOW = ("/password/", "/logout/", "/static/", "/health/")
 
     def __init__(self, get_response):
@@ -54,11 +55,11 @@ class PasswordAndSessionMiddleware:
         if user.is_authenticated:
             from .rbac import ADMIN, role_of
             now = int(time.time())
-            if role_of(user) == ADMIN:
-                last = request.session.get("last_seen", now)
-                if now - last > settings.ADMIN_IDLE_MINUTES * 60:
-                    logout(request)
-                    return redirect(f"{reverse('login')}?next={request.path}&timeout=1")
+            limit = settings.ADMIN_IDLE_MINUTES if role_of(user) == ADMIN else settings.STAFF_IDLE_MINUTES
+            last = request.session.get("last_seen", now)
+            if now - last > limit * 60:
+                logout(request)
+                return redirect(f"{reverse('login')}?next={request.path}&timeout=1")
             # Touch the session at most every 5 minutes instead of writing it on every click.
             # That still slides the 7-day sign-in and keeps the founders' idle timeout accurate.
             if now - request.session.get("last_seen", 0) >= SESSION_TOUCH_SECONDS:
