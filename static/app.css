@@ -781,3 +781,55 @@ form.is-saving .status-select,form.is-saving .cell-select{opacity:.55}
 .more-row{display:flex;justify-content:center;padding:14px 0 2px}
 .more-row:empty{display:none}
 .more-row .btn.is-loading{opacity:.6;pointer-events:none}
+
+/* ================================================================ My month: log a missed day in a pop-up */
+.missing-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px 10px 16px;border:1px solid var(--bad-line,var(--bad));background:var(--bad-bg);border-radius:var(--r);font-size:var(--t-sm)}
+.missing-bar[hidden]{display:none}
+.missing-bar b{color:var(--bad)}
+.cal .day.missing{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--bad) 55%,transparent);cursor:pointer}
+.cal .day.missing:hover{background:var(--bad-bg)}
+.log-now{display:inline-flex;align-items:center;gap:6px;margin-top:auto;font-size:11.5px;font-weight:600;color:var(--bad)}
+.log-now .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px var(--bad-bg);animation:pulse 1.8s ease-in-out infinite}
+.log-now b{margin-left:auto;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-weight:600;opacity:0;transition:opacity .15s}
+.cal .day.missing:hover .log-now b,.cal .day.missing:focus-visible .log-now b{opacity:1}
+@media (hover:none){.log-now b{opacity:1}}
+@keyframes pulse{50%{box-shadow:0 0 0 5px transparent}}
+.cal .day.just-logged{animation:justlogged 1.4s ease}
+@keyframes justlogged{0%{background:var(--ok-bg);box-shadow:inset 0 0 0 2px var(--ok)}100%{}}
+
+.qd-dialog{border:0;padding:0;background:transparent;max-width:min(640px,calc(100vw - 24px));width:100%;max-height:calc(100vh - 40px);overflow:visible;color:var(--ink)}
+.qd-dialog::backdrop{background:rgba(12,12,16,.45);backdrop-filter:blur(2px);opacity:0;transition:opacity .2s}
+.qd-dialog.in::backdrop{opacity:1}
+.qd-body{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 30px 80px -20px rgba(0,0,0,.45);max-height:calc(100vh - 40px);overflow:auto;
+  animation:qdin .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes qdin{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.qd{display:flex;flex-direction:column;gap:14px;padding:18px 20px 16px;margin:0}
+.qd-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.qd-head h2{margin:2px 0 0;font-size:20px;letter-spacing:-.01em}
+.qd-kicker{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bad)}
+.qd-x{border:0;background:transparent;font-size:24px;line-height:1;width:36px;height:36px;border-radius:10px;color:var(--muted);cursor:pointer}
+.qd-x:hover{background:var(--sunk);color:var(--ink)}
+.qd-plan{background:var(--sunk);border-radius:10px;padding:8px 12px}
+.qd-sec{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.qd-sec[hidden]{display:none}
+.qd-sec legend{font-weight:600;font-size:var(--t-sm);margin-bottom:6px;padding:0}
+.qd-times{flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.qd-times .field{flex:1 1 140px;font-weight:600;font-size:var(--t-sm);gap:6px;display:flex;flex-direction:column}
+.qd-hours{flex:1 1 100%;margin-top:-2px}
+.qd-sub{display:flex;flex-direction:column;gap:2px}
+.qd .task-row{padding-top:8px;border-top:1px solid var(--line2)}
+.qd .task-row-tools .copy-down{display:none}
+.req{color:var(--bad)}
+.req[hidden]{display:none}
+.qd .err{color:var(--bad);font-size:12px;font-weight:500;margin:0}
+.qd-foot{display:flex;align-items:center;gap:8px;position:sticky;bottom:-16px;background:var(--card);padding:12px 0 2px;border-top:1px solid var(--line2);margin-top:2px}
+.qd-foot .grow{flex:1}
+.qd.is-saving{opacity:.7}
+.qd-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:48px;color:var(--muted)}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--red);animation:spin .7s linear infinite}
+@media (max-width:600px){
+  .qd-dialog{margin:auto 0 0;max-width:100vw;max-height:92vh}
+  .qd-body{border-radius:20px 20px 0 0;max-height:92vh;animation:qdsheet .25s cubic-bezier(.2,.8,.2,1)}
+  @keyframes qdsheet{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+}
+@media (prefers-reduced-motion:reduce){.qd-body,.log-now .dot,.cal .day.just-logged{animation:none}}

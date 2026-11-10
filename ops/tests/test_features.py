@@ -691,3 +691,64 @@ class ProjectsLive(SeededTestCase):
         for part in ("queue", "summary", "chips", "clear", "table"):
             self.assertIn(f'data-live-part="{part}"', html)
         self.assertIn("data-live-filter", html)
+
+
+class QuickLogFromMonth(SeededTestCase):
+    def setUp(self):
+        self.pratik = U.objects.get(username="pratik")
+        self.c = self.login("pratik")
+        self.today = timezone.localdate()
+        # a past working day with nothing logged
+        d = self.today - timedelta(days=1)
+        from ops.services import day_kind
+        while day_kind(self.pratik, d) != "":
+            d -= timedelta(days=1)
+        DayLog.objects.filter(user=self.pratik, date=d).delete()
+        self.d = d
+        self.job = Project.objects.filter(editor=self.pratik).exclude(status="closed").first()
+        self.url = f"/my-month/log/{d.isoformat()}/"
+
+    def post(self, data):
+        base = {"form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "12",
+                "notes": ""}
+        base.update(data)
+        r = self.c.post(self.url, base, HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(r.status_code, 200)
+        return r.json()
+
+    def test_month_marks_missing_days_with_popup_link(self):
+        r = self.c.get(f"/my-month/?m={self.d:%Y-%m}")
+        self.assertContains(r, f'data-quicklog="{self.url}"')
+        self.assertContains(r, "data-quickday")
+        self.assertIn(self.d, r.context["missing"])
+        self.assertContains(self.c.get(self.url), "Log a missed day")
+
+    def test_mandatory_fields(self):
+        res = self.post({"day_type": "office"})
+        self.assertFalse(res["ok"])
+        self.assertIn("Required for a working day", res["html"])
+        res = self.post({"day_type": "office", "time_in": "10:00", "time_out": "19:00"})
+        self.assertFalse(res["ok"])
+        self.assertIn("at least one job", res["html"])
+        self.assertFalse(DayLog.objects.filter(user=self.pratik, date=self.d).exists())
+
+    def test_save_working_day(self):
+        res = self.post({"day_type": "office", "time_in": "10:00", "time_out": "19:00",
+                         "form-0-project": self.job.pk, "form-0-stage": "Edit"})
+        self.assertTrue(res["ok"], res)
+        log = DayLog.objects.get(user=self.pratik, date=self.d)
+        self.assertEqual(log.hours, 8.0)
+        self.assertEqual(log.tasks.get().project, self.job)
+        self.assertNotIn("data-quicklog", res["cell"])
+        self.assertIn("Productive hours", res["kpis"])
+        self.assertNotIn(self.d.isoformat(), res["missing"])
+
+    def test_leave_needs_no_times(self):
+        res = self.post({"day_type": "leave"})
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(DayLog.objects.get(user=self.pratik, date=self.d).day_type, "leave")
+
+    def test_future_and_other_people_blocked(self):
+        fut = self.c.get(f"/my-month/log/{(self.today + timedelta(days=3)).isoformat()}/", HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(fut.status_code, 400)
+        self.assertEqual(self.login("ag").get(self.url).status_code, 403)

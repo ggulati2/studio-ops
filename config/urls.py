@@ -55,6 +55,7 @@ urlpatterns = [
     path("review/<int:pk>/", v.tl_review, name="tl_review"),
     path("today/", v.today, name="today"),
     path("my-month/", v.my_month, name="my_month"),
+    path("my-month/log/<str:day>/", v.my_day_quick, name="my_day_quick"),
     path("my-jobs/", v.my_jobs, name="my_jobs"),
     path("my-jobs/<int:pk>/submit/", v.job_submit, name="job_submit"),
     path("my-jobs/<int:pk>/close/", v.close_job, name="close_job"),

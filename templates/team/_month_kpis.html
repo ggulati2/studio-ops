@@ -1,0 +1,4 @@
+{% load ops_extras %}<div class="kpi"><span>Days in office</span><b>{{ att.office }}</b></div><div class="kpi"><span>WFH</span><b>{{ att.wfh }}</b></div>
+  <div class="kpi {% if att.leaves_counted > free_leaves %}bad{% endif %}"><span>Leaves · {{ free_leaves|hours }} free</span><b>{{ att.leaves_counted|hours }}</b></div>
+  <div class="kpi"><span>Productive hours</span><b>{{ att.hours|hours }}</b></div><div class="kpi"><span>Late arrivals</span><b>{{ att.late }}</b></div>
+  <div class="kpi"><span>Extra hours</span><b>{{ extra_h|hours }}</b></div>

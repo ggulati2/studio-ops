@@ -628,3 +628,29 @@ class ContractWorkForm(StyledMixin, forms.Form):
         if self.hourly and data.get("time_in") and data.get("time_out") and data["time_in"] == data["time_out"]:
             self.add_error("time_out", "End must differ from start.")
         return data
+
+
+class QuickDayForm(DayForm):
+    """Filling a missed day from My month: the same fields as Today, with the essentials
+    made mandatory so a back-filled day is complete (times for a working day)."""
+    NEEDS_TIMES = (DayLog.OFFICE, DayLog.WFH, DayLog.HALF, DayLog.DOWNTIME)
+    NEEDS_JOBS = (DayLog.OFFICE, DayLog.WFH, DayLog.HALF)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Holidays and weekly offs are set by the studio; a missed day is work, leave or downtime
+        self.fields["day_type"].choices = [c for c in DayLog.DAY_TYPES if c[0] not in (DayLog.HOLIDAY, DayLog.OFF)]
+        self.fields["time_in"].label, self.fields["time_out"].label = "In", "Out"
+
+    def clean(self):
+        data = super().clean()
+        t = data.get("day_type")
+        if t in self.NEEDS_TIMES:
+            for f in ("time_in", "time_out"):
+                if not data.get(f):
+                    self.add_error(f, "Required for a working day.")
+            if data.get("time_in") and data.get("time_in") == data.get("time_out"):
+                self.add_error("time_out", "Out can't be the same as In.")
+        else:
+            data["time_in"] = data["time_out"] = None
+        return data

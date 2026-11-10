@@ -1,0 +1,7 @@
+{% load ops_extras %}<a class="day {% if c.kind %}k-{{ c.kind }}{% endif %}{% if c.today %} today{% endif %}{% if c.due %} due{% endif %}{% if c.warn %} missing{% endif %}" href="{% url 'today' %}?date={{ c.d|date:'Y-m-d' }}" data-day="{{ c.d|date:'Y-m-d' }}"{% if c.warn %} data-quicklog="{% url 'my_day_quick' c.d|date:'Y-m-d' %}" aria-label="{{ c.d|date:'l j F' }}: not logged. Log it now"{% endif %}>
+    <span class="n">{{ c.d.day }}<small>{% if c.holiday %}{{ c.holiday.name|upper|truncatechars:14 }}{% elif c.kind == 'off' %}OFF{% elif c.kind and c.kind != 'office' %}{{ c.kind|upper }}{% endif %}</small></span>
+    {% for p in c.due %}<span class="chip {{ p|cal_class }}">Due: {{ p }}</span>{% endfor %}
+    {% for e in c.plans %}<span class="chip" style="background:{% if e.slot == 2 %}var(--qc-bg);color:var(--qc){% else %}var(--red-soft);color:var(--red-dark){% endif %}">{% if e.slot == 2 %}+ {% else %}Plan: {% endif %}{{ e.text }}</span>{% endfor %}
+    {% if c.log %}<span class="small">{% if c.log.hours %}{{ c.log.hours|hours }} h{% else %}{{ c.log.get_day_type_display }}{% endif %}{% for t in c.log.tasks.all|slice:":2" %} · {{ t.project.couple }}{% endfor %}</span>{% endif %}
+    {% if c.warn %}<span class="log-now"><span class="dot" aria-hidden="true"></span>Not logged <b>Log now</b></span>{% endif %}
+  </a>

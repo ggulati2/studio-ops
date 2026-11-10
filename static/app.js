@@ -279,17 +279,24 @@
     });
 
     /* Today: add another job row / clear a row */
-    var rowsBox = doc.querySelector("[data-task-rows]"), tpl = doc.querySelector("[data-task-template]");
-    var total = doc.querySelector('input[name="form-TOTAL_FORMS"]');
+    /* Looked up per click (inside the clicked form), so job rows also work in pop-ups
+       loaded later, such as logging a missed day from My month */
+    var rowsBox, tpl, total;
+    function scopeOf(el) {
+      var s = (el && el.closest("form")) || doc;
+      rowsBox = s.querySelector("[data-task-rows]"); tpl = s.querySelector("[data-task-template]");
+      total = s.querySelector('input[name="form-TOTAL_FORMS"]');
+    }
     function renumber() {
       Array.prototype.forEach.call(rowsBox.querySelectorAll("[data-task-row]"), function (r, i) {
         var n = r.querySelector("[data-task-num]"); if (n) n.textContent = i + 1;
       });
     }
     doc.addEventListener("click", function (e) {
+      if (e.target.closest("[data-add-task]")) scopeOf(e.target);
       if (e.target.closest("[data-add-task]") && rowsBox && tpl && total) {
         var max = parseInt(rowsBox.getAttribute("data-max") || "12", 10), i = parseInt(total.value, 10);
-        if (i >= max) { var lim = doc.querySelector("[data-task-limit]"); if (lim) lim.hidden = false; return; }
+        if (i >= max) { var lim = (e.target.closest("form") || doc).querySelector("[data-task-limit]"); if (lim) lim.hidden = false; return; }
         var html = tpl.innerHTML.replace(/__prefix__/g, i).replace(/__num__/g, i + 1);
         rowsBox.insertAdjacentHTML("beforeend", html);
         total.value = i + 1;

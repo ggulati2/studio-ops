@@ -9,10 +9,11 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from ..rbac import ADMIN, EDITOR, QC, TL, can_review_in_pod, has_perm, requires
-from ..forms import CloseJobForm, DayForm, ExtraEntryForm, ReviewForm, TaskFormSet
+from ..forms import CloseJobForm, DayForm, ExtraEntryForm, QuickDayForm, ReviewForm, TaskFormSet
 from ..models import (QC_CHECKLIST, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
                       Project, Review, StudioSettings, TaskEntry, TaskStage)
 from .. import services as S
@@ -21,12 +22,50 @@ from ..services import (add_months, attendance, celebrated_award, day_kind, extr
                         trophy_counts)
 
 User = get_user_model()
-__all__ = ["today", "my_month", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
+__all__ = ["today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
            "leaderboard", "congrats", "pod", "tl_review", "qc_queue", "qc_review", "my_payslips", "payslip_view"]
 
 
 def _my_projects(user):
     return Project.objects.filter(editor=user).exclude(status__in=(Project.CLOSED,)).select_related("agency", "drive")
+
+
+def _day_setup(user, d):
+    """The log for a day (new if none), the jobs the person may book on it, and the
+    pre-filled job rows (what they logged, else what was planned)."""
+    log = DayLog.objects.filter(user=user, date=d).first()
+    if not log:
+        kind = day_kind(user, d)
+        log = DayLog(user=user, date=d, day_type=kind or DayLog.OFFICE)
+    workable = Project.objects.filter(editor=user).exclude(status=Project.CLOSED) | Project.objects.filter(
+        task_entries__daylog=log) if log.pk else Project.objects.filter(editor=user).exclude(status=Project.CLOSED)
+    workable = workable.distinct().select_related("agency")
+    initial = [{"project": t.project, "stage": t.stage, "hours": t.hours} for t in log.tasks.all()] if log.pk else []
+    plans = list(PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive"))
+    # Revisions planned on a delivered film must be pickable in the job list too
+    revision_ids = [e.project_id for e in plans if e.is_revision]
+    if revision_ids:
+        from django.db.models import Q
+        workable = Project.objects.filter(Q(pk__in=workable.values("pk")) | Q(pk__in=revision_ids)).select_related("agency")
+    if not initial:
+        initial = [{"project": e.project, "stage": TaskStage.REVISIONS if e.is_revision else TaskStage.EDIT}
+                   for e in plans if e.project_id]
+    return log, workable, initial, plans
+
+
+def _save_day(user, d, form, formset):
+    with transaction.atomic():
+        log = form.save(commit=False)
+        log.user, log.date = user, d
+        log.save()
+        log.tasks.all().delete()
+        for f in formset:
+            c = f.cleaned_data
+            if c.get("project"):
+                TaskEntry.objects.create(daylog=log, project=c["project"], stage=c["stage"], hours=c.get("hours"))
+                if c["project"].status == Project.NOT_STARTED:
+                    Project.objects.filter(pk=c["project"].pk).update(status=Project.IN_PROGRESS)
+    return log
 
 
 @requires("work.log_own")
@@ -38,40 +77,14 @@ def today(request):
         d = timezone.localdate()
     if d > timezone.localdate() + timedelta(days=60):
         d = timezone.localdate()
-    log = DayLog.objects.filter(user=user, date=d).first()
-    if not log:
-        kind = day_kind(user, d)
-        log = DayLog(user=user, date=d, day_type=kind or DayLog.OFFICE)
-    workable = Project.objects.filter(editor=user).exclude(status=Project.CLOSED) | Project.objects.filter(
-        task_entries__daylog=log) if log.pk else Project.objects.filter(editor=user).exclude(status=Project.CLOSED)
-    workable = workable.distinct().select_related("agency")
-    initial = [{"project": t.project, "stage": t.stage, "hours": t.hours} for t in log.tasks.all()] if log.pk else []
-    plans = list(PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive"))
+    log, workable, initial, plans = _day_setup(user, d)
     plan = plans[0] if plans else None
-    # Revisions planned on a delivered film must be pickable in the job list too
-    revision_ids = [e.project_id for e in plans if e.is_revision]
-    if revision_ids:
-        from django.db.models import Q
-        workable = Project.objects.filter(Q(pk__in=workable.values("pk")) | Q(pk__in=revision_ids)).select_related("agency")
-    if not initial:
-        initial = [{"project": e.project, "stage": TaskStage.REVISIONS if e.is_revision else TaskStage.EDIT}
-                   for e in plans if e.project_id]
     while len(initial) < 3:
         initial.append({})
     form = DayForm(request.POST or None, instance=log, future=d > timezone.localdate())
     formset = TaskFormSet(request.POST or None, initial=initial, form_kwargs={"projects": workable})
     if request.method == "POST" and form.is_valid() and formset.is_valid():
-        with transaction.atomic():
-            log = form.save(commit=False)
-            log.user, log.date = user, d
-            log.save()
-            log.tasks.all().delete()
-            for f in formset:
-                c = f.cleaned_data
-                if c.get("project"):
-                    TaskEntry.objects.create(daylog=log, project=c["project"], stage=c["stage"], hours=c.get("hours"))
-                    if c["project"].status == Project.NOT_STARTED:
-                        Project.objects.filter(pk=c["project"].pk).update(status=Project.IN_PROGRESS)
+        _save_day(user, d, form, formset)
         messages.success(request, f"Saved {d:%a %d %b}.")
         return redirect(f"{request.path}?date={d.isoformat()}")
     month = month_start(d)
@@ -104,20 +117,84 @@ def my_month(request):
     d = a
     today = timezone.localdate()
     while d <= b:
-        log = logs.get(d)
-        kind = day_kind(user, d, logs, hols)
-        warn = ""
-        if d < today and not log and kind == "":
-            warn = "Not logged"
-        cells.append({"d": d, "kind": kind, "log": log, "plans": plans.get(d, []), "holiday": hols.get(d),
-                      "today": d == today, "warn": warn, "due": due.get(d, [])})
+        cells.append(_month_cell(user, d, logs, plans, hols, due, today))
         d += timedelta(days=1)
+    missing = [c["d"] for c in cells if c and c["warn"]]
     while len(cells) % 7:
         cells.append(None)
     return render(request, "team/month.html", {"cells": cells, "month": month, "prev": add_months(month, -1),
                                                "next": add_months(month, 1), "att": attendance(user, month),
                                                "free_leaves": StudioSettings.get().free_leaves_per_month,
-                                               "extra_h": extra_hours(user, month)})
+                                               "extra_h": extra_hours(user, month), "missing": missing})
+
+
+def _month_cell(user, d, logs, plans, hols, due, today):
+    log = logs.get(d)
+    kind = day_kind(user, d, logs, hols)
+    warn = "Not logged" if d < today and not log and kind == "" else ""
+    return {"d": d, "kind": kind, "log": log, "plans": plans.get(d, []), "holiday": hols.get(d),
+            "today": d == today, "warn": warn, "due": due.get(d, [])}
+
+
+@requires("work.log_own")
+def my_day_quick(request, day):
+    """Fill a missed day from My month in a pop-up. GET draws the form, POST saves it.
+    Answers fetch requests with JSON: the re-drawn calendar cell and month totals, or
+    the form again with its errors."""
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
+    user, today_ = request.user, timezone.localdate()
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        d = None
+    if not d or d > today_:
+        return JsonResponse({"ok": False, "error": "Only past days or today can be logged here."}, status=400)
+    log, workable, initial, plans = _day_setup(user, d)
+    if not initial:
+        initial = [{}]
+    form = QuickDayForm(request.POST or None, instance=log, future=False)
+    formset = TaskFormSet(request.POST or None, initial=initial, form_kwargs={"projects": workable})
+    saved = False
+    if request.method == "POST":
+        ok = form.is_valid() & formset.is_valid()          # run both, so every problem shows at once
+        if formset.is_valid() and request.POST.get("day_type") in QuickDayForm.NEEDS_JOBS and not any(
+                f.cleaned_data.get("project") for f in formset):
+            form.add_error(None, "Add at least one job you worked on.")
+            ok = False
+        if ok:
+            log = _save_day(user, d, form, formset)
+            saved = True
+    if not saved:
+        html = render_to_string("team/_quick_day.html", {"form": form, "formset": formset, "d": d, "plans": plans,
+                                                         "log": log}, request=request)
+        if request.method == "POST" and request.headers.get("X-Requested-With") != "fetch":
+            return render(request, "team/quick_day_page.html", {"inner": html, "d": d})
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JsonResponse({"ok": False, "html": html}, status=200)
+        return render(request, "team/quick_day_page.html", {"inner": html, "d": d})
+    # Saved: send back the new cell and the month's numbers
+    month = month_start(d)
+    a, b = month, month_end(month)
+    logs = {l.date: l for l in DayLog.objects.filter(user=user, date__range=(a, b)).prefetch_related("tasks__project")}
+    plan_map = defaultdict(list)
+    for e in PlanEntry.objects.filter(user=user, date=d).select_related("project"):
+        plan_map[d].append(e)
+    cell = _month_cell(user, d, logs, plan_map, holidays_between(a, b), S.deliveries_between(d, d, user=user), today_)
+    label = log.get_day_type_display()
+    msg = f"{d:%a %-d %b} saved: {label}" + (f", {log.hours:g} h" if log.hours else "") + "."
+    if request.headers.get("X-Requested-With") != "fetch":
+        messages.success(request, msg)
+        return redirect(f"{reverse('my_month')}?m={d:%Y-%m}")
+    hols = holidays_between(a, b)
+    still = [x for x in (a + timedelta(days=i) for i in range((min(b, today_ - timedelta(days=1)) - a).days + 1))
+             if x not in logs and day_kind(user, x, logs, hols) == ""]
+    return JsonResponse({
+        "ok": True, "message": msg, "date": d.isoformat(),
+        "cell": render_to_string("team/_month_cell.html", {"c": cell}, request=request),
+        "kpis": render_to_string("team/_month_kpis.html", {"att": attendance(user, month), "extra_h": extra_hours(user, month),
+                                                           "free_leaves": StudioSettings.get().free_leaves_per_month}),
+        "missing": [x.isoformat() for x in still]})
 
 
 @requires("work.log_own")

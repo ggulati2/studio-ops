@@ -1,0 +1,39 @@
+{% load ops_extras %}<form method="post" action="{% url 'my_day_quick' d|date:'Y-m-d' %}" class="qd" data-quickday-form novalidate>{% csrf_token %}
+  <header class="qd-head">
+    <div><span class="qd-kicker">Log a missed day</span><h2>{{ d|date:"l, j F" }}</h2></div>
+    <button type="button" class="qd-x" data-qd-close aria-label="Close">×</button>
+  </header>
+  {% if plans %}<div class="qd-plan small"><span class="muted">Planned:</span> {% for e in plans %}<b>{{ e.text }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if form.non_field_errors %}<div class="msg error" role="alert">{{ form.non_field_errors.0 }}</div>{% endif %}
+
+  <fieldset class="qd-sec">
+    <legend>Day type <span class="req" aria-hidden="true">*</span></legend>
+    {{ form.day_type }}
+    {% if form.day_type.errors %}<p class="err" role="alert">{{ form.day_type.errors.0 }}</p>{% endif %}
+  </fieldset>
+
+  <div class="qd-sec qd-times" data-qd-times>
+    <label class="field"><span>In <span class="req" aria-hidden="true">*</span></span>{{ form.time_in }}{% if form.time_in.errors %}<span class="err" role="alert">{{ form.time_in.errors.0 }}</span>{% endif %}</label>
+    <label class="field"><span>Out <span class="req" aria-hidden="true">*</span></span>{{ form.time_out }}{% if form.time_out.errors %}<span class="err" role="alert">{{ form.time_out.errors.0 }}</span>{% endif %}</label>
+    <div class="qd-hours small muted" data-qd-hours aria-live="polite"></div>
+  </div>
+
+  <div class="qd-sec" data-qd-jobs>
+    <div class="qd-sub"><b>What I worked on <span class="req" aria-hidden="true">*</span></b><span class="small muted">At least one job. Leave hours blank to share the day.</span></div>
+    {{ formset.management_form }}
+    <div class="task-rows" data-task-rows data-max="{{ formset.max_num }}">
+      {% for f in formset %}{% include "team/_task_row.html" with n=forloop.counter %}{% endfor %}
+    </div>
+    <template data-task-template>{% include "team/_task_row.html" with f=formset.empty_form n="__num__" %}</template>
+    <div class="actions"><button type="button" class="btn sm" data-add-task>+ Add a job</button><span class="small muted" data-task-limit hidden>That's the most for one day.</span></div>
+  </div>
+
+  <label class="field qd-sec"><span>{{ form.notes.label }} <span class="small muted">(optional)</span></span>{{ form.notes }}</label>
+
+  <footer class="qd-foot">
+    <button type="button" class="btn" data-qd-close>Cancel</button>
+    <span class="grow"></span>
+    <button class="btn" name="then" value="next" data-qd-next hidden>Save &amp; next day</button>
+    <button class="btn primary" name="then" value="close">Save</button>
+  </footer>
+</form>
