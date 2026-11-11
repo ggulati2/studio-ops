@@ -658,3 +658,14 @@ class DriveDataFix(SeededTestCase):
         f = DriveForm(data={"code": "HDD-74", "kind": "HDD", "studio_owned": "on", "capacity_tb": "2", "data_gb": "106",
                             "received_on": "2026-11-11", "received_via": "courier", "status": "in_use"})
         self.assertTrue(f.is_valid(), f.errors)
+
+
+class DriveListSentBack(SeededTestCase):
+    def test_sent_back_column_and_row_link(self):
+        from ops.models import DriveReturn, HardDrive
+        d = HardDrive.objects.create(code="HDD-81", agency=Agency.objects.get(code="BRC"), status="sent")
+        DriveReturn.objects.create(drive=d, sent_to="Rahul (BRC)", method="courier")
+        r = self.login("ag").get("/drives/?view=list&status=all")
+        self.assertContains(r, "<th>Sent back</th>", html=False)
+        self.assertContains(r, "to Rahul (BRC)")
+        self.assertContains(r, f'data-href="/drives/{d.pk}/"')

@@ -1112,3 +1112,6 @@ mark{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 1px;box
 .ph-pop{position:fixed;transform:none;left:0;top:0}
 .drive-row:hover .ph-pop,.ph-hover:focus-within .ph-pop{display:none}
 .ph-pop.show{display:flex!important}
+.ph-pop{pointer-events:none}
+tr[data-href]{cursor:pointer}
+tr[data-href]:focus-visible{outline:2px solid var(--red);outline-offset:-2px}

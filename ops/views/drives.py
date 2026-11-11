@@ -29,7 +29,7 @@ def drives(request):
     """Drive register: filters and search redraw in place (live.js); the search also
     looks inside folder names, couples and films on each drive."""
     g = request.GET
-    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "folders")
+    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "folders", "returns")
     status, q = g.get("status", ""), g.get("q", "").strip()
     f = {"agency": g.get("agency", ""), "kind": g.get("kind", ""), "folders": g.get("folders", ""),
          "sort": g.get("sort", "")}
@@ -95,6 +95,8 @@ def drives(request):
         fs = d.folders.all()
         d.n_folders = len(fs)
         d.n_waiting = sum(1 for x in fs if x.status == DriveFolder.PENDING)
+        rets = sorted(d.returns.all(), key=lambda r: (r.sent_on, r.pk))
+        d.last_return = rets[-1] if rets else None
         d.used_pct = (min(100, round(float(d.data_gb) / (float(d.capacity_tb) * 1000) * 100))
                       if d.data_gb and d.capacity_tb else None)
     active = sum(1 for k in ("agency", "kind", "folders") if f[k]) + (1 if q else 0)

@@ -77,6 +77,21 @@
   });
   window.addEventListener("scroll", hidePop, true);
 
+  /* List view: click (or Enter on) anywhere in a drive's row to open it */
+  function openRow(e, row) {
+    if (e.target.closest("a, button, summary, details, input, select, label, form")) return;
+    var href = row.getAttribute("data-href");
+    if (!href) return;
+    if (e.metaKey || e.ctrlKey) window.open(href, "_blank"); else location.href = href;
+  }
+  doc.addEventListener("click", function (e) {
+    var row = e.target.closest && e.target.closest("tr[data-href]");
+    if (row) openRow(e, row);
+  });
+  doc.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.matches && e.target.matches("tr[data-href]")) openRow(e, e.target);
+  });
+
   /* Small confirm pop-overs (<details>): Cancel and clicking elsewhere close them */
   doc.addEventListener("click", function (e) {
     var c = e.target.closest && e.target.closest("[data-close-details]");

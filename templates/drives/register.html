@@ -55,8 +55,8 @@
     <p class="small muted" style="margin:0 0 10px">{{ drives|length }} drive{{ drives|length|pluralize }}</p>
     {% if view == "list" %}
     <div class="scroll"><table class="drive-table">
-      <thead><tr><th>Drive</th><th>Agency</th><th>Status</th><th class="right">Data available</th><th>Folders</th><th>Received</th><th>Kept at</th>{% if can_delete %}<th class="sr-col"><span class="sr">Delete</span></th>{% endif %}</tr></thead>
-      <tbody>{% for d in drives %}<tr data-drive-cell="{{ d.pk }}" class="drive-row">
+      <thead><tr><th>Drive</th><th>Agency</th><th>Status</th><th class="right">Data available</th><th>Folders</th><th>Received</th><th>Sent back</th><th>Kept at</th>{% if can_delete %}<th class="sr-col"><span class="sr">Delete</span></th>{% endif %}</tr></thead>
+      <tbody>{% for d in drives %}<tr data-drive-cell="{{ d.pk }}" class="drive-row" data-href="{% url 'drive_edit' d.pk %}" tabindex="0" aria-label="Open {{ d.code }}">
         <td class="nowrap"><span class="ph-hover">{% with ph=d.photos.all.0 %}{% if ph %}<img class="ph-thumb" src="{% url 'image' ph.pk %}" alt="" loading="lazy">{% else %}<span class="ph-thumb none" aria-hidden="true">💾</span>{% endif %}{% endwith %}
             {% if d.photos.all %}<span class="ph-pop" role="tooltip">{% for ph in d.photos.all|slice:":3" %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" loading="lazy">{% endfor %}{% if d.photos.all|length > 3 %}<span class="small muted">+{{ d.photos.all|length|add:"-3" }} more on the drive page</span>{% endif %}</span>{% endif %}</span>
           <a class="mono" href="{% url 'drive_edit' d.pk %}"><b>{{ d.code }}</b></a> <span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span>
@@ -66,11 +66,12 @@
         <td class="right nowrap">{% if d.data_gb %}<b>{{ d.data_gb|hours }}</b> GB{% if d.used_pct is not None %}<div class="bar sm"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
         <td class="nowrap">{% if d.n_folders %}📁 {{ d.n_folders }}{% if d.n_waiting %} <span class="tag warn">{{ d.n_waiting }} waiting</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
         <td class="nowrap">{{ d.received_on|date:"j M Y" }}</td>
+        <td class="nowrap">{% with r=d.last_return %}{% if r %}{{ r.sent_on|date:"j M Y" }}<div class="small muted ellip" style="max-width:160px" title="{{ r.sent_to }} · {{ r.get_method_display }} · {{ r.get_status_display }}">to {{ r.sent_to }} · {{ r.get_status_display|lower }}</div>{% elif d.status == "ready" %}<span class="tag warn">Ready to send</span>{% else %}<span class="muted">–</span>{% endif %}{% endwith %}</td>
         <td>{{ d.location|default:"–" }}</td>
         {% if can_delete %}<td><details class="dc-del inline"><summary aria-label="Delete {{ d.code }}" title="Delete {{ d.code }}">🗑</summary>
           <form method="post" action="{% url 'drive_delete' d.pk %}" data-live class="dc-del-pop">{% csrf_token %}<b class="small">Delete {{ d.code }}?</b><span class="small muted">Its folder list and send-back records go too. Films stay on Projects, without a drive.</span>
             <span class="dc-del-btns"><button class="btn sm danger">Delete</button><button type="button" class="btn sm ghost" data-close-details>Cancel</button></span></form></details></td>{% endif %}
-      </tr>{% empty %}<tr><td colspan="8" class="muted">No drives match.{% if active %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
+      </tr>{% empty %}<tr><td colspan="9" class="muted">No drives match.{% if active %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% else %}
     <div class="grid wide drive-grid">
