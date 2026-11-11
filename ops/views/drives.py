@@ -4,12 +4,13 @@ from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
-from ..rbac import ADMIN, requires
-from ..forms import DriveForm, DriveReturnForm
+from ..audit import record
+from ..rbac import ADMIN, has_perm, requires
+from ..forms import DriveForm, DriveReturnForm, ReceiveDriveForm
 from ..models import DriveFolder, DriveReturn, HardDrive, Project
 from ..services import store_image
 
-__all__ = ["drives", "drive_edit", "drive_returns", "drive_return_status"]
+__all__ = ["drives", "drive_edit", "drive_returns", "drive_return_status", "drive_delete"]
 
 
 def _next_code(kind="HDD"):
@@ -63,11 +64,16 @@ def drives(request):
         hits = list(DriveFolder.objects.filter(hq).select_related("drive__agency", "client")
                     .order_by("drive__code", "path")[:60])
     qs = qs.order_by({"newest": "-received_on", "oldest": "received_on", "agency": "agency__name"}.get(f["sort"], "code"), "code")
-    form = DriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
+    form = ReceiveDriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
     if request.method == "POST" and form.is_valid():
         d = form.save()
         _save_photos(form, d)
-        messages.success(request, f"{d.code} recorded. Write {d.code} on its label. Paste its folders below.")
+        from .folders import add_folders
+        made, _ = add_folders(request, d, form.cleaned_data.get("folder_list", ""))
+        record(request, "drive.receive", d.code, f"{made} folder(s)")
+        messages.success(request, f"{d.code} recorded. Write {d.code} on its label."
+                         + (f" {made} folder(s) listed; they're waiting on Projects for a decision." if made
+                            else " You can paste its folders below."))
         return redirect("drive_edit", d.pk)
     from django.db.models import Count
     by = dict(HardDrive.objects.order_by().values_list("status").annotate(n=Count("id")))
@@ -83,7 +89,8 @@ def drives(request):
     return render(request, "drives/register.html", {
         "drives": drives_list, "form": form, "chips": chips, "hits": hits, "f": f, "active": active,
         "status": status, "q": q, "statuses": HardDrive.STATUS, "agencies": Agency.objects.order_by("name"),
-        "waiting": DriveFolder.objects.filter(status=DriveFolder.PENDING).count()})
+        "waiting": DriveFolder.objects.filter(status=DriveFolder.PENDING).count(),
+        "can_delete": has_perm(request.user, "projects.manage")})
 
 
 @requires("drives.manage")
@@ -96,6 +103,7 @@ def drive_edit(request, pk):
         messages.success(request, f"{d.code} saved.")
         return redirect("drives")
     return render(request, "drives/edit.html", {"d": d, "form": form, "folders": d.folders.select_related("client"),
+                                                "can_delete": has_perm(request.user, "projects.manage"),
                                                 "jobs": d.projects.only("couple", "deliverable", "status")})
 
 
@@ -134,3 +142,22 @@ def drive_return_status(request, pk):
         r.status = request.POST["status"]
         r.save(update_fields=["status"])
     return redirect("drive_returns")
+
+
+@requires("projects.manage")
+def drive_delete(request, pk):
+    """Delete a drive entry (founders). Its folder list and send-back records go with it;
+    films that were on it stay on Projects, just no longer linked to a drive."""
+    d = get_object_or_404(HardDrive, pk=pk)
+    if request.method != "POST":
+        return redirect("drive_edit", d.pk)
+    code, films = d.code, d.projects.count()
+    d.delete()
+    record(request, "drive.delete", code, f"{films} film(s) unlinked")
+    text = f"Deleted {code}." + (f" {films} film(s) stay on Projects without a drive." if films else "")
+    if request.headers.get("X-Requested-With") == "fetch":
+        from django.http import JsonResponse
+        return JsonResponse({"ok": True, "messages": [{"level": "success", "text": text}],
+                             "remove": [f'[data-drive-cell="{pk}"]']})
+    messages.success(request, text)
+    return redirect("drives")

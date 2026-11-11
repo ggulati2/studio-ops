@@ -547,3 +547,29 @@ class DriveRegisterFilters(SeededTestCase):
         # fluid: the page has a live filter form and parts
         self.assertContains(r, "data-live-filter")
         self.assertContains(r, 'data-live-part="grid"')
+
+
+class DriveReceiveAndDelete(SeededTestCase):
+    def test_receive_with_folders_then_delete(self):
+        from ops.models import DriveFolder, HardDrive
+        f = self.login("ag")
+        r = f.get("/drives/")
+        self.assertContains(r, "+ Receive a drive")
+        self.assertContains(r, 'name="folder_list"')
+        ag = Agency.objects.get(code="BRC")
+        r = f.post("/drives/", {"code": "HDD-88", "kind": "HDD", "agency": ag.pk, "received_on": "2026-11-10",
+                                "received_via": "courier", "status": "in_use",
+                                "folder_list": "E:\\2026\\Amit_Tanya_Wedding\nKiran_Dev_Teaser"})
+        d = HardDrive.objects.get(code="HDD-88")
+        self.assertRedirects(r, f"/drives/{d.pk}/", fetch_redirect_response=False)
+        self.assertEqual(DriveFolder.objects.filter(drive=d).count(), 2)
+        p = Project.objects.create(couple="X & Y", deliverable="Teaser", agency=ag, drive=d)
+        # editors and the drive desk can't delete
+        self.assertNotEqual(self.login("pratik").post(f"/drives/{d.pk}/delete/").status_code, 200)
+        self.assertTrue(HardDrive.objects.filter(pk=d.pk).exists())
+        r = f.post(f"/drives/{d.pk}/delete/", **FETCH).json()
+        self.assertEqual(r["remove"], [f'[data-drive-cell="{d.pk}"]'])
+        self.assertFalse(HardDrive.objects.filter(pk=d.pk).exists())
+        self.assertFalse(DriveFolder.objects.filter(path="2026/Amit_Tanya_Wedding", drive_id=d.pk).exists())
+        p.refresh_from_db()
+        self.assertIsNone(p.drive_id)

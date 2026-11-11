@@ -61,13 +61,9 @@ def inbox_context():
             "deliverables": Project.DELIVERABLES}
 
 
-@requires("drives.manage")
-def drive_folders_add(request, pk):
-    d = get_object_or_404(HardDrive, pk=pk)
-    back = reverse("drive_edit", args=[d.pk])
-    if request.method != "POST":
-        return redirect(back)
-    rows = parse_many(request.POST.get("folders", ""))[:500]
+def add_folders(request, d, text):
+    """List pasted folder names on drive d. Returns (how many were new, parsed rows)."""
+    rows = parse_many(text)[:500]
     have = {p.lower() for p in d.folders.values_list("path", flat=True)}
     made = 0
     for r in rows:
@@ -81,6 +77,16 @@ def drive_folders_add(request, pk):
             made += 1
         except IntegrityError:
             pass
+    return made, rows
+
+
+@requires("drives.manage")
+def drive_folders_add(request, pk):
+    d = get_object_or_404(HardDrive, pk=pk)
+    back = reverse("drive_edit", args=[d.pk])
+    if request.method != "POST":
+        return redirect(back)
+    made, rows = add_folders(request, d, request.POST.get("folders", ""))
     skipped = len(rows) - made
     if not rows:
         say = [("error", "Paste at least one folder name (one per line).")]

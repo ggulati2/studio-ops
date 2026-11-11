@@ -3,7 +3,28 @@
 {% block scripts %}<script src="{% static 'folders.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="head"><div><h1>Drive register</h1><p>Every drive in the studio: whose it is, what's on it, which project folders it holds and where it is now.</p></div>
-  <div class="actions"><a class="btn primary" href="#receive">+ Receive a drive</a>{% if waiting %}<a class="btn" href="{% url 'projects' %}">{{ waiting }} folder{{ waiting|pluralize }} waiting on Projects →</a>{% endif %}</div></div>
+  <div class="actions">{% if waiting %}<a class="btn" href="{% url 'projects' %}">{{ waiting }} folder{{ waiting|pluralize }} waiting on Projects →</a>{% endif %}</div></div>
+
+<details class="card receive-panel" id="receive"{% if form.errors %} open{% endif %}>
+  <summary><span class="btn primary">+ Receive a drive</span><span class="small muted">Record a drive that just came in, with the project folders on it.</span></summary>
+  <form method="post" enctype="multipart/form-data" class="receive-form">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+    <div class="receive-cols">
+      <div class="fields">{% for f in form.visible_fields %}{% if f.name != "folder_list" %}
+        {% if f.widget_type == 'checkbox' %}<div class="field" data-field="{{ f.name }}" style="grid-column:1/-1"><label class="inline">{{ f }} {{ f.label }}</label></div>
+        {% else %}<div class="field" data-field="{{ f.name }}"{% if f.widget_type == 'textarea' or f.name == 'photos_upload' %} style="grid-column:1/-1"{% endif %}>
+          <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} *{% endif %}</label>{{ f }}
+          {% if f.errors %}<p class="err">{{ f.errors|join:" " }}</p>{% endif %}</div>{% endif %}
+      {% endif %}{% endfor %}</div>
+      <div class="field receive-folders">
+        <label for="{{ form.folder_list.id_for_label }}">📁 {{ form.folder_list.label }}</label>{{ form.folder_list }}
+        <span class="help">{{ form.folder_list.help_text }}</span>
+        {% if form.folder_list.errors %}<p class="err">{{ form.folder_list.errors|join:" " }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="receive-btns"><button class="btn primary">Save drive</button></div>
+  </form>
+</details>
 
 <form method="get" class="filters drive-filters" role="search" aria-label="Find drives and folders" data-live-filter data-status-default="">
   <input type="hidden" name="status" value="{{ status }}">
@@ -26,10 +47,10 @@
 </section>{% endif %}</div>
 
 <div class="row">
-  <section class="grow" data-live-part="grid">
+  <section class="grow" data-live-part="grid" style="min-width:0">
     <p class="small muted" style="margin:0 0 10px">{{ drives|length }} drive{{ drives|length|pluralize }}</p>
     <div class="grid wide drive-grid">
-    {% for d in drives %}<a class="card tight drive-card" href="{% url 'drive_edit' d.pk %}">
+    {% for d in drives %}<div class="drive-cell" data-drive-cell="{{ d.pk }}"><a class="card tight drive-card" href="{% url 'drive_edit' d.pk %}">
       <div class="dc-photo">
         {% with ph=d.photos.all.0 %}{% if ph %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" loading="lazy">{% else %}<span class="small muted">No photo</span>{% endif %}{% endwith %}
         <span class="tag {{ d.status|drive_class }} dc-status">{{ d.get_status_display }}</span>
@@ -41,9 +62,15 @@
         {% if d.capacity_tb and d.data_tb %}<div class="bar"><i style="width:{% widthratio d.data_tb d.capacity_tb 100 %}%"></i></div><span class="small muted">{{ d.data_tb|hours }} of {{ d.capacity_tb|hours }} TB</span>{% endif %}
         <span class="small muted">{% if d.n_folders %}📁 {{ d.n_folders }} folder{{ d.n_folders|pluralize }} · {% endif %}Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
       </div></a>
+      {% if can_delete %}<details class="dc-del"><summary class="iconbtn" aria-label="Delete {{ d.code }}" title="Delete {{ d.code }}">🗑</summary>
+        <form method="post" action="{% url 'drive_delete' d.pk %}" data-live class="dc-del-pop">{% csrf_token %}
+          <b class="small">Delete {{ d.code }}?</b>
+          <span class="small muted">Its folder list{% if d.n_folders %} ({{ d.n_folders }}){% endif %} and send-back records go too. Films stay on Projects, just without a drive.</span>
+          <span class="dc-del-btns"><button class="btn sm danger">Delete</button><button type="button" class="btn sm ghost" data-close-details>Cancel</button></span>
+        </form></details>{% endif %}
+    </div>
     {% empty %}<p class="muted">No drives match.{% if active %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</p>{% endfor %}
     </div>
   </section>
-  <form method="post" enctype="multipart/form-data" class="card aside" id="receive">{% csrf_token %}<h2>Receive a drive</h2>{% include "_form.html" %}<button class="btn primary">Save drive</button><p class="small muted" style="margin:0">Next you'll paste its folder list.</p></form>
 </div>
 {% endblock %}

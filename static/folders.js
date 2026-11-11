@@ -56,6 +56,14 @@
     boxes.forEach(function (c) { c.checked = to; });
     b.textContent = to ? "Untick all" : "Tick all shown";
   });
+  /* Small confirm pop-overs (<details>): Cancel and clicking elsewhere close them */
+  doc.addEventListener("click", function (e) {
+    var c = e.target.closest && e.target.closest("[data-close-details]");
+    if (c) { c.closest("details").open = false; return; }
+    Array.prototype.forEach.call(doc.querySelectorAll("details.dc-del[open]"), function (d) {
+      if (!d.contains(e.target)) d.open = false;
+    });
+  });
   doc.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && e.target.matches && e.target.matches("[data-ff-q]") && e.target.value) {
       e.target.value = "";

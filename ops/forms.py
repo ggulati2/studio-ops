@@ -365,6 +365,16 @@ class DriveForm(StyledMixin, forms.ModelForm):
         widgets = {"received_on": DATE, "notes": forms.Textarea(attrs={"rows": 2})}
 
 
+class ReceiveDriveForm(DriveForm):
+    """Receiving a drive: its details plus, optionally, the project folders on it."""
+    folder_list = forms.CharField(
+        label="Project folders on this drive (optional)", required=False, max_length=60000,
+        widget=forms.Textarea(attrs={"rows": 6, "placeholder": "E:\\2026\\Amit_Tanya_Wedding\nRiya & Arjun - Teaser+Trailer\n20261102_Meera_Dev_Sangeet",
+                                     "class": "mono"}),
+        help_text="One per line. Windows: select the folders, Shift + right-click → Copy as path. Mac: select them in Finder → ⌘C. "
+                  "Each folder then waits on Projects for a founder to add it as a project or decline it.")
+
+
 class DriveReturnForm(StyledMixin, forms.ModelForm):
     photos_upload = PhotosField(required=False, label="Photos when sending (drive, parcel, receipt) — up to 6")
 

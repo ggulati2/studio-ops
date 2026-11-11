@@ -9,6 +9,10 @@
   <aside class="aside">
     <section class="card"><h2>Photos</h2><div class="grid" style="grid-template-columns:repeat(2,1fr)">{% for ph in d.photos.all %}<a href="{% url 'image' ph.pk %}" target="_blank"><img src="{% url 'image' ph.pk %}" alt="Drive photo" style="width:100%;border-radius:8px"></a>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</div></section>
     <section class="card"><h2>Jobs on this drive</h2>{% for j in jobs %}<div class="small">{{ j }} · {{ j.get_status_display }}</div>{% empty %}<span class="small muted">No jobs linked.</span>{% endfor %}</section>
+    {% if can_delete %}<details class="card danger-zone"><summary><b>Delete this drive</b></summary>
+      <form method="post" action="{% url 'drive_delete' d.pk %}" class="col-stack" style="gap:8px;margin-top:8px">{% csrf_token %}
+        <span class="small">Removes {{ d.code }}, its folder list and send-back records. Films stay on Projects, just without a drive. This can't be undone.</span>
+        <button class="btn sm danger">Yes, delete {{ d.code }}</button></form></details>{% endif %}
     <section class="card"><h2>History</h2><div class="small">Received {{ d.received_on|date:"j M Y" }} by {{ d.get_received_via_display|lower }}{% if d.damaged_on_arrival %} · arrived damaged{% endif %}</div>{% for r in d.returns.all %}<div class="small">Sent back {{ r.sent_on|date:"j M Y" }} to {{ r.sent_to }} · {{ r.get_method_display }} · {{ r.get_status_display }}</div>{% endfor %}</section>
   </aside>
 </div>

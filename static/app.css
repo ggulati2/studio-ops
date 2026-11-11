@@ -1055,3 +1055,32 @@ mark{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 1px;box
 .dc-body{padding:12px 14px;display:flex;flex-direction:column;gap:5px}
 .dc-top{display:flex;justify-content:space-between;gap:8px}
 .dc-top b{font-size:15px}
+
+/* Drive register: receive panel + delete */
+.receive-panel{margin-bottom:14px;padding:0}
+.receive-panel>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px}
+.receive-panel>summary::-webkit-details-marker{display:none}
+.receive-panel[open]>summary{border-bottom:1px solid var(--line)}
+.receive-panel[open]>summary .btn::after{content:" ▴"}
+.receive-form{padding:16px;display:flex;flex-direction:column;gap:14px}
+.receive-cols{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px;align-items:start}
+.receive-folders{display:flex;flex-direction:column;gap:6px;position:sticky;top:12px}
+.receive-folders textarea{min-height:260px;font-size:var(--t-sm)}
+.receive-btns{display:flex;gap:8px}
+@media (max-width:899.98px){.receive-cols{grid-template-columns:1fr}.receive-folders{position:static}}
+.drive-cell{position:relative;display:flex;flex-direction:column;min-width:0}
+.drive-cell>.drive-card{flex:1}
+.dc-del{position:absolute;right:8px;bottom:8px;z-index:2}
+.dc-del>summary{list-style:none;width:30px;height:30px;display:grid;place-items:center;border-radius:8px;cursor:pointer;opacity:.55;background:var(--card);border:1px solid var(--line);font-size:14px}
+.dc-del>summary::-webkit-details-marker{display:none}
+.drive-cell:hover .dc-del>summary,.dc-del[open]>summary,.dc-del>summary:focus-visible{opacity:1}
+.dc-del>summary:hover{border-color:var(--bad-line);background:var(--bad-bg)}
+.dc-del-pop{position:absolute;right:0;bottom:36px;width:250px;display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--card);border:1px solid var(--bad-line);border-radius:var(--r-sm);box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.dc-del-btns{display:flex;gap:6px}
+.danger-zone>summary{cursor:pointer;color:var(--bad)}
+.receive-panel{display:block}
+.drive-filters{display:flex;flex-wrap:wrap;gap:8px}
+.drive-filters select{flex:0 1 190px}
+.drive-filters .search-wrap{flex:1 1 240px}
+.drive-filters select{flex:0 1 165px;min-width:130px}
+.receive-panel:not([open]){padding:0!important}
