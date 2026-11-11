@@ -421,3 +421,107 @@ class DriveNotInUse(SeededTestCase):
         r = f.get("/drives/?status=idle")
         self.assertEqual([x.code for x in r.context["drives"]], ["HDD-99"])
         self.assertContains(f.get(f"/drives/{d.pk}/"), 'value="idle" selected')
+
+
+class DriveFolders(SeededTestCase):
+    """Folders pasted for a drive → founders add them as projects or decline; all searchable."""
+
+    def setUp(self):
+        from ops.models import DriveFolder, HardDrive
+        self.DF = DriveFolder
+        self.ag = Agency.objects.get(code="BRC")
+        self.d = HardDrive.objects.create(code="HDD-77", agency=self.ag)
+        self.f = self.login("ag")
+
+    def add(self, text, who=None):
+        c = who or self.f
+        return c.post(f"/drives/{self.d.pk}/folders/", {"folders": text}, **FETCH).json()
+
+    def test_parse_folder_names(self):
+        from ops.folders import parse
+        self.assertEqual(parse(r"E:\2026\Amit_Tanya_Wedding")["couple"], "Amit & Tanya")
+        r = parse("Riya & Arjun - Teaser+Trailer")
+        self.assertEqual((r["couple"], r["films"]), ("Riya & Arjun", ["Teaser", "Trailer"]))
+        r = parse("20261102_Meera_Dev_Sangeet")
+        self.assertEqual((r["couple"], str(r["date"])), ("Meera & Dev", "2026-11-02"))
+        self.assertEqual(parse("/Volumes/HDD/Sara weds Om Full Film")["films"], ["Full Film"])
+        self.assertIsNone(parse("   "))
+
+    def test_paste_list_adds_folders_once(self):
+        r = self.add("E:\\2026\\Amit_Tanya_Wedding\nRiya & Arjun - Teaser+Trailer\n\nE:\\2026\\Amit_Tanya_Wedding\n")
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.DF.objects.filter(drive=self.d).count(), 2)
+        self.assertIn("data-drive-folders", r["swap"][0]["html"])
+        self.add("Riya & Arjun - Teaser+Trailer")
+        self.assertEqual(self.DF.objects.filter(drive=self.d).count(), 2)
+
+    def test_drive_desk_can_add_but_not_decide(self):
+        from django.contrib.auth import get_user_model
+        from ops.rbac import DRIVE
+        desk = [u for u in get_user_model().objects.all() if getattr(u.profile, "role", "") == DRIVE]
+        if not desk:
+            self.skipTest("no drive desk user in seed")
+        c = self.client_class()
+        c.force_login(desk[0])
+        self.add("Neha_Karan", who=c)
+        f = self.DF.objects.get(drive=self.d)
+        r = c.post(f"/projects/folders/{f.pk}/", {"op": "accept", "films": ["Teaser"]})
+        self.assertNotEqual(r.status_code, 200)
+        f.refresh_from_db()
+        self.assertEqual(f.status, "pending")
+
+    def test_accept_creates_films_on_drive_under_couple(self):
+        self.add("Rhea & Aryan - Teaser+Trailer")
+        f = self.DF.objects.get(drive=self.d)
+        self.assertContains(self.f.get("/projects/"), "New folders from drives")
+        r = self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "couple": "Rhea & Aryan",
+                                                       "films": ["Teaser", "Trailer", "Reels"]}, **FETCH).json()
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["refresh"])
+        films = Project.objects.filter(couple="Rhea & Aryan", agency=self.ag)
+        self.assertEqual(sorted(films.values_list("deliverable", flat=True)), ["Reels", "Teaser", "Trailer"])
+        self.assertTrue(all(p.drive_id == self.d.pk for p in films))
+        f.refresh_from_db()
+        self.assertEqual((f.status, f.client.name), ("accepted", "Rhea & Aryan"))
+        self.assertNotContains(self.f.get("/projects/"), "New folders from drives")
+        # a second folder of the same couple doesn't duplicate films
+        self.add("Rhea_Aryan_Reception")
+        g = self.DF.objects.get(drive=self.d, status="pending")
+        r = self.f.post(f"/projects/folders/{g.pk}/", {"op": "accept", "couple": "rhea and aryan",
+                                                       "films": ["Teaser", "Full Film"]}, **FETCH).json()
+        self.assertEqual(Project.objects.filter(couple="Rhea & Aryan", agency=self.ag).count(), 4)
+        self.assertIn("already had Teaser", " ".join(m["text"] for m in r["messages"]))
+
+    def test_decline_keeps_folder_on_drive_and_can_review_again(self):
+        self.add("Old_Backup_Stuff")
+        f = self.DF.objects.get(drive=self.d)
+        self.f.post(f"/projects/folders/{f.pk}/", {"op": "decline"}, **FETCH)
+        f.refresh_from_db()
+        self.assertEqual(f.status, "declined")
+        self.assertFalse(Project.objects.filter(drive=self.d).exists())
+        self.assertContains(self.f.get(f"/drives/{self.d.pk}/"), "Old_Backup_Stuff")
+        self.f.post(f"/drives/folders/{f.pk}/", {"op": "review"}, **FETCH)
+        f.refresh_from_db()
+        self.assertEqual(f.status, "pending")
+
+    def test_bulk_accept_and_decline(self):
+        self.add("Amit_Tanya_Teaser\nSara weds Om\nJunk_Folder")
+        a, s, j = (self.DF.objects.get(drive=self.d, path=p) for p in ("Amit_Tanya_Teaser", "Sara weds Om", "Junk_Folder"))
+        r = self.f.post("/projects/folders/", {"op": "accept", "ids": [a.pk, s.pk]}, **FETCH).json()
+        self.assertTrue(Project.objects.filter(couple="Amit & Tanya", deliverable="Teaser").exists())
+        self.assertIn("Sara weds Om", " ".join(m["text"] for m in r["messages"]))   # no films read: left for one-by-one
+        self.f.post("/projects/folders/", {"op": "accept", "ids": [s.pk], "films": ["Full Film"]}, **FETCH)
+        self.assertTrue(Project.objects.filter(couple="Sara & Om", deliverable="Full Film").exists())
+        self.f.post("/projects/folders/", {"op": "decline", "ids": [j.pk]}, **FETCH)
+        j.refresh_from_db()
+        self.assertEqual(j.status, "declined")
+
+    def test_search_finds_folders_and_couple_shows_drive(self):
+        self.add("E:\\2026\\Amit_Tanya_Wedding\nJunk")
+        r = self.f.get("/drives/?q=tanya")
+        self.assertContains(r, "Folders matching")
+        self.assertContains(r, "2026/Amit_Tanya_Wedding")
+        self.assertIn(self.d, list(r.context["drives"]))
+        f = self.DF.objects.get(path="2026/Amit_Tanya_Wedding")
+        self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "couple": "Amit & Tanya", "films": ["Teaser"]}, **FETCH)
+        self.assertContains(self.f.get("/projects/?q=Amit"), "HDD-77")

@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from ..rbac import ADMIN, requires
 from ..forms import DriveForm, DriveReturnForm
-from ..models import DriveReturn, HardDrive, Project
+from ..models import DriveFolder, DriveReturn, HardDrive, Project
 from ..services import store_image
 
 __all__ = ["drives", "drive_edit", "drive_returns", "drive_return_status"]
@@ -25,14 +25,19 @@ def _save_photos(form, target):
 
 @requires("drives.manage")
 def drives(request):
-    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "projects")
+    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "projects", "folders")
     status, q = request.GET.get("status", ""), request.GET.get("q", "").strip()
     if status:
         qs = qs.filter(status=status)
     else:
         qs = qs.exclude(status="sent")
+    hits = []
     if q:
-        qs = qs.filter(Q(code__icontains=q) | Q(contents__icontains=q) | Q(agency__name__icontains=q) | Q(serial__icontains=q))
+        qs = qs.filter(Q(code__icontains=q) | Q(contents__icontains=q) | Q(agency__name__icontains=q) | Q(serial__icontains=q)
+                       | Q(agency__code__iexact=q) | Q(folders__path__icontains=q) | Q(folders__couple_guess__icontains=q)
+                       | Q(projects__couple__icontains=q)).distinct()
+        hits = list(DriveFolder.objects.filter(Q(path__icontains=q) | Q(couple_guess__icontains=q) | Q(client__name__icontains=q))
+                    .select_related("drive__agency", "client")[:60])
     form = DriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
     if request.method == "POST" and form.is_valid():
         d = form.save()
@@ -44,7 +49,7 @@ def drives(request):
               "idle": all_.filter(status="idle").count(),
               "ready": all_.filter(status="ready").count(), "damaged": all_.filter(status="damaged").count(),
               "sent": all_.filter(status="sent").count()}
-    return render(request, "drives/register.html", {"drives": qs, "form": form, "counts": counts,
+    return render(request, "drives/register.html", {"drives": qs, "form": form, "counts": counts, "hits": hits,
                                                     "status": status, "q": q, "statuses": HardDrive.STATUS})
 
 
@@ -57,7 +62,7 @@ def drive_edit(request, pk):
         _save_photos(form, d)
         messages.success(request, f"{d.code} saved.")
         return redirect("drives")
-    return render(request, "drives/edit.html", {"d": d, "form": form,
+    return render(request, "drives/edit.html", {"d": d, "form": form, "folders": d.folders.select_related("client"),
                                                 "jobs": d.projects.only("couple", "deliverable", "status")})
 
 

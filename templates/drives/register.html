@@ -2,7 +2,7 @@
 {% block title %}Drive register{% endblock %}
 {% block content %}
 <div class="head"><div><h1>Drive register</h1><p>Every drive that comes into the studio: what's on it, whose it is, and where it is now.</p></div>
-  <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Drive ID, couple, agency, serial" style="width:250px"><button class="btn">Search</button></form></div>
+  <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Drive, couple, folder, agency, serial" style="width:250px"><button class="btn">Search</button></form></div>
 <div class="grid">
   <a class="kpi" href="?" style="text-decoration:none;color:inherit"><span>In studio</span><b>{{ counts.in_studio }}</b></a>
   <a class="kpi" href="?status=in_use" style="text-decoration:none;color:inherit"><span>In use</span><b>{{ counts.in_use }}</b></a>
@@ -11,6 +11,13 @@
   <a class="kpi {% if counts.damaged %}bad{% endif %}" href="?status=damaged" style="text-decoration:none;color:inherit"><span>Damaged / issue</span><b>{{ counts.damaged }}</b></a>
   <a class="kpi" href="?status=sent" style="text-decoration:none;color:inherit"><span>Sent back</span><b>{{ counts.sent }}</b></a>
 </div>
+{% if q %}<section class="card tight folder-hits"><div class="title"><h2>Folders matching “{{ q }}”</h2><span class="small muted">{{ hits|length }}{% if hits|length == 60 %}+{% endif %}</span></div>
+  {% if hits %}<ul class="folder-list">{% for f in hits %}<li class="folder-item fs-{{ f.status }}">
+    <a class="mono fi-drive" href="{% url 'drive_edit' f.drive_id %}">{{ f.drive.code }}</a>
+    <span class="fi-path mono" title="{{ f.path }}">{{ f.path }}</span>
+    <span class="fi-meta small">{% if f.drive.agency %}{{ f.drive.agency.code|default:f.drive.agency.name }} · {% endif %}{% if f.status == "accepted" %}<span class="tag ok">Project</span> {{ f.client.name|default:"" }}{% elif f.status == "declined" %}<span class="tag">Declined</span>{% else %}<span class="tag warn">Waiting</span>{% endif %} · drive {{ f.drive.get_status_display|lower }}</span>
+  </li>{% endfor %}</ul>{% else %}<span class="small muted">No folder names match. Drives whose ID, agency or films match are shown below.</span>{% endif %}
+</section>{% endif %}
 <div class="row">
   <section class="grow"><div class="grid wide">
     {% for d in drives %}<a class="card tight" href="{% url 'drive_edit' d.pk %}" style="text-decoration:none;color:inherit;padding:0;overflow:hidden;gap:0">
@@ -20,7 +27,7 @@
       <div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px">
         <div style="display:flex;justify-content:space-between"><b class="mono" style="font-size:15px">{{ d.code }}</b><span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span></div>
         <b class="small">{% if d.studio_owned %}Studio drive{% else %}{{ d.agency|default:"No agency" }}{% endif %}</b>
-        <span class="small">{{ d.contents }}</span>
+        <span class="small">{{ d.contents }}</span>{% with n=d.folders.all|length %}{% if n %}<span class="small muted">{{ n }} folder{{ n|pluralize }}</span>{% endif %}{% endwith %}
         {% if d.capacity_tb and d.data_tb %}<div class="bar"><i style="width:{% widthratio d.data_tb d.capacity_tb 100 %}%"></i></div><span class="small muted">{{ d.data_tb|hours }} of {{ d.capacity_tb|hours }} TB</span>{% endif %}
         <span class="small muted">Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
       </div></a>

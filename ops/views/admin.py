@@ -185,7 +185,8 @@ def projects(request):
         show = max(PAGE, min(int(request.GET.get("show", PAGE)), 5000))
     except ValueError:
         show = PAGE
-    ctx = {"queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+    from .folders import inbox_context
+    ctx = {**inbox_context(), "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
            "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
            "assign_form": AssignForm(), "view": view, "switch": switch}
     if view == "grouped":

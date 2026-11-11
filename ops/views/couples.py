@@ -69,6 +69,7 @@ def couple_summary(films, all_films=None):
             "next": nxt, "next_days": (nxt - today).days if nxt else None,
             "unassigned": sum(1 for p in live if not p.editor_id),
             "editors": sorted({p.editor.profile.name for p in live if p.editor_id}),
+            "drives": sorted({p.drive.code for p in films if p.drive_id}),
             "kinds": [p.deliverable for p in films], "value": sum(p.invoice_amount for p in films),
             "pct": round(done / total * 100) if total else 0,
             "main_editor": (Counter(p.editor_id for p in live if p.editor_id).most_common(1) or [(None, 0)])[0][0]}

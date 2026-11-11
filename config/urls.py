@@ -54,6 +54,10 @@ urlpatterns = [
     # drives
     path("drives/", v.drives, name="drives"),
     path("drives/<int:pk>/", v.drive_edit, name="drive_edit"),
+    path("drives/<int:pk>/folders/", v.drive_folders_add, name="drive_folders_add"),
+    path("drives/folders/<int:pk>/", v.drive_folder_status, name="drive_folder_status"),
+    path("projects/folders/<int:pk>/", v.folder_decide, name="folder_decide"),
+    path("projects/folders/", v.folders_bulk, name="folders_bulk"),
     path("drives/send-back/", v.drive_returns, name="drive_returns"),
     path("drives/send-back/<int:pk>/status/", v.drive_return_status, name="drive_return_status"),
     # team

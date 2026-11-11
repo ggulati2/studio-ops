@@ -250,6 +250,37 @@ class DriveReturn(models.Model):
         ordering = ["-sent_on"]
 
 
+class DriveFolder(models.Model):
+    """A project folder found on a drive. Founders decide: it becomes films on Projects
+    (accepted) or just stays listed on the drive (declined). Searchable either way."""
+    PENDING, ACCEPTED, DECLINED = "pending", "accepted", "declined"
+    STATUS = [(PENDING, "Waiting for a decision"), (ACCEPTED, "Project"), (DECLINED, "Declined")]
+    drive = models.ForeignKey(HardDrive, on_delete=models.CASCADE, related_name="folders")
+    path = models.CharField("Folder", max_length=300)
+    name = models.CharField(max_length=200)
+    couple_guess = models.CharField(max_length=120, blank=True)
+    films_guess = models.CharField(max_length=200, blank=True)
+    event_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS, default=PENDING)
+    client = models.ForeignKey("Couple", null=True, blank=True, on_delete=models.SET_NULL, related_name="folders")
+    added_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    added_on = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    decided_on = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["path"]
+        constraints = [models.UniqueConstraint(fields=["drive", "path"], name="folder_unique_per_drive")]
+        indexes = [models.Index(fields=["status"])]
+
+    def __str__(self):
+        return f"{self.drive.code}: {self.path}"
+
+    @property
+    def films_list(self):
+        return [f for f in self.films_guess.split(",") if f]
+
+
 # --------------------------------------------------------------------------
 # Projects (one row = one film / deliverable)
 # --------------------------------------------------------------------------
@@ -282,6 +313,10 @@ class Couple(models.Model):
 
     def __str__(self):
         return self.name
+
+    @staticmethod
+    def key_for(name):
+        return couple_key(name)
 
     @classmethod
     def for_name(cls, agency, name):

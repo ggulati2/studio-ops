@@ -1,0 +1,28 @@
+{% if folders %}<section class="card folder-inbox" aria-labelledby="fi-h">
+  <div class="title"><h2 id="fi-h">New folders from drives</h2><span class="small muted">{{ folders_total }} waiting{% if folders_total > folders|length %} · showing {{ folders|length }}{% endif %} · add the real projects, decline the rest (they stay listed on the drive)</span></div>
+  <form method="post" action="{% url 'folders_bulk' %}" id="folders-bulk" data-live class="folder-bulk">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <span class="small"><b>Ticked folders:</b> add with films</span>
+    {% for d in deliverables %}{% if forloop.counter <= 6 %}<label class="chk small"><input type="checkbox" name="films" value="{{ d }}"> {{ d }}</label>{% endif %}{% endfor %}
+    <span class="small muted">(none ticked = the films read from each folder name)</span>
+    <button class="btn primary sm" name="op" value="accept">Add ticked as projects</button>
+    <button class="btn sm" name="op" value="decline">Decline ticked</button>
+  </form>
+  <div class="folder-cards">{% for f in folders %}
+  <form method="post" action="{% url 'folder_decide' f.pk %}" data-live class="folder-card" data-folder="{{ f.pk }}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <div class="fc-head">
+      <label class="chk"><input type="checkbox" name="ids" value="{{ f.pk }}" form="folders-bulk" aria-label="Tick {{ f.name }}"></label>
+      <span class="fc-title"><span><b>{{ f.couple_guess }}</b>{% if f.drive.agency %} <span class="small muted">· {{ f.drive.agency.code|default:f.drive.agency.name }}</span>{% endif %}</span>
+        <span class="small muted">on <a class="mono" href="{% url 'drive_edit' f.drive_id %}">{{ f.drive.code }}</a> · <span class="mono">{{ f.path }}</span>{% if f.event_date %} · event {{ f.event_date|date:"j M Y" }}{% endif %}</span>
+        {% if f.existing %}<span class="small" style="color:var(--info)">Already on Projects: {{ f.existing|join:", " }}</span>{% endif %}</span>
+    </div>
+    <div class="fc-fields">
+      <label class="small">Couple <input name="couple" class="input" value="{{ f.couple_guess }}" maxlength="120" required></label>
+      {% if not f.drive.agency %}<label class="small">Agency <select name="agency" class="input" required><option value="">Pick</option>{% for a in agencies %}<option value="{{ a.pk }}">{{ a.name }}</option>{% endfor %}</select></label>{% endif %}
+      <fieldset class="fc-films"><legend class="small">Films</legend>{% for d in deliverables %}<label class="chk small"><input type="checkbox" name="films" value="{{ d }}"{% if d in f.films_list %} checked{% endif %}{% if d in f.existing %} disabled title="Already on Projects"{% endif %}> {{ d }}</label>{% endfor %}</fieldset>
+      <label class="small">Editor <select name="editor" class="input"><option value="">Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}">{{ u.profile.name }}</option>{% endfor %}</select></label>
+      <label class="small">Editor's deadline <input type="date" name="deadline" class="input"></label>
+      <label class="small">Agency's deadline <input type="date" name="agency_deadline" class="input"></label>
+    </div>
+    <div class="fc-btns"><button class="btn primary sm" name="op" value="accept">Add as project</button><button class="btn sm" name="op" value="decline" formnovalidate>Decline</button></div>
+  </form>{% endfor %}</div>
+</section>{% endif %}

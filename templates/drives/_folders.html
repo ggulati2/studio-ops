@@ -1,0 +1,17 @@
+<section class="card drive-folders" data-drive-folders>
+  <div class="title"><h2>Folders on this drive</h2><span class="small muted">{{ folders|length }} folder{{ folders|length|pluralize }}</span></div>
+  <form method="post" action="{% url 'drive_folders_add' d.pk %}" data-live class="folder-add">{% csrf_token %}
+    <p class="small" id="folders-help-{{ d.pk }}" style="margin:0"><b>Paste folder names, one per line.</b> Windows: select the folders, Shift + right-click → <i>Copy as path</i>. Mac: select them in Finder → ⌘C.</p>
+    <textarea id="folders-{{ d.pk }}" aria-describedby="folders-help-{{ d.pk }}" aria-label="Folder names" name="folders" class="input" rows="4" placeholder="E:\2026\Amit_Tanya_Wedding&#10;Riya &amp; Arjun - Teaser+Trailer&#10;20261102_Meera_Dev_Sangeet"></textarea>
+    <div class="folder-add-row"><button class="btn primary sm">Add folders</button><span class="small muted">Each one waits on Projects for a founder: add as a project, or decline (stays listed here).</span></div>
+  </form>
+  {% if folders %}<ul class="folder-list">{% for f in folders %}
+    <li class="folder-item fs-{{ f.status }}">
+      <span class="fi-path mono" title="{{ f.path }}">{{ f.path }}</span>
+      <span class="fi-meta small">{% if f.status == "accepted" %}<span class="tag ok">Project</span> {% if f.client %}<a href="{% url 'projects' %}?status=&amp;q={{ f.client.name|urlencode }}">{{ f.client.name }}</a>{% endif %}{% elif f.status == "declined" %}<span class="tag">Declined</span>{% else %}<span class="tag warn">Waiting</span> <span class="muted">{{ f.couple_guess }}{% if f.films_guess %} · {{ f.films_list|join:", " }}{% endif %}</span>{% endif %}</span>
+      <span class="fi-btns">
+        {% if f.status == "declined" %}<form method="post" action="{% url 'drive_folder_status' f.pk %}" data-live>{% csrf_token %}<input type="hidden" name="op" value="review"><button class="btn sm ghost">Review again</button></form>{% endif %}
+        {% if f.status != "accepted" %}<form method="post" action="{% url 'drive_folder_status' f.pk %}" data-live>{% csrf_token %}<input type="hidden" name="op" value="remove"><button class="btn sm ghost" aria-label="Remove {{ f.path }}">Remove</button></form>{% endif %}
+      </span>
+    </li>{% endfor %}</ul>{% endif %}
+</section>

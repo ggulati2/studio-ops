@@ -999,3 +999,33 @@ form.asking .status-select{box-shadow:0 0 0 2px var(--info-line)}
 .chip.mismatch .ct::before{content:"⚠ ";color:var(--warn)}
 .plan-also{display:block;margin-top:2px;font-size:var(--t-xs);color:var(--warn)}
 .tag.idle{background:var(--sunk);color:var(--muted);border-color:var(--line)}
+
+/* Drive folders */
+.col-stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.folder-add{display:flex;flex-direction:column;gap:6px}
+.folder-add textarea{font-family:ui-monospace,Menlo,monospace;font-size:var(--t-sm);min-height:96px}
+.folder-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.folder-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column}
+.folder-item{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 2px;border-top:1px solid var(--line2)}
+.folder-item .fi-path{flex:1 1 240px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--t-sm)}
+.folder-item .fi-drive{font-weight:600;flex:none}
+.folder-item .fi-btns{display:inline-flex;gap:4px}
+.folder-item .fi-btns form{margin:0}
+.folder-item.fs-declined .fi-path{color:var(--muted)}
+.folder-inbox{border-color:var(--info-line)}
+.folder-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-sm);background:var(--sunk);margin-bottom:10px}
+.chk{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.folder-cards{display:flex;flex-direction:column;gap:10px}
+.folder-card{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--card)}
+.fc-head{display:flex;gap:10px;align-items:flex-start}
+.fc-title{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fc-title .mono{word-break:break-all}
+.fc-fields{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.fc-fields>label{display:flex;flex-direction:column;gap:4px}
+.fc-films{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 12px;flex:1 1 100%}
+.fc-films legend{padding:0;margin-bottom:4px;color:var(--muted)}
+.fc-btns{display:flex;gap:6px}
+.folder-hits{margin-bottom:16px}
+label.chk{flex-direction:row!important;white-space:nowrap}
+label.chk input{margin:0;width:auto;height:auto}
+.fc-head .chk{padding-top:2px}

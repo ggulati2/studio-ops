@@ -138,7 +138,12 @@
     var form = e.target;
     if (!form.matches || !form.matches("form[data-live]") || !window.fetch) return;
     e.preventDefault();
-    send(form).catch(function (err) {
+    var body;
+    if (e.submitter && e.submitter.name) {     // which button was pressed (e.g. Add vs Decline)
+      body = new FormData(form);
+      body.append(e.submitter.name, e.submitter.value);
+    }
+    send(form, body).catch(function (err) {
       form.classList.remove("is-saving");
       toast(err.message || "Couldn't save.", { level: "error" });
     });
