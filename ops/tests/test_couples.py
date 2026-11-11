@@ -633,3 +633,28 @@ class DriveDataListPhotos(SeededTestCase):
                 return FakeModel
         mig.tb_to_gb(Apps(), None)
         self.assertEqual(d.data_gb, Decimal("1800.0"))
+
+
+class DriveDataFix(SeededTestCase):
+    def test_wrongly_multiplied_values_are_fixed(self):
+        from decimal import Decimal
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        from ops.models import HardDrive
+        a = HardDrive.objects.create(code="HDD-71", capacity_tb=4, data_gb=106000)    # was 106 GB
+        b = HardDrive.objects.create(code="HDD-72", capacity_tb=4, data_gb=1800)      # was 1.8 TB: right
+        c = HardDrive.objects.create(code="HDD-73", data_gb=250000)                   # size unknown, 250 GB
+        import_module("ops.migrations.0017_fix_drive_data_gb").fix(django_apps, None)
+        for d, want in ((a, "106.0"), (b, "1800"), (c, "250.0")):
+            d.refresh_from_db()
+            self.assertEqual(d.data_gb, Decimal(want))
+
+    def test_form_refuses_more_than_capacity(self):
+        from ops.forms import DriveForm
+        f = DriveForm(data={"code": "HDD-74", "kind": "HDD", "studio_owned": "on", "capacity_tb": "2", "data_gb": "106000",
+                            "received_on": "2026-11-11", "received_via": "courier", "status": "in_use"})
+        self.assertFalse(f.is_valid())
+        self.assertIn("data_gb", f.errors)
+        f = DriveForm(data={"code": "HDD-74", "kind": "HDD", "studio_owned": "on", "capacity_tb": "2", "data_gb": "106",
+                            "received_on": "2026-11-11", "received_via": "courier", "status": "in_use"})
+        self.assertTrue(f.is_valid(), f.errors)

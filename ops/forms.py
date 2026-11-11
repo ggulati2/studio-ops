@@ -363,6 +363,20 @@ class DriveForm(StyledMixin, forms.ModelForm):
         fields = ["code", "kind", "agency", "studio_owned", "contents", "brand_model", "serial", "capacity_tb",
                   "data_gb", "received_on", "received_via", "tracking", "location", "damaged_on_arrival", "status", "notes"]
         widgets = {"received_on": DATE, "notes": forms.Textarea(attrs={"rows": 2})}
+        help_texts = {"data_gb": "In GB, e.g. 106 for 106 GB (1 TB = 1000 GB)."}
+
+    def clean(self):
+        return _check_drive_data(self, super().clean())
+
+
+def _check_drive_data(form, data):
+    gb, cap = data.get("data_gb"), data.get("capacity_tb")
+    if gb is not None and gb < 0:
+        form.add_error("data_gb", "Can't be negative.")
+    elif gb and cap and gb > cap * 1000:
+        form.add_error("data_gb", f"That's more than the drive holds ({cap:g} TB = {cap * 1000:g} GB). "
+                                  "Enter the data in GB, e.g. 106 for 106 GB.")
+    return data
 
 
 class ReceiveDriveForm(DriveForm):
