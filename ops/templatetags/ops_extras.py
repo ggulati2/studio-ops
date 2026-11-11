@@ -45,7 +45,7 @@ FLAG = {"Overdue": "bad", "Due soon": "warn", "On track": "info", "Needs an edit
 STATUS = {"in_progress": "info", "tl_review": "qc", "tl_revisions": "warn", "qc": "qc", "revisions": "warn", "qc_passed": "ok", "sent_agency": "info",
           "closed": "ok", "client_rev": "gold", "not_started": "", "on_hold": ""}
 INV = {"draft": "", "sent": "info", "part": "info", "paid": "ok", "overdue": "bad"}
-DRIVE = {"in_use": "info", "backup_done": "ok", "ready": "warn", "sent": "", "damaged": "bad"}
+DRIVE = {"in_use": "info", "idle": "idle", "backup_done": "ok", "ready": "warn", "sent": "", "damaged": "bad"}
 
 
 @register.filter

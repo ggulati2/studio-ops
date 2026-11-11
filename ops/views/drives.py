@@ -41,6 +41,7 @@ def drives(request):
         return redirect("drives")
     all_ = HardDrive.objects.all()
     counts = {"in_studio": all_.exclude(status="sent").count(), "in_use": all_.filter(status="in_use").count(),
+              "idle": all_.filter(status="idle").count(),
               "ready": all_.filter(status="ready").count(), "damaged": all_.filter(status="damaged").count(),
               "sent": all_.filter(status="sent").count()}
     return render(request, "drives/register.html", {"drives": qs, "form": form, "counts": counts,

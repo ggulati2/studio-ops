@@ -199,7 +199,7 @@ class StoredImage(models.Model):
 
 
 class HardDrive(models.Model):
-    STATUS = [("in_use", "In use"), ("backup_done", "Backup done"), ("ready", "Ready to send back"),
+    STATUS = [("in_use", "In use"), ("idle", "Not in use"), ("backup_done", "Backup done"), ("ready", "Ready to send back"),
               ("sent", "Sent back"), ("damaged", "Damaged / issue")]
     code = models.CharField("Drive ID", max_length=20, unique=True)
     kind = models.CharField(max_length=12, choices=[("HDD", "HDD"), ("SSD", "SSD"), ("Card", "Memory card")], default="HDD")

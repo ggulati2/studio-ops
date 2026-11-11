@@ -6,6 +6,7 @@
 <div class="grid">
   <a class="kpi" href="?" style="text-decoration:none;color:inherit"><span>In studio</span><b>{{ counts.in_studio }}</b></a>
   <a class="kpi" href="?status=in_use" style="text-decoration:none;color:inherit"><span>In use</span><b>{{ counts.in_use }}</b></a>
+  <a class="kpi" href="?status=idle" style="text-decoration:none;color:inherit"><span>Not in use</span><b>{{ counts.idle }}</b></a>
   <a class="kpi warn" href="?status=ready" style="text-decoration:none;color:inherit"><span>Ready to send back</span><b>{{ counts.ready }}</b></a>
   <a class="kpi {% if counts.damaged %}bad{% endif %}" href="?status=damaged" style="text-decoration:none;color:inherit"><span>Damaged / issue</span><b>{{ counts.damaged }}</b></a>
   <a class="kpi" href="?status=sent" style="text-decoration:none;color:inherit"><span>Sent back</span><b>{{ counts.sent }}</b></a>

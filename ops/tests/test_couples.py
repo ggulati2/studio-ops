@@ -407,3 +407,17 @@ class PlannerMatchesProjects(SeededTestCase):
         self.plan(self.nikhil, f"p:{self.p.pk}")
         self.assertContains(self.f.get("/planner/"), "planned for someone who isn")
         self.assertContains(self.f.get("/planner/?view=month"), "data-plan-mismatch")
+
+
+class DriveNotInUse(SeededTestCase):
+    def test_not_in_use_status(self):
+        from ops.models import HardDrive
+        d = HardDrive.objects.create(code="HDD-99", status="idle")
+        self.assertEqual(d.get_status_display(), "Not in use")
+        f = self.login("ag")
+        r = f.get("/drives/")
+        self.assertContains(r, "Not in use")
+        self.assertEqual(r.context["counts"]["idle"], 1)
+        r = f.get("/drives/?status=idle")
+        self.assertEqual([x.code for x in r.context["drives"]], ["HDD-99"])
+        self.assertContains(f.get(f"/drives/{d.pk}/"), 'value="idle" selected')
