@@ -669,3 +669,58 @@ class DriveListSentBack(SeededTestCase):
         self.assertContains(r, "<th>Sent back</th>", html=False)
         self.assertContains(r, "to Rahul (BRC)")
         self.assertContains(r, f'data-href="/drives/{d.pk}/"')
+
+
+class StartDates(SeededTestCase):
+    """Projects get a start date; the Planner plans from it and shows start + due days."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import PlanEntry
+        self.PE = PlanEntry
+        self.f = self.login("ag")
+        self.today = timezone.localdate()
+        self.ed = get_user_model().objects.get(username="nikhil")
+        self.PE.objects.filter(user=self.ed, date__gte=self.today).delete()
+        self.p = Project.objects.create(couple="Start Check", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                        editor=self.ed, deadline=self.today + timedelta(days=30))
+
+    def post(self, data):
+        return self.f.post(f"/projects/{self.p.pk}/status/", {**data, "next": "/projects/"}, **FETCH).json()
+
+    def test_start_date_inline_edit_moves_planner_days(self):
+        from ops.services import auto_plan
+        auto_plan(self.p)
+        self.assertTrue(self.PE.objects.filter(project=self.p, date__lt=self.today + timedelta(days=10)).exists())
+        start = self.today + timedelta(days=10)
+        r = self.post({"start_date": start.isoformat()})
+        self.assertTrue(r["ok"])
+        self.assertIn('name="start_date"', r["row"])
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.start_date, start)
+        days = list(self.PE.objects.filter(project=self.p).values_list("date", flat=True))
+        self.assertTrue(days)
+        self.assertTrue(all(d >= start for d in days))
+        self.assertEqual(r["undo"], {"start_date": ""})
+
+    def test_start_after_deadline_refused(self):
+        r = self.post({"start_date": (self.today + timedelta(days=40)).isoformat()})
+        self.assertFalse(r["ok"])
+        self.p.refresh_from_db()
+        self.assertIsNone(self.p.start_date)
+
+    def test_planner_shows_start_and_due(self):
+        start = self.today + timedelta(days=2)
+        Project.objects.filter(pk=self.p.pk).update(start_date=start, deadline=self.today + timedelta(days=9))
+        html = self.f.get(f"/planner/?start={self.today.isoformat()}").content.decode()
+        self.assertIn("▶ Start: Start Check · Teaser", html)
+        self.assertIn("Due: Start Check · Teaser", html)
+        self.assertIn("▶ Start day", self.f.get("/planner/?view=month").content.decode())
+
+    def test_new_project_and_list(self):
+        from ops.forms import NewProjectForm, ProjectForm
+        self.assertIn("start_date", NewProjectForm().fields)
+        self.assertIn("start_date", ProjectForm(instance=self.p).fields)
+        self.assertContains(self.f.get("/projects/?view=list&status="), "<th data-col=\"start\">Start date</th>", html=False)
+        codes = [j["p"].pk for j in self.f.get("/projects/?view=list&status=&sort=start").context["jobs"]]
+        self.assertIn(self.p.pk, codes)

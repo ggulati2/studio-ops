@@ -69,6 +69,7 @@
     <select class="input" name="sort" data-autosubmit aria-label="Sort by">
       <option value="deadline" {% if f.sort == 'deadline' or not f.sort %}selected{% endif %}>Sort: editor's deadline</option>
       <option value="agency_deadline" {% if f.sort == 'agency_deadline' %}selected{% endif %}>Sort: agency's deadline</option>
+      <option value="start" {% if f.sort == 'start' %}selected{% endif %}>Sort: start date</option>
       <option value="newest" {% if f.sort == 'newest' %}selected{% endif %}>Sort: newest first</option>
       <option value="agency" {% if f.sort == 'agency' %}selected{% endif %}>Sort: agency</option>
       <option value="couple" {% if f.sort == 'couple' %}selected{% endif %}>Sort: couple A–Z</option>
@@ -76,8 +77,8 @@
     <div class="actions" data-live-part="clear"><button class="btn">Apply</button>{% if active_filters %}<a class="btn" href="?status={{ status }}{% if view == 'list' %}&amp;view=list{% endif %}">Clear {{ active_filters }} filter{{ active_filters|pluralize }}</a>{% endif %}</div>
   </form>
   {% if view == "grouped" %}<div class="groups" data-live-part="table" data-groups>{% include "founder/_groups.html" %}</div>
-  {% else %}<div class="scroll" data-live-part="table"><table style="min-width:1040px" data-columns="projects">
-    <thead><tr><th data-col="job">Job</th><th data-col="agency">Agency</th><th data-col="editor">Editor</th><th data-col="deadline">Editor's deadline</th><th data-col="agency_deadline">Agency's deadline</th><th data-col="status">Status</th><th data-col="footage">Footage</th><th data-col="invoice" class="right">Invoice</th></tr></thead>
+  {% else %}<div class="scroll" data-live-part="table"><table style="min-width:1180px" data-columns="projects">
+    <thead><tr><th data-col="job">Job</th><th data-col="agency">Agency</th><th data-col="editor">Editor</th><th data-col="start">Start date</th><th data-col="deadline">Editor's deadline</th><th data-col="agency_deadline">Agency's deadline</th><th data-col="status">Status</th><th data-col="footage">Footage</th><th data-col="invoice" class="right">Invoice</th></tr></thead>
     <tbody>{% for j in jobs %}{% include "founder/_project_row.html" with p=j.p back=request.get_full_path %}{% empty %}<tr><td colspan="8" class="muted">No films match these filters.{% if active_filters %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>{% endif %}
   <div data-live-part="more" class="more-row">{% if more %}<a class="btn" href="{{ more.url }}" data-live-more>Show {{ more.next }} more <span class="muted">({{ more.left }} left)</span></a>{% endif %}</div>

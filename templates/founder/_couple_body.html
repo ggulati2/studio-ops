@@ -1,6 +1,6 @@
 {% load ops_extras %}<div class="scroll"><table class="grp-table">
-  <thead><tr><th>Film</th><th>Editor</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
-  <tbody>{% for p in g.films %}{% include "founder/_project_row.html" with layout="couple" %}{% empty %}<tr><td colspan="7" class="muted">No films of this couple match the filters.</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>Film</th><th>Editor</th><th>Start</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
+  <tbody>{% for p in g.films %}{% include "founder/_project_row.html" with layout="couple" %}{% empty %}<tr><td colspan="8" class="muted">No films of this couple match the filters.</td></tr>{% endfor %}</tbody>
 </table></div>
 {% if g.s.hidden %}<p class="small muted grp-hidden">{{ g.s.hidden }} more film{{ g.s.hidden|pluralize }} for {{ g.c.name }} {{ g.s.hidden|pluralize:"is,are" }} hidden by the filters. <a href="{% url 'projects' %}?status=&amp;agency={{ g.c.agency_id }}&amp;q={{ g.c.name|urlencode }}">Show every film</a></p>{% endif %}
 <div class="grp-tools" role="group" aria-label="Actions for {{ g.c.name }}">
@@ -18,7 +18,7 @@
       <button class="btn primary sm">Apply</button><span class="small muted">The sent date is used only for “Sent to agency”.</span></form></details>
   <details class="grp-tool"><summary class="btn sm">Move deadlines</summary>
     <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="shift">
-      <label class="small">Move <select name="which" class="input"><option value="both">both deadlines</option><option value="editor">editor's deadlines</option><option value="agency">agency's deadlines</option></select></label>
+      <label class="small">Move <select name="which" class="input"><option value="both">both deadlines</option><option value="editor">editor's deadlines</option><option value="agency">agency's deadlines</option><option value="all">start dates and both deadlines</option><option value="start">start dates</option></select></label>
       <label class="small">by <input type="number" name="days" class="input num" value="1" min="-365" max="365" step="1" style="width:84px" aria-label="Days (negative = earlier)"> day(s)</label>
       <button class="btn primary sm">Move</button><span class="small muted">Open films only. Use a minus number to bring them forward.</span></form></details>
   {% endif %}
@@ -26,6 +26,7 @@
     <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="add">
       <label class="small">Film <select name="deliverable" class="input" required><option value="">Pick</option>{% for d in deliverables %}<option>{{ d }}</option>{% endfor %}</select></label>
       <label class="small">Editor <select name="editor" class="input"><option value="">Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}"{% if u.pk == g.s.main_editor %} selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select></label>
+      <label class="small">Start date <input type="date" name="start_date" class="input"></label>
       <label class="small">Editor's deadline <input type="date" name="deadline" class="input"></label>
       <label class="small">Agency's deadline <input type="date" name="agency_deadline" class="input"></label>
       <label class="small">Invoice ({{ g.c.agency.symbol }}) <input type="number" name="invoice_amount" class="input num" min="0" step="1" placeholder="Agency rate" style="width:120px"></label>

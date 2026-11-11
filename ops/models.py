@@ -346,6 +346,8 @@ class Project(models.Model):
     agency = models.ForeignKey(Agency, on_delete=models.PROTECT, related_name="projects")
     editor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
     received_on = models.DateField(default=date.today)
+    start_date = models.DateField("Start date", null=True, blank=True,
+                                  help_text="When editing starts. The Planner fills days from here to the editor's deadline.")
     deadline = models.DateField("Editor's deadline", null=True, blank=True,
                                 help_text="The date the editor works to. Editors see only this date.")
     agency_deadline = models.DateField("Agency's deadline", null=True, blank=True,

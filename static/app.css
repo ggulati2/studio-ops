@@ -1115,3 +1115,11 @@ mark{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 1px;box
 .ph-pop{pointer-events:none}
 tr[data-href]{cursor:pointer}
 tr[data-href]:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+
+/* Start dates in the Planner */
+.tag.start-key{background:var(--ok-bg, #e8f6ee);color:var(--ok);border-color:var(--ok-line, var(--line))}
+.start-tag{font-size:.6875rem;font-weight:600;color:var(--ok);margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.start-count{display:inline-block;margin:3px 4px 0 0;font-size:.6875rem;font-weight:600;color:#fff;background:var(--ok);border-radius:999px;padding:1px 7px}
+.plan-month thead th .ds{display:inline-block;margin:2px 2px 0 0;padding:0 4px;border-radius:999px;background:var(--ok);color:#fff;font-size:.625rem;font-weight:600}
+.plan-month .start-dot{display:inline-block;font-size:9px;font-weight:700;color:var(--ok);margin-right:3px}
+td.starts{box-shadow:inset 3px 0 0 var(--ok)}

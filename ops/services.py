@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.db import models
 from django.utils import timezone
 
 from .models import (DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Invoice, Profile, Project,
@@ -412,7 +413,7 @@ def set_plan(user, d, value, slot=1):
         PlanEntry.objects.filter(user=user, date=d, slot=2).update(slot=1)
 
 
-def auto_plan(project, start=None):
+def auto_plan(project, start=None, trim=False):
     """Put a job on its editor's planner: enough working days (from its usual hours)
     between `start` (default today) and the deadline. Empty days are used first;
     if that's not enough, the job goes *alongside* other work (second slot) on busy
@@ -428,7 +429,10 @@ def auto_plan(project, start=None):
      .exclude(user_id=project.editor_id).delete())          # days left on someone else after a reassignment
     if project.is_extra or not (project.editor_id and project.deadline and project.is_open):
         return 0, 0
-    start = max(start or today, project.received_on or today, today)
+    start = max(start or today, project.start_date or project.received_on or today, today)
+    if trim:    # start or deadline moved: days planned outside the new window go
+        (PlanEntry.objects.filter(project=project, user_id=project.editor_id, date__gte=today).exclude(label="Revisions")
+         .filter(models.Q(date__lt=start) | models.Q(date__gt=project.deadline)).delete())
     if start > project.deadline:
         return 0, 0
     per_day = float(StudioSettings.get().hours_per_day or 8)
@@ -514,6 +518,16 @@ def repeat_plan(user, start, value, days, slot=1):
 
 
 # ---------------------------------------------------------------- deliveries on calendars
+def starts_between(a, b):
+    """{date: [open films starting that day]} for the Planner."""
+    qs = (Project.objects.filter(start_date__range=(a, b), editor__isnull=False)
+          .exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY)).select_related("agency"))
+    out = defaultdict(list)
+    for p in qs:
+        out[p.start_date].append(p)
+    return out
+
+
 def deliveries_between(a, b, user=None):
     """{date: [projects due that day]} (open jobs by deadline; delivered jobs on their deadline too)."""
     qs = Project.objects.filter(deadline__range=(a, b)).exclude(status=Project.ON_HOLD).select_related("agency", "editor__profile")

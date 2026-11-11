@@ -295,46 +295,52 @@ def couple_action(request, pk):
         else:
             moved, skipped, made = 0, [], 0
             with transaction.atomic():
+                step = timedelta(days=days)
                 for p in live:
-                    ed = p.deadline + timedelta(days=days) if p.deadline and which in ("both", "editor") else p.deadline
-                    ad = (p.agency_deadline + timedelta(days=days) if p.agency_deadline and which in ("both", "agency")
+                    ed = p.deadline + step if p.deadline and which in ("both", "editor", "all") else p.deadline
+                    ad = (p.agency_deadline + step if p.agency_deadline and which in ("both", "agency", "all")
                           else p.agency_deadline)
-                    if (ed, ad) == (p.deadline, p.agency_deadline):
+                    sd = p.start_date + step if p.start_date and which in ("start", "all") else p.start_date
+                    if (ed, ad, sd) == (p.deadline, p.agency_deadline, p.start_date):
                         continue
-                    if ed and ad and ed > ad:
+                    if (ed and ad and ed > ad) or (sd and ed and sd > ed):
                         skipped.append(p.deliverable)
                         continue
-                    replan = ed != p.deadline and p.editor_id
-                    p.deadline, p.agency_deadline = ed, ad
-                    p.save(update_fields=["deadline", "agency_deadline"])
+                    replan = (ed != p.deadline or sd != p.start_date) and p.editor_id
+                    p.deadline, p.agency_deadline, p.start_date = ed, ad, sd
+                    p.save(update_fields=["deadline", "agency_deadline", "start_date"])
                     moved += 1
-                    if replan:
-                        made += S.auto_plan(p)[0]
-            what = {"both": "deadlines", "editor": "editor's deadlines", "agency": "agency's deadlines"}.get(which, "deadlines")
+                    if replan and p.deadline:
+                        made += S.auto_plan(p, trim=True)[0]
+            what = {"both": "deadlines", "editor": "editor's deadlines", "agency": "agency's deadlines",
+                    "start": "start dates", "all": "start dates and deadlines"}.get(which, "deadlines")
             record(request, "couple.shift", str(couple), f"{what} {days:+d} day(s) on {moved} film(s)")
             say.append(("success", f"{couple}: {what} moved {abs(days)} day(s) {'later' if days > 0 else 'earlier'} "
                                    f"on {moved} film(s)." + (f" Planner updated ({made} day(s))." if made else "")))
             if skipped:
-                say.append(("warning", f"Not moved: {', '.join(skipped)} (the editor's deadline would land after the agency's)."))
+                say.append(("warning", f"Not moved: {', '.join(skipped)} (the dates would be out of order: start, then "
+                                       "editor's deadline, then agency's)."))
 
     elif act == "add":
         d = P.get("deliverable", "")
-        ed, ad = _date(P.get("deadline")), _date(P.get("agency_deadline"))
+        ed, ad, sd = _date(P.get("deadline")), _date(P.get("agency_deadline")), _date(P.get("start_date"))
         raw = P.get("editor", "")
         editor = team().filter(pk=raw).first() if raw.isdigit() else None
         amount = (P.get("invoice_amount") or "").replace(",", "").strip()
         if d not in Project.DELIVERABLES:
             say.append(("error", "Pick which film to add."))
-        elif ed is False or ad is False:
+        elif ed is False or ad is False or sd is False:
             say.append(("error", "One of the dates isn't valid."))
         elif ed and ad and ed > ad:
             say.append(("error", "The editor's deadline can't be after the agency's."))
+        elif sd and ed and sd > ed:
+            say.append(("error", "The start date can't be after the editor's deadline."))
         elif amount and (not amount.isdigit() or int(amount) > 100_000_000):
             say.append(("error", "The invoice amount must be a whole number."))
         else:
             rate = couple.agency.rates.filter(deliverable=d).values_list("amount", flat=True).first() or 0
             p = Project(couple=couple.name, client=couple, agency=couple.agency, deliverable=d, editor=editor,
-                        deadline=ed or None, agency_deadline=ad or None,
+                        deadline=ed or None, agency_deadline=ad or None, start_date=sd or None,
                         invoice_amount=int(amount) if amount else rate)
             p.save()
             record(request, "project.new", str(p), f"added to {couple}")

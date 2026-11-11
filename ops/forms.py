@@ -82,10 +82,10 @@ class ProjectForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Project
-        fields = ["couple", "deliverable", "agency", "editor", "received_on", "deadline", "agency_deadline", "status",
+        fields = ["couple", "deliverable", "agency", "editor", "received_on", "start_date", "deadline", "agency_deadline", "status",
                   "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
                   "first_delivered_on", "timing_override", "timing_note"]
-        widgets = {"received_on": DATE, "deadline": DATE, "agency_deadline": DATE, "first_delivered_on": DATE,
+        widgets = {"received_on": DATE, "start_date": DATE, "deadline": DATE, "agency_deadline": DATE, "first_delivered_on": DATE,
                    "brief": forms.Textarea(attrs={"rows": 3})}
         labels = {"first_delivered_on": "Sent to agency on"}
         help_texts = {"first_delivered_on": "The day it was really sent (first delivery). On time = on or before the agency's deadline."}
@@ -111,7 +111,9 @@ class ProjectForm(StyledMixin, forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        ed, ad = data.get("deadline"), data.get("agency_deadline")
+        ed, ad, sd = data.get("deadline"), data.get("agency_deadline"), data.get("start_date")
+        if sd and ed and sd > ed:
+            self.add_error("start_date", f"The start date ({sd:%-d %b}) is after the editor's deadline ({ed:%-d %b}).")
         if ed and ad and ed > ad:
             self.add_error("deadline", f"The editor's deadline ({ed:%-d %b}) is after the agency's ({ad:%-d %b}).")
         sent = data.get("first_delivered_on")
@@ -163,6 +165,8 @@ class NewProjectForm(StyledMixin, forms.Form):
                                              widget=forms.CheckboxSelectMultiple)
     editor = forms.TypedChoiceField(required=False, coerce=int, empty_value=None,
                                     help_text="Leave unassigned to put it in the 'Needs an editor' queue")
+    start_date = forms.DateField(label="Start date", widget=DATE, required=False,
+                                 help_text="When editing starts (all films). The Planner fills days from here.")
     deadline = forms.DateField(label="Editor's deadline", widget=DATE, required=False,
                                help_text="For all films, unless you set one per film below. Editors see only this date.")
     agency_deadline = forms.DateField(label="Agency's deadline", widget=DATE, required=False,
@@ -194,7 +198,7 @@ class NewProjectForm(StyledMixin, forms.Form):
             for n in ("deadline", "agency_deadline", "amount"):
                 self.fields[f"f{k}_{n}"].widget.attrs["class"] = "input"
 
-    MAIN = ["couple", "agency", "deliverables", "editor", "deadline", "agency_deadline", "invoice_amount",
+    MAIN = ["couple", "agency", "deliverables", "editor", "start_date", "deadline", "agency_deadline", "invoice_amount",
             "source", "cloud_link", "is_extra", "extra_basis", "extra_rate", "brief"]
 
     def main_fields(self):
@@ -227,6 +231,9 @@ class NewProjectForm(StyledMixin, forms.Form):
                     k = film_key(d)
                     field = f"f{k}_deadline" if self.cleaned_data.get(f"f{k}_deadline") else "deadline"
                     self.add_error(field, f"{d}: the editor's deadline ({ed:%-d %b}) is after the agency's ({ad:%-d %b}).")
+                sd = data.get("start_date")
+                if sd and ed and sd > ed and "start_date" not in self.errors:
+                    self.add_error("start_date", f"The start date ({sd:%-d %b}) is after {d}'s editor's deadline ({ed:%-d %b}).")
         return data
 
 

@@ -158,7 +158,7 @@ def project_filter(g):
         qs = qs.filter(delays__isnull=False).distinct()
     elif f["kind"] == "client_rev":
         qs = qs.filter(client_revisions__isnull=False).distinct()
-    sorts = {"deadline": ("deadline", "couple"), "agency_deadline": ("agency_deadline", "deadline"),
+    sorts = {"deadline": ("deadline", "couple"), "start": ("start_date", "deadline"), "agency_deadline": ("agency_deadline", "deadline"),
              "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
     qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
     active = sum(1 for k, v in f.items() if v and k != "sort") + (1 if q else 0)
@@ -322,17 +322,20 @@ def project_status(request, pk):
             record(request, "project.invoice", str(p), f"{old} -> {p.invoice_amount}")
             say.append(("success", f"{p}: invoice {p.agency.symbol}{old:,} → {p.agency.symbol}{p.invoice_amount:,}."))
     else:
-        field = "deadline" if "deadline" in P else "agency_deadline" if "agency_deadline" in P else None
+        field = next((f for f in ("start_date", "deadline", "agency_deadline") if f in P), None)
         if field:
-            label = "Editor's deadline" if field == "deadline" else "Agency's deadline"
+            label = {"start_date": "Start date", "deadline": "Editor's deadline", "agency_deadline": "Agency's deadline"}[field]
             try:
                 new = date.fromisoformat(P[field]) if P[field] else None
             except ValueError:
                 new = False
             ed = new if field == "deadline" else p.deadline
             ad = new if field == "agency_deadline" else p.agency_deadline
+            sd = new if field == "start_date" else p.start_date
             if new is False:
                 say.append(("error", f"{p}: that isn't a valid date."))
+            elif sd and ed and sd > ed:
+                say.append(("error", f"{p}: the start date ({sd:%-d %b}) can't be after the editor's deadline ({ed:%-d %b}). Not saved."))
             elif ed and ad and ed > ad:
                 say.append(("error", f"{p}: the editor's deadline ({ed:%-d %b}) can't be after the agency's ({ad:%-d %b}). Not saved."))
             elif new != getattr(p, field):
@@ -340,11 +343,11 @@ def project_status(request, pk):
                 undo = {field: old.isoformat() if old else ""}
                 setattr(p, field, new)
                 p.save(update_fields=[field])
-                record(request, "project.deadline", str(p), f"{label}: {old} -> {new}")
+                record(request, "project.start" if field == "start_date" else "project.deadline", str(p), f"{label}: {old} -> {new}")
                 say.append(("success", f"{p}: {label.lower()} {old:%-d %b} → {new:%-d %b}." if old and new
                                  else f"{p}: {label.lower()} {'set to ' + format(new, '%-d %b') if new else 'cleared'}."))
-                if field == "deadline" and new and p.editor_id:
-                    made, short = S.auto_plan(p)
+                if field in ("deadline", "start_date") and p.deadline and p.editor_id:
+                    made, short = S.auto_plan(p, trim=True)
                     if made:
                         say.append(("info", f"Planner updated: {made} day(s) planned for {p.editor.profile.name}."))
                     if short:
@@ -391,6 +394,7 @@ def project_new(request):
                 job = Project(
                     couple=c["couple"], deliverable=d, agency=c["agency"], editor=editor,
                     deadline=editor_deadline, agency_deadline=agency_deadline, brief=c["brief"],
+                    start_date=c.get("start_date"),
                     invoice_amount=amount if amount is not None else rates.get(d, 0),
                     is_extra=c["is_extra"] and bool(editor), extra_basis=c["extra_basis"] or "fixed",
                     extra_rate=c["extra_rate"] or 0)
@@ -416,13 +420,13 @@ def project_edit(request, pk):
     p = get_object_or_404(Project, pk=pk)
     form = ProjectForm(request.POST or None, instance=p)
     if request.method == "POST" and form.is_valid():
-        before = Project.objects.values("editor_id", "deadline").get(pk=p.pk)
+        before = Project.objects.values("editor_id", "deadline", "start_date").get(pk=p.pk)
         obj = form.save(commit=False)
         if obj.status == Project.CLOSED and not obj.closed_on:
             obj.closed_on = timezone.localdate()
         obj.save()
-        if before["editor_id"] != obj.editor_id or before["deadline"] != obj.deadline:
-            made, short = S.auto_plan(obj)
+        if (before["editor_id"], before["deadline"], before["start_date"]) != (obj.editor_id, obj.deadline, obj.start_date):
+            made, short = S.auto_plan(obj, trim=before["editor_id"] == obj.editor_id)
             if made:
                 messages.info(request, f"Planner updated: {made} day(s) planned for {obj.editor.profile.name}.")
             if short:

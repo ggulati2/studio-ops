@@ -46,6 +46,7 @@ class _Ctx:
             self.logs[l.user_id][l.date] = l
         self.hols = holidays_between(a, b)
         self.due = S.deliveries_between(a, b)
+        self.starts = S.starts_between(a, b)
 
     def cell(self, u, d):
         kind = S.day_kind(u, d, self.logs[u.id], self.hols)
@@ -54,7 +55,8 @@ class _Ctx:
         slots = self.plan.get((u.id, d), {})
         return {"u": u, "d": d, "entry": slots.get(1), "also": slots.get(2), "kind": kind,
                 "locked": kind in LOCKED, "off": kind in (DayLog.LEAVE, DayLog.HOLIDAY, DayLog.OFF),
-                "due": [p for p in self.due.get(d, []) if p.editor_id == u.id]}
+                "due": [p for p in self.due.get(d, []) if p.editor_id == u.id],
+                "starts": [p for p in self.starts.get(d, []) if p.editor_id == u.id]}
 
 
 def _options():
@@ -70,7 +72,8 @@ def _cell_payload(ctx, u, d, view):
     c = ctx.cell(u, d)
     tpl = "founder/_plan_cell_month.html" if view == "month" else "founder/_plan_cell.html"
     cls = " ".join(x for x in ["k-" + c["kind"] if c["kind"] else "", "has" if c["entry"] else "",
-                               "due" if c["due"] else "", "locked" if c["locked"] else ""] if x)
+                               "due" if c["due"] else "", "starts" if c["starts"] else "",
+                               "locked" if c["locked"] else ""] if x)
     return {"html": render_to_string(tpl, {"c": c}), "cls": cls}
 
 
@@ -273,7 +276,7 @@ def _weeks(request):
     grid = []
     for d in days:
         grid.append({"d": d, "cells": [ctx.cell(u, d) for u in people], "holiday": ctx.hols.get(d),
-                     "due": ctx.due.get(d, []), "week_break": d.weekday() == start.weekday() and d != start})
+                     "due": ctx.due.get(d, []), "starts": ctx.starts.get(d, []), "week_break": d.weekday() == start.weekday() and d != start})
     data = _common(people)
     data.update({"grid": grid, "start": start, "end": days[-1], "prev": start - timedelta(days=7 * WEEKS),
                  "next": start + timedelta(days=7 * WEEKS), "this_week": week_start(timezone.localdate()),
@@ -300,6 +303,7 @@ def _month(request):
         rows.append({"u": u, "cells": cells, "planned": planned, "workdays": workdays, "free": workdays - planned})
     data = _common(people)
     data.update({"rows": rows, "days": [{"d": d, "holiday": ctx.hols.get(d), "due": len(ctx.due.get(d, [])), "today": d == today,
+                                         "starts": len(ctx.starts.get(d, [])),
                                          "week": week_start(d)} for d in days],
                  "month": month, "prev": add_months(month, -1), "next": add_months(month, 1), "view": "month"})
     return render(request, "founder/planner_month.html", data)

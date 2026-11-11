@@ -1,3 +1,4 @@
+{% for p in c.starts %}<div class="start-tag" title="Editing starts: {{ p }}{% if p.deadline %} · due {{ p.deadline|date:'j M' }}{% endif %}">▶ Start: {{ p.couple }} · {{ p.deliverable }}</div>{% endfor %}
 {% for p in c.due %}<div class="due-tag" title="Delivery due: {{ p }}">Due: {{ p.couple }} · {{ p.deliverable }}</div>{% endfor %}
 {% if c.kind %}<span class="kind-label">{% if c.kind == 'leave' %}Leave{% elif c.kind == 'half' %}Half day{% elif c.kind == 'holiday' %}Holiday{% elif c.kind == 'off' %}Weekly off{% elif c.kind == 'wfh' %}WFH{% endif %}</span>{% endif %}
 {% if c.entry %}{% include "founder/_plan_chip.html" with e=c.entry slot=1 %}{% endif %}

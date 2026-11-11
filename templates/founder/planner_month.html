@@ -12,7 +12,7 @@
     <b class="prange">{{ month|date:"F Y" }}</b>
   </div>
 </div>
-<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag due-key">Delivery day</span><span class="tag qc">+ alongside</span></div>
+<div class="chips small"><span class="tag k-leave">Leave</span><span class="tag k-half">Half day</span><span class="tag k-holiday">Holiday</span><span class="tag k-off">Weekly off</span><span class="tag k-wfh">WFH</span><span class="tag start-key">▶ Start day</span><span class="tag due-key">Delivery day</span><span class="tag qc">+ alongside</span></div>
 <noscript><div class="msg error">The planner needs JavaScript turned on.</div></noscript>
 <div data-plan-mismatch>{% include "founder/_plan_mismatch.html" %}</div>
 <div class="planner" data-planner data-view="month" data-url="{% url 'planner' %}?view=month">{% csrf_token %}
@@ -20,11 +20,11 @@
 <table class="plan-month no-stack">
   <thead><tr><th class="who" scope="col">Editor</th><th class="sum" scope="col">Planned</th>
     {% for c in days %}<th scope="col" class="{% if c.today %}today{% endif %}{% if c.holiday %} k-holiday{% elif c.d.weekday == 6 %} k-off{% endif %}" title="{{ c.d|date:'l j F' }}{% if c.holiday %} · {{ c.holiday.name }}{% endif %}">
-      <a href="?start={{ c.week|date:'Y-m-d' }}" aria-label="Open the 4-week view from {{ c.d|date:'j M' }}"><span class="dow">{{ c.d|date:"D"|slice:":2" }}</span><span class="dn">{{ c.d|date:"j" }}</span>{% if c.due %}<span class="dd">{{ c.due }}</span>{% endif %}</a></th>{% endfor %}</tr></thead>
+      <a href="?start={{ c.week|date:'Y-m-d' }}" aria-label="Open the 4-week view from {{ c.d|date:'j M' }}"><span class="dow">{{ c.d|date:"D"|slice:":2" }}</span><span class="dn">{{ c.d|date:"j" }}</span>{% if c.starts %}<span class="ds" title="{{ c.starts }} start{{ c.starts|pluralize }}">▶{{ c.starts }}</span>{% endif %}{% if c.due %}<span class="dd">{{ c.due }}</span>{% endif %}</a></th>{% endfor %}</tr></thead>
   <tbody>{% for r in rows %}<tr>
     <th class="who" scope="row">{{ r.u.profile.name }}<div class="small muted">{{ r.u.profile.pod|default:"" }}</div></th>
     <td class="sum"><b>{{ r.planned }}</b><span class="small muted">/{{ r.workdays }}</span>{% if r.free %}<div class="small" style="color:var(--ok)">{{ r.free }} free</div>{% endif %}</td>
-    {% for c in r.cells %}<td data-cell data-u="{{ r.u.pk }}" data-d="{{ c.d|date:'Y-m-d' }}" data-name="{{ r.u.profile.name }}" class="{% if c.kind %}k-{{ c.kind }}{% endif %}{% if c.entry %} has{% endif %}{% if c.due %} due{% endif %}{% if c.locked %} locked{% endif %}">{% include "founder/_plan_cell_month.html" %}</td>{% endfor %}
+    {% for c in r.cells %}<td data-cell data-u="{{ r.u.pk }}" data-d="{{ c.d|date:'Y-m-d' }}" data-name="{{ r.u.profile.name }}" class="{% if c.kind %}k-{{ c.kind }}{% endif %}{% if c.entry %} has{% endif %}{% if c.due %} due{% endif %}{% if c.starts %} starts{% endif %}{% if c.locked %} locked{% endif %}">{% include "founder/_plan_cell_month.html" %}</td>{% endfor %}
   </tr>{% empty %}<tr><td colspan="3" class="muted">No editors yet.</td></tr>{% endfor %}</tbody>
 </table></div>
 {% include "founder/_plan_options.html" %}

@@ -124,7 +124,7 @@ def _date(v):
         return False
 
 
-def accept(request, f, name, agency, films, editor=None, deadline=None, agency_deadline=None):
+def accept(request, f, name, agency, films, editor=None, deadline=None, agency_deadline=None, start_date=None):
     """Create the films for a folder under its couple. Returns messages."""
     couple = Couple.for_name(agency, name)
     have = set(couple.films.values_list("deliverable", flat=True))
@@ -135,7 +135,8 @@ def accept(request, f, name, agency, films, editor=None, deadline=None, agency_d
             continue
         rate = agency.rates.filter(deliverable=d).values_list("amount", flat=True).first() or 0
         p = Project(couple=couple.name, client=couple, agency=agency, deliverable=d, editor=editor,
-                    deadline=deadline or None, agency_deadline=agency_deadline or None, invoice_amount=rate, drive=f.drive)
+                    deadline=deadline or None, agency_deadline=agency_deadline or None, start_date=start_date or None,
+                    invoice_amount=rate, drive=f.drive)
         p.save()
         if editor:
             planned += S.auto_plan(p)[0]
@@ -181,15 +182,16 @@ def folder_decide(request, pk):
     films = [x for x in P.getlist("films") if x in Project.DELIVERABLES]
     raw = P.get("editor", "")
     editor = team().filter(pk=raw).first() if raw.isdigit() else None
-    ed, ad = _date(P.get("deadline")), _date(P.get("agency_deadline"))
+    ed, ad, sd = _date(P.get("deadline")), _date(P.get("agency_deadline")), _date(P.get("start_date"))
     err = ("Give the couple a name." if not name else "Pick the agency." if not agency
            else "Tick at least one film to add." if not films
-           else "One of the dates isn't valid." if ed is False or ad is False
-           else "The editor's deadline can't be after the agency's." if ed and ad and ed > ad else "")
+           else "One of the dates isn't valid." if ed is False or ad is False or sd is False
+           else "The editor's deadline can't be after the agency's." if ed and ad and ed > ad
+           else "The start date can't be after the editor's deadline." if sd and ed and sd > ed else "")
     if err:
         return _reply(request, [("error", f"{f.name}: {err}")], back)
     with transaction.atomic():
-        say = accept(request, f, name, agency, films, editor, ed, ad)
+        say = accept(request, f, name, agency, films, editor, ed, ad, sd)
     return _reply(request, say, back, remove=[f'[data-folder="{f.pk}"]'], refresh=True)
 
 
