@@ -1,0 +1,8 @@
+<figure class="photo" data-photo="{{ ph.pk }}">
+  <a href="{% url 'image' ph.pk %}" target="_blank" rel="noopener"><img src="{% url 'image' ph.pk %}" alt="{{ alt|default:'Photo' }}" loading="lazy"></a>
+  {% if can_del %}<details class="ph-del dc-del"><summary aria-label="Delete this photo" title="Delete this photo">🗑</summary>
+    <form method="post" action="{% url 'photo_delete' ph.pk %}" data-live class="dc-del-pop">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <b class="small">Delete this photo?</b><span class="small muted">It's removed for good.</span>
+      <span class="dc-del-btns"><button class="btn sm danger">Delete</button><button type="button" class="btn sm ghost" data-close-details>Cancel</button></span>
+    </form></details>{% endif %}
+</figure>

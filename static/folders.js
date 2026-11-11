@@ -56,11 +56,32 @@
     boxes.forEach(function (c) { c.checked = to; });
     b.textContent = to ? "Untick all" : "Tick all shown";
   });
+  /* List view: hovering a drive shows its photos next to the thumbnail (fixed position, so the
+     table's scroll box doesn't clip it) */
+  var shown = null;
+  function hidePop() { if (shown) { shown.classList.remove("show"); shown = null; } }
+  doc.addEventListener("mouseover", function (e) {
+    var row = e.target.closest && e.target.closest(".drive-row");
+    var pop = row && row.querySelector(".ph-pop");
+    if (pop === shown) return;
+    hidePop();
+    if (!pop) return;
+    var t = row.querySelector(".ph-thumb").getBoundingClientRect();
+    pop.classList.add("show");
+    var r = pop.getBoundingClientRect();
+    var top = Math.max(8, Math.min(t.top + t.height / 2 - r.height / 2, window.innerHeight - r.height - 8));
+    var left = Math.min(t.right + 10, window.innerWidth - r.width - 8);
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    shown = pop;
+  });
+  window.addEventListener("scroll", hidePop, true);
+
   /* Small confirm pop-overs (<details>): Cancel and clicking elsewhere close them */
   doc.addEventListener("click", function (e) {
     var c = e.target.closest && e.target.closest("[data-close-details]");
     if (c) { c.closest("details").open = false; return; }
-    Array.prototype.forEach.call(doc.querySelectorAll("details.dc-del[open]"), function (d) {
+    Array.prototype.forEach.call(doc.querySelectorAll("details.dc-del[open], details.ph-del[open]"), function (d) {
       if (!d.contains(e.target)) d.open = false;
     });
   });

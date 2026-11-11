@@ -63,7 +63,18 @@ def drives(request):
         qs = qs.distinct()
         hits = list(DriveFolder.objects.filter(hq).select_related("drive__agency", "client")
                     .order_by("drive__code", "path")[:60])
-    qs = qs.order_by({"newest": "-received_on", "oldest": "received_on", "agency": "agency__name"}.get(f["sort"], "code"), "code")
+    from django.db.models import F
+    order = {"newest": "-received_on", "oldest": "received_on", "agency": "agency__name",
+             "data_desc": F("data_gb").desc(nulls_last=True), "data_asc": F("data_gb").asc(nulls_last=True)}
+    qs = qs.order_by(order.get(f["sort"], "code"), "code")
+    view = "list" if g.get("view") == "list" else "cards"
+    switch = {}
+    for v in ("cards", "list"):
+        params = g.copy()
+        params.pop("view", None)
+        if v == "list":
+            params["view"] = "list"
+        switch[v] = "?" + params.urlencode()
     form = ReceiveDriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
     if request.method == "POST" and form.is_valid():
         d = form.save()
@@ -84,10 +95,12 @@ def drives(request):
         fs = d.folders.all()
         d.n_folders = len(fs)
         d.n_waiting = sum(1 for x in fs if x.status == DriveFolder.PENDING)
+        d.used_pct = (min(100, round(float(d.data_gb) / (float(d.capacity_tb) * 1000) * 100))
+                      if d.data_gb and d.capacity_tb else None)
     active = sum(1 for k in ("agency", "kind", "folders") if f[k]) + (1 if q else 0)
     from ..models import Agency
     return render(request, "drives/register.html", {
-        "drives": drives_list, "form": form, "chips": chips, "hits": hits, "f": f, "active": active,
+        "drives": drives_list, "form": form, "chips": chips, "view": view, "switch": switch, "hits": hits, "f": f, "active": active,
         "status": status, "q": q, "statuses": HardDrive.STATUS, "agencies": Agency.objects.order_by("name"),
         "waiting": DriveFolder.objects.filter(status=DriveFolder.PENDING).count(),
         "can_delete": has_perm(request.user, "projects.manage")})

@@ -68,7 +68,7 @@ class Command(BaseCommand):
                                            ("Elysia Films", "Swiss couple shoot"), ("Cheesecake Films", "Archana & Daniel wedding")], 1):
             code = f"{'SSD' if i in (4, 5) else 'HDD'}-{i:02d}"
             drives[code] = HardDrive.objects.create(code=code, kind=code[:3], agency=ag.get(a), studio_owned=a is None,
-                                                    contents=contents, capacity_tb=4, data_tb=round(random.uniform(1, 3.5), 1),
+                                                    contents=contents, capacity_tb=4, data_gb=round(random.uniform(800, 3500)),
                                                     received_on=today - timedelta(days=30 - i * 3), location=f"Rack {'ABC'[i % 3]} · {i}")
 
         def job(couple, deliv, agency, editor, deadline_days, status, drive, amount=None, **kw):

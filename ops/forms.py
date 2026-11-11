@@ -361,7 +361,7 @@ class DriveForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = HardDrive
         fields = ["code", "kind", "agency", "studio_owned", "contents", "brand_model", "serial", "capacity_tb",
-                  "data_tb", "received_on", "received_via", "tracking", "location", "damaged_on_arrival", "status", "notes"]
+                  "data_gb", "received_on", "received_via", "tracking", "location", "damaged_on_arrival", "status", "notes"]
         widgets = {"received_on": DATE, "notes": forms.Textarea(attrs={"rows": 2})}
 
 

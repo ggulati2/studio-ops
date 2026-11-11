@@ -10,9 +10,9 @@ from django.views.decorators.http import require_GET
 
 from ..audit import client_ip, record
 from ..models import StoredImage
-from ..rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, has_perm, role_of
+from ..rbac import ADMIN, DRIVE, EDITOR, INTERN, QC, TL, has_perm, requires, role_of
 
-__all__ = ["home", "image", "health", "backoffice_login", "speculation_rules", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
+__all__ = ["home", "image", "photo_delete", "health", "backoffice_login", "speculation_rules", "cron_daily", "ThrottledLogin", "PasswordChange", "no_access"]
 
 HOME = {ADMIN: "dashboard", TL: "pod", EDITOR: "today", INTERN: "today", QC: "qc_queue", DRIVE: "drives"}
 
@@ -171,3 +171,27 @@ class PasswordChange(auth_views.PasswordChangeView):
         record(self.request, "auth.password_changed", self.request.user.username)
         messages.success(self.request, "Password changed.")
         return resp
+
+
+@requires("drives.manage")
+def photo_delete(request, pk):
+    """Delete a photo anywhere in the portal (drive, send-back or Trailblazer photo)."""
+    from django.http import JsonResponse
+    from ..models import EmployeeOfMonth
+    from ..services import safe_next
+    img = get_object_or_404(StoredImage, pk=pk)
+    award = EmployeeOfMonth.objects.filter(photo=img).first()
+    if award and not has_perm(request.user, "eotm.manage"):
+        raise PermissionDenied
+    back = safe_next(request, request.POST.get("next"), "/")
+    if request.method != "POST":
+        return redirect(back)
+    where = ", ".join([d.code for d in img.drives.all()] + [f"send-back of {r.drive.code}" for r in img.drivereturn_set.select_related("drive")]
+                      + ([f"Trailblazer {award}"] if award else [])) or "unused"
+    img.delete()
+    record(request, "photo.delete", where, "")
+    text = "Photo deleted."
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"ok": True, "messages": [{"level": "success", "text": text}], "remove": [f'[data-photo="{pk}"]']})
+    messages.success(request, text)
+    return redirect(back)

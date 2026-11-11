@@ -573,3 +573,63 @@ class DriveReceiveAndDelete(SeededTestCase):
         self.assertFalse(DriveFolder.objects.filter(path="2026/Amit_Tanya_Wedding", drive_id=d.pk).exists())
         p.refresh_from_db()
         self.assertIsNone(p.drive_id)
+
+
+class DriveDataListPhotos(SeededTestCase):
+    def setUp(self):
+        from ops.models import HardDrive, StoredImage
+        self.ag = Agency.objects.get(code="BRC")
+        self.a = HardDrive.objects.create(code="HDD-91", agency=self.ag, capacity_tb=4, data_gb=3500)
+        self.b = HardDrive.objects.create(code="HDD-92", agency=self.ag, capacity_tb=2, data_gb=200)
+        self.img = StoredImage.objects.create(data=b"\xff\xd8\xff", content_type="image/jpeg")
+        self.a.photos.add(self.img)
+        self.f = self.login("ag")
+
+    def test_label_and_sort_by_data(self):
+        from ops.forms import DriveForm
+        self.assertEqual(DriveForm().fields["data_gb"].label, "Data Available (GB)")
+        codes = [d.code for d in self.f.get("/drives/?sort=data_desc").context["drives"]]
+        self.assertLess(codes.index("HDD-91"), codes.index("HDD-92"))
+        codes = [d.code for d in self.f.get("/drives/?sort=data_asc").context["drives"]]
+        self.assertLess(codes.index("HDD-92"), codes.index("HDD-91"))
+        self.assertContains(self.f.get("/drives/"), "3500 GB data available")
+
+    def test_list_view_with_hover_photo(self):
+        r = self.f.get("/drives/?view=list")
+        self.assertContains(r, "drive-table")
+        self.assertContains(r, 'class="ph-pop"')
+        self.assertContains(r, f"/img/{self.img.pk}/")
+        self.assertContains(self.f.get("/drives/"), "drive-grid")
+
+    def test_delete_photo(self):
+        from ops.models import StoredImage
+        self.assertContains(self.f.get(f"/drives/{self.a.pk}/"), f'data-photo="{self.img.pk}"')
+        self.assertNotEqual(self.login("pratik").post(f"/photos/{self.img.pk}/delete/").status_code, 200)
+        r = self.f.post(f"/photos/{self.img.pk}/delete/", **FETCH).json()
+        self.assertEqual(r["remove"], [f'[data-photo="{self.img.pk}"]'])
+        self.assertFalse(StoredImage.objects.filter(pk=self.img.pk).exists())
+        self.assertEqual(self.a.photos.count(), 0)
+
+    def test_migration_converts_tb_to_gb(self):
+        from decimal import Decimal
+        from importlib import import_module
+        mig = import_module("ops.migrations.0016_drive_data_gb")
+
+        class D:   # stand-in row
+            data_tb = Decimal("1.8")
+            def save(self, update_fields):
+                self.saved = update_fields
+        d = D()
+
+        class QS(list):
+            def exclude(self, **kw):
+                return self
+
+        class FakeModel:
+            objects = QS([d])
+
+        class Apps:
+            def get_model(self, *a):
+                return FakeModel
+        mig.tb_to_gb(Apps(), None)
+        self.assertEqual(d.data_gb, Decimal("1800.0"))
