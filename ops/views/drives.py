@@ -25,32 +25,65 @@ def _save_photos(form, target):
 
 @requires("drives.manage")
 def drives(request):
-    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "projects", "folders")
-    status, q = request.GET.get("status", ""), request.GET.get("q", "").strip()
-    if status:
+    """Drive register: filters and search redraw in place (live.js); the search also
+    looks inside folder names, couples and films on each drive."""
+    g = request.GET
+    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "folders")
+    status, q = g.get("status", ""), g.get("q", "").strip()
+    f = {"agency": g.get("agency", ""), "kind": g.get("kind", ""), "folders": g.get("folders", ""),
+         "sort": g.get("sort", "")}
+    if status == "all":
+        pass
+    elif status in dict(HardDrive.STATUS):
         qs = qs.filter(status=status)
     else:
+        status = ""
         qs = qs.exclude(status="sent")
+    if f["agency"] == "studio":
+        qs = qs.filter(studio_owned=True)
+    elif f["agency"].isdigit():
+        qs = qs.filter(agency_id=f["agency"])
+    if f["kind"] in ("HDD", "SSD", "Card"):
+        qs = qs.filter(kind=f["kind"])
+    if f["folders"] in (DriveFolder.PENDING, DriveFolder.ACCEPTED, DriveFolder.DECLINED):
+        qs = qs.filter(folders__status=f["folders"]).distinct()
+    elif f["folders"] == "none":
+        qs = qs.filter(folders__isnull=True)
     hits = []
-    if q:
-        qs = qs.filter(Q(code__icontains=q) | Q(contents__icontains=q) | Q(agency__name__icontains=q) | Q(serial__icontains=q)
-                       | Q(agency__code__iexact=q) | Q(folders__path__icontains=q) | Q(folders__couple_guess__icontains=q)
-                       | Q(projects__couple__icontains=q)).distinct()
-        hits = list(DriveFolder.objects.filter(Q(path__icontains=q) | Q(couple_guess__icontains=q) | Q(client__name__icontains=q))
-                    .select_related("drive__agency", "client")[:60])
+    if q:   # every word must match somewhere ("zara kabir" finds "Zara_Kabir_Wedding")
+        hq = Q()
+        for w in q.replace("_", " ").split()[:6]:
+            qs = qs.filter(Q(code__icontains=w) | Q(contents__icontains=w) | Q(agency__name__icontains=w)
+                           | Q(serial__icontains=w) | Q(agency__code__iexact=w) | Q(location__icontains=w)
+                           | Q(folders__path__icontains=w) | Q(folders__couple_guess__icontains=w)
+                           | Q(projects__couple__icontains=w))
+            hq &= (Q(path__icontains=w) | Q(couple_guess__icontains=w) | Q(client__name__icontains=w)
+                   | Q(drive__code__icontains=w))
+        qs = qs.distinct()
+        hits = list(DriveFolder.objects.filter(hq).select_related("drive__agency", "client")
+                    .order_by("drive__code", "path")[:60])
+    qs = qs.order_by({"newest": "-received_on", "oldest": "received_on", "agency": "agency__name"}.get(f["sort"], "code"), "code")
     form = DriveForm(request.POST or None, request.FILES or None, initial={"code": _next_code()})
     if request.method == "POST" and form.is_valid():
         d = form.save()
         _save_photos(form, d)
-        messages.success(request, f"{d.code} recorded. Write {d.code} on its label.")
-        return redirect("drives")
-    all_ = HardDrive.objects.all()
-    counts = {"in_studio": all_.exclude(status="sent").count(), "in_use": all_.filter(status="in_use").count(),
-              "idle": all_.filter(status="idle").count(),
-              "ready": all_.filter(status="ready").count(), "damaged": all_.filter(status="damaged").count(),
-              "sent": all_.filter(status="sent").count()}
-    return render(request, "drives/register.html", {"drives": qs, "form": form, "counts": counts, "hits": hits,
-                                                    "status": status, "q": q, "statuses": HardDrive.STATUS})
+        messages.success(request, f"{d.code} recorded. Write {d.code} on its label. Paste its folders below.")
+        return redirect("drive_edit", d.pk)
+    from django.db.models import Count
+    by = dict(HardDrive.objects.order_by().values_list("status").annotate(n=Count("id")))
+    chips = [("", "In studio", sum(n for k, n in by.items() if k != "sent"))] + \
+            [(k, label, by.get(k, 0)) for k, label in HardDrive.STATUS] + [("all", "All", sum(by.values()))]
+    drives_list = list(qs)
+    for d in drives_list:
+        fs = d.folders.all()
+        d.n_folders = len(fs)
+        d.n_waiting = sum(1 for x in fs if x.status == DriveFolder.PENDING)
+    active = sum(1 for k in ("agency", "kind", "folders") if f[k]) + (1 if q else 0)
+    from ..models import Agency
+    return render(request, "drives/register.html", {
+        "drives": drives_list, "form": form, "chips": chips, "hits": hits, "f": f, "active": active,
+        "status": status, "q": q, "statuses": HardDrive.STATUS, "agencies": Agency.objects.order_by("name"),
+        "waiting": DriveFolder.objects.filter(status=DriveFolder.PENDING).count()})
 
 
 @requires("drives.manage")

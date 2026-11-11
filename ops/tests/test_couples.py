@@ -417,7 +417,7 @@ class DriveNotInUse(SeededTestCase):
         f = self.login("ag")
         r = f.get("/drives/")
         self.assertContains(r, "Not in use")
-        self.assertEqual(r.context["counts"]["idle"], 1)
+        self.assertIn(("idle", "Not in use", 1), r.context["chips"])
         r = f.get("/drives/?status=idle")
         self.assertEqual([x.code for x in r.context["drives"]], ["HDD-99"])
         self.assertContains(f.get(f"/drives/{d.pk}/"), 'value="idle" selected')
@@ -525,3 +525,25 @@ class DriveFolders(SeededTestCase):
         f = self.DF.objects.get(path="2026/Amit_Tanya_Wedding")
         self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "couple": "Amit & Tanya", "films": ["Teaser"]}, **FETCH)
         self.assertContains(self.f.get("/projects/?q=Amit"), "HDD-77")
+
+
+class DriveRegisterFilters(SeededTestCase):
+    def test_filters_and_search(self):
+        from ops.models import DriveFolder, HardDrive
+        ag = Agency.objects.get(code="BRC")
+        a = HardDrive.objects.create(code="SSD-50", kind="SSD", agency=ag)
+        b = HardDrive.objects.create(code="HDD-51", kind="HDD", studio_owned=True, status="sent")
+        DriveFolder.objects.create(drive=a, path="2026/Zara_Kabir_Wedding", name="Zara_Kabir_Wedding", couple_guess="Zara & Kabir")
+        f = self.login("ag")
+        codes = lambda url: [d.code for d in f.get(url).context["drives"]]
+        self.assertIn("SSD-50", codes("/drives/?kind=SSD"))
+        self.assertNotIn("HDD-51", codes("/drives/"))                     # sent back = not in studio
+        self.assertIn("HDD-51", codes("/drives/?status=all&agency=studio"))
+        self.assertEqual(codes("/drives/?folders=pending"), ["SSD-50"])
+        r = f.get("/drives/?q=zara kabir")
+        self.assertEqual([h.drive.code for h in r.context["hits"]], ["SSD-50"])
+        self.assertEqual(codes("/drives/?q=zara"), ["SSD-50"])
+        self.assertContains(f.get("/drives/?q=Zara"), "<mark>Zara</mark>")
+        # fluid: the page has a live filter form and parts
+        self.assertContains(r, "data-live-filter")
+        self.assertContains(r, 'data-live-part="grid"')

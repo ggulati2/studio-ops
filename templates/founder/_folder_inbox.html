@@ -1,5 +1,11 @@
-{% if folders %}<section class="card folder-inbox" aria-labelledby="fi-h">
-  <div class="title"><h2 id="fi-h">New folders from drives</h2><span class="small muted">{{ folders_total }} waiting{% if folders_total > folders|length %} · showing {{ folders|length }}{% endif %} · add the real projects, decline the rest (they stay listed on the drive)</span></div>
+{% if folders %}<details class="card folder-inbox" data-ff open data-key="inbox">
+  <summary class="title"><h2>New folders from drives <span class="tag warn">{{ folders_total }}</span></h2><span class="small muted">{% if folders_total > folders|length %}showing the first {{ folders|length }} · {% endif %}add the real projects, decline the rest (they stay listed on the drive)</span></summary>
+  <div class="ff-bar">
+    <input class="input" type="search" data-ff-q placeholder="Filter by couple, folder, drive…" aria-label="Filter waiting folders" autocomplete="off">
+    {% regroup folders by drive as by_drive %}{% if by_drive|length > 1 %}<select class="input" data-ff-drive aria-label="Drive"><option value="">All drives</option>{% for g in by_drive %}<option value="{{ g.grouper.pk }}">{{ g.grouper.code }} ({{ g.list|length }})</option>{% endfor %}</select>{% endif %}
+    <button type="button" class="btn sm ghost" data-ff-tickall>Tick all shown</button>
+    <span class="small muted" data-ff-count aria-live="polite"></span>
+  </div>
   <form method="post" action="{% url 'folders_bulk' %}" id="folders-bulk" data-live class="folder-bulk">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
     <span class="small"><b>Ticked folders:</b> add with films</span>
     {% for d in deliverables %}{% if forloop.counter <= 6 %}<label class="chk small"><input type="checkbox" name="films" value="{{ d }}"> {{ d }}</label>{% endif %}{% endfor %}
@@ -8,7 +14,7 @@
     <button class="btn sm" name="op" value="decline">Decline ticked</button>
   </form>
   <div class="folder-cards">{% for f in folders %}
-  <form method="post" action="{% url 'folder_decide' f.pk %}" data-live class="folder-card" data-folder="{{ f.pk }}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <form method="post" action="{% url 'folder_decide' f.pk %}" data-live class="folder-card" data-folder="{{ f.pk }}" data-ff-item data-status="pending" data-drive="{{ f.drive_id }}" data-ff-extra="{{ f.drive.code }} {{ f.path }} {{ f.drive.agency.name|default:'' }}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
     <div class="fc-head">
       <label class="chk"><input type="checkbox" name="ids" value="{{ f.pk }}" form="folders-bulk" aria-label="Tick {{ f.name }}"></label>
       <span class="fc-title"><span><b>{{ f.couple_guess }}</b>{% if f.drive.agency %} <span class="small muted">· {{ f.drive.agency.code|default:f.drive.agency.name }}</span>{% endif %}</span>
@@ -25,4 +31,5 @@
     </div>
     <div class="fc-btns"><button class="btn primary sm" name="op" value="accept">Add as project</button><button class="btn sm" name="op" value="decline" formnovalidate>Decline</button></div>
   </form>{% endfor %}</div>
-</section>{% endif %}
+  <p class="small muted" data-ff-none hidden>No waiting folders match.</p>
+</details>{% endif %}

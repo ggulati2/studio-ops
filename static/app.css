@@ -1029,3 +1029,29 @@ form.asking .status-select{box-shadow:0 0 0 2px var(--info-line)}
 label.chk{flex-direction:row!important;white-space:nowrap}
 label.chk input{margin:0;width:auto;height:auto}
 .fc-head .chk{padding-top:2px}
+
+/* Folder filters and drive register */
+.ff-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 4px}
+.ff-bar input[type=search]{flex:1 1 220px;min-width:0}
+.seg.sm button{font:inherit;font-size:var(--t-sm);padding:5px 10px;border:0;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
+.seg.sm button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm, 0 1px 2px rgba(0,0,0,.08))}
+.folder-item[hidden],.folder-card[hidden]{display:none}
+.folder-inbox>summary{cursor:pointer;list-style:none}
+.folder-inbox>summary::-webkit-details-marker{display:none}
+.folder-inbox>summary h2{display:inline-flex;align-items:center;gap:8px}
+mark{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 1px;box-shadow:0 0 0 1px var(--warn-line)}
+.drive-filters{margin-bottom:10px}
+.drive-filters .search-wrap{flex:1 1 320px;display:flex}
+.drive-filters .search-wrap input{width:100%}
+.drive-chips{margin-bottom:12px}
+.drive-chips a .count{opacity:.65;margin-left:2px}
+.drive-chips a.bad:not(.on){color:var(--bad)}
+.drive-card{text-decoration:none;color:inherit;padding:0;overflow:hidden;gap:0;transition:transform .15s var(--ease),box-shadow .15s var(--ease),border-color .15s}
+.drive-card:hover{transform:translateY(-2px);border-color:var(--field-hover)}
+.dc-photo{height:120px;background:var(--line2);position:relative;display:flex;align-items:center;justify-content:center}
+.dc-photo img{width:100%;height:120px;object-fit:cover}
+.dc-status{position:absolute;top:10px;left:10px}
+.dc-wait{position:absolute;top:10px;right:10px}
+.dc-body{padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.dc-top{display:flex;justify-content:space-between;gap:8px}
+.dc-top b{font-size:15px}

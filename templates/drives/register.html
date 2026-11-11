@@ -1,38 +1,49 @@
-{% extends "base.html" %}{% load ops_extras %}
+{% extends "base.html" %}{% load ops_extras static %}
 {% block title %}Drive register{% endblock %}
+{% block scripts %}<script src="{% static 'folders.js' %}" defer></script>{% endblock %}
 {% block content %}
-<div class="head"><div><h1>Drive register</h1><p>Every drive that comes into the studio: what's on it, whose it is, and where it is now.</p></div>
-  <form method="get" class="actions"><input class="input" type="search" name="q" value="{{ q }}" placeholder="Drive, couple, folder, agency, serial" style="width:250px"><button class="btn">Search</button></form></div>
-<div class="grid">
-  <a class="kpi" href="?" style="text-decoration:none;color:inherit"><span>In studio</span><b>{{ counts.in_studio }}</b></a>
-  <a class="kpi" href="?status=in_use" style="text-decoration:none;color:inherit"><span>In use</span><b>{{ counts.in_use }}</b></a>
-  <a class="kpi" href="?status=idle" style="text-decoration:none;color:inherit"><span>Not in use</span><b>{{ counts.idle }}</b></a>
-  <a class="kpi warn" href="?status=ready" style="text-decoration:none;color:inherit"><span>Ready to send back</span><b>{{ counts.ready }}</b></a>
-  <a class="kpi {% if counts.damaged %}bad{% endif %}" href="?status=damaged" style="text-decoration:none;color:inherit"><span>Damaged / issue</span><b>{{ counts.damaged }}</b></a>
-  <a class="kpi" href="?status=sent" style="text-decoration:none;color:inherit"><span>Sent back</span><b>{{ counts.sent }}</b></a>
-</div>
-{% if q %}<section class="card tight folder-hits"><div class="title"><h2>Folders matching “{{ q }}”</h2><span class="small muted">{{ hits|length }}{% if hits|length == 60 %}+{% endif %}</span></div>
-  {% if hits %}<ul class="folder-list">{% for f in hits %}<li class="folder-item fs-{{ f.status }}">
-    <a class="mono fi-drive" href="{% url 'drive_edit' f.drive_id %}">{{ f.drive.code }}</a>
-    <span class="fi-path mono" title="{{ f.path }}">{{ f.path }}</span>
-    <span class="fi-meta small">{% if f.drive.agency %}{{ f.drive.agency.code|default:f.drive.agency.name }} · {% endif %}{% if f.status == "accepted" %}<span class="tag ok">Project</span> {{ f.client.name|default:"" }}{% elif f.status == "declined" %}<span class="tag">Declined</span>{% else %}<span class="tag warn">Waiting</span>{% endif %} · drive {{ f.drive.get_status_display|lower }}</span>
-  </li>{% endfor %}</ul>{% else %}<span class="small muted">No folder names match. Drives whose ID, agency or films match are shown below.</span>{% endif %}
-</section>{% endif %}
+<div class="head"><div><h1>Drive register</h1><p>Every drive in the studio: whose it is, what's on it, which project folders it holds and where it is now.</p></div>
+  <div class="actions"><a class="btn primary" href="#receive">+ Receive a drive</a>{% if waiting %}<a class="btn" href="{% url 'projects' %}">{{ waiting }} folder{{ waiting|pluralize }} waiting on Projects →</a>{% endif %}</div></div>
+
+<form method="get" class="filters drive-filters" role="search" aria-label="Find drives and folders" data-live-filter data-status-default="">
+  <input type="hidden" name="status" value="{{ status }}">
+  <span class="search-wrap"><input class="input" type="search" name="q" value="{{ q }}" data-live-search autocomplete="off" placeholder="Search drives, couples, folder names, agency, serial…" aria-label="Search drives and folders"></span>
+  <select class="input" name="agency" data-autosubmit aria-label="Agency"><option value="">All agencies</option><option value="studio" {% if f.agency == 'studio' %}selected{% endif %}>Studio's own drives</option>{% for a in agencies %}<option value="{{ a.pk }}" {% if f.agency == a.pk|stringformat:'s' %}selected{% endif %}>{{ a.name }}{% if a.code %} ({{ a.code }}){% endif %}</option>{% endfor %}</select>
+  <select class="input" name="kind" data-autosubmit aria-label="Type"><option value="">Any type</option><option value="HDD" {% if f.kind == 'HDD' %}selected{% endif %}>HDD</option><option value="SSD" {% if f.kind == 'SSD' %}selected{% endif %}>SSD</option><option value="Card" {% if f.kind == 'Card' %}selected{% endif %}>Memory card</option></select>
+  <select class="input" name="folders" data-autosubmit aria-label="Folders"><option value="">Any folders</option><option value="pending" {% if f.folders == 'pending' %}selected{% endif %}>Has folders waiting</option><option value="accepted" {% if f.folders == 'accepted' %}selected{% endif %}>Has projects</option><option value="declined" {% if f.folders == 'declined' %}selected{% endif %}>Has declined folders</option><option value="none" {% if f.folders == 'none' %}selected{% endif %}>No folders listed yet</option></select>
+  <select class="input" name="sort" data-autosubmit aria-label="Sort"><option value="">Sort: Drive ID</option><option value="newest" {% if f.sort == 'newest' %}selected{% endif %}>Newest received</option><option value="oldest" {% if f.sort == 'oldest' %}selected{% endif %}>Oldest received</option><option value="agency" {% if f.sort == 'agency' %}selected{% endif %}>Agency</option></select>
+  <noscript><button class="btn">Filter</button></noscript>
+</form>
+<div class="chips drive-chips" data-live-part="chips" role="navigation" aria-label="Drive status">{% for k, label, n in chips %}<a href="{% qs status=k %}" class="{% if status == k %}on{% endif %}{% if k == 'damaged' and n %} bad{% endif %}">{{ label }} <span class="count">{{ n }}</span></a>{% endfor %}</div>
+<div data-live-part="clear">{% if active %}<a class="small" href="?status={{ status }}">Clear {{ active }} filter{{ active|pluralize }} ✕</a>{% endif %}</div>
+
+<div data-live-part="hits">{% if q %}<section class="card tight folder-hits"><div class="title"><h2>Folders matching “{{ q }}”</h2><span class="small muted">{{ hits|length }}{% if hits|length == 60 %}+{% endif %}</span></div>
+  {% if hits %}<ul class="folder-list">{% for h in hits %}<li class="folder-item fs-{{ h.status }}">
+    <a class="mono fi-drive" href="{% url 'drive_edit' h.drive_id %}">{{ h.drive.code }}</a>
+    <span class="fi-path mono" title="{{ h.path }}">{{ h.path|highlight:q }}</span>
+    <span class="fi-meta small">{% if h.drive.agency %}{{ h.drive.agency.code|default:h.drive.agency.name }} · {% endif %}{% if h.status == "accepted" %}<span class="tag ok">Project</span> {% if h.client %}<a href="{% url 'projects' %}?status=&amp;q={{ h.client.name|urlencode }}">{{ h.client.name }}</a>{% endif %}{% elif h.status == "declined" %}<span class="tag">Declined</span>{% else %}<span class="tag warn">Waiting</span>{% endif %} · <span class="tag {{ h.drive.status|drive_class }}">{{ h.drive.get_status_display }}</span></span>
+  </li>{% endfor %}</ul>{% else %}<span class="small muted">No folder names match. Drives whose ID, agency or films match are below.</span>{% endif %}
+</section>{% endif %}</div>
+
 <div class="row">
-  <section class="grow"><div class="grid wide">
-    {% for d in drives %}<a class="card tight" href="{% url 'drive_edit' d.pk %}" style="text-decoration:none;color:inherit;padding:0;overflow:hidden;gap:0">
-      <div style="height:120px;background:var(--line2);position:relative;display:flex;align-items:center;justify-content:center">
-        {% with ph=d.photos.all.0 %}{% if ph %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" style="width:100%;height:120px;object-fit:cover">{% else %}<span class="small muted">No photo</span>{% endif %}{% endwith %}
-        <span class="tag {{ d.status|drive_class }}" style="position:absolute;top:10px;left:10px">{{ d.get_status_display }}</span></div>
-      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px">
-        <div style="display:flex;justify-content:space-between"><b class="mono" style="font-size:15px">{{ d.code }}</b><span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span></div>
+  <section class="grow" data-live-part="grid">
+    <p class="small muted" style="margin:0 0 10px">{{ drives|length }} drive{{ drives|length|pluralize }}</p>
+    <div class="grid wide drive-grid">
+    {% for d in drives %}<a class="card tight drive-card" href="{% url 'drive_edit' d.pk %}">
+      <div class="dc-photo">
+        {% with ph=d.photos.all.0 %}{% if ph %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" loading="lazy">{% else %}<span class="small muted">No photo</span>{% endif %}{% endwith %}
+        <span class="tag {{ d.status|drive_class }} dc-status">{{ d.get_status_display }}</span>
+        {% if d.n_waiting %}<span class="tag warn dc-wait">{{ d.n_waiting }} waiting</span>{% endif %}</div>
+      <div class="dc-body">
+        <div class="dc-top"><b class="mono">{{ d.code }}</b><span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span></div>
         <b class="small">{% if d.studio_owned %}Studio drive{% else %}{{ d.agency|default:"No agency" }}{% endif %}</b>
-        <span class="small">{{ d.contents }}</span>{% with n=d.folders.all|length %}{% if n %}<span class="small muted">{{ n }} folder{{ n|pluralize }}</span>{% endif %}{% endwith %}
+        {% if d.contents %}<span class="small">{{ d.contents }}</span>{% endif %}
         {% if d.capacity_tb and d.data_tb %}<div class="bar"><i style="width:{% widthratio d.data_tb d.capacity_tb 100 %}%"></i></div><span class="small muted">{{ d.data_tb|hours }} of {{ d.capacity_tb|hours }} TB</span>{% endif %}
-        <span class="small muted">Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
+        <span class="small muted">{% if d.n_folders %}📁 {{ d.n_folders }} folder{{ d.n_folders|pluralize }} · {% endif %}Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
       </div></a>
-    {% empty %}<span class="muted">No drives here.</span>{% endfor %}
-  </div></section>
-  <form method="post" enctype="multipart/form-data" class="card aside">{% csrf_token %}<h2>Receive a drive</h2>{% include "_form.html" %}<button class="btn primary">Save drive</button></form>
+    {% empty %}<p class="muted">No drives match.{% if active %} <a href="?status={{ status }}">Clear filters</a>{% endif %}</p>{% endfor %}
+    </div>
+  </section>
+  <form method="post" enctype="multipart/form-data" class="card aside" id="receive">{% csrf_token %}<h2>Receive a drive</h2>{% include "_form.html" %}<button class="btn primary">Save drive</button><p class="small muted" style="margin:0">Next you'll paste its folder list.</p></form>
 </div>
 {% endblock %}

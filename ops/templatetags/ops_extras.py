@@ -102,3 +102,16 @@ def hue(pk):
         return (int(pk) * 137) % 360
     except (TypeError, ValueError):
         return 0
+
+
+@register.filter
+def highlight(text, q):
+    """Mark the searched words in a piece of text (escaped first, so it's safe)."""
+    import re
+    from django.utils.html import escape
+    from django.utils.safestring import mark_safe
+    text = escape(text or "")
+    words = [re.escape(escape(w)) for w in (q or "").split() if len(w) > 1][:5]
+    if not words:
+        return mark_safe(text)
+    return mark_safe(re.sub("(" + "|".join(words) + ")", r"<mark>\1</mark>", text, flags=re.I))

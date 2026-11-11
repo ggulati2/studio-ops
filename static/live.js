@@ -245,6 +245,7 @@
   /* ---------------------------------------------------------------- live filters */
   var filterForm = doc.querySelector("form[data-live-filter]");
   if (!filterForm || !window.fetch || !window.DOMParser) return;
+  var statusDefault = filterForm.hasAttribute("data-status-default") ? filterForm.getAttribute("data-status-default") : "open";
   var pending = null;
 
   /* A thin progress line at the top; content only dims if the answer takes a moment */
@@ -265,7 +266,7 @@
     Array.prototype.forEach.call(filterForm.elements, function (el) {
       if (!el.name || el.type === "submit" || el.tagName === "BUTTON") return;
       var v = params.get(el.name) || "";
-      if (el.name === "status" && !params.has("status")) v = "open";
+      if (el.name === "status" && !params.has("status")) v = statusDefault;
       if (el.tagName === "SELECT") {
         el.value = v;
         if (el.selectedIndex < 0) el.selectedIndex = 0;
@@ -371,7 +372,7 @@
     // keep the filter form in step with the chip's status
     var url = new URL(a.href, location.href);
     var st = filterForm.querySelector('input[name="status"]');
-    if (st) st.value = url.searchParams.has("status") ? url.searchParams.get("status") : "open";
+    if (st) st.value = url.searchParams.has("status") ? url.searchParams.get("status") : statusDefault;
     var vw = filterForm.querySelector('input[name="view"]');
     if (vw) vw.value = url.searchParams.get("view") || "";
     // show the choice straight away; the list follows a moment later

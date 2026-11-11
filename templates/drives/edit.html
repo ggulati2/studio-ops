@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ d.code }}{% endblock %}
+{% block scripts %}{% load static %}<script src="{% static 'folders.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="head"><div><a class="small" href="{% url 'drives' %}">← Drive register</a><h1 class="mono" style="font-family:ui-monospace,Menlo,monospace">{{ d.code }}</h1><p>{{ d.get_status_display }}</p></div></div>
 <div class="row">
