@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}Work log{% if u %} · {{ u.profile.name }}{% endif %}{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Work log</h1><p>Everything an editor logged in a month, day by day: films, stages and hours, next to what the Planner had for them.</p></div>
+  {% if u %}<div class="actions"><a class="btn" href="{{ csv_url }}" download>Download CSV</a></div>{% endif %}
+</div>
+
+<form method="get" class="filters wl-filters" data-live-filter data-status-default="" role="search" aria-label="Pick an editor and month">
+  <label class="small">Editor <select class="input" name="u" data-autosubmit>{% for p in people %}<option value="{{ p.pk }}"{% if u and p.pk == u.pk %} selected{% endif %}>{{ p.profile.name }}{% if p.profile.pod %} · {{ p.profile.pod }}{% endif %}</option>{% endfor %}</select></label>
+  <label class="small">Month <input class="input" type="month" name="m" value="{{ month|date:'Y-m' }}" data-autosubmit></label>
+  <noscript><button class="btn">Show</button></noscript>
+</form>
+
+{% if u %}
+<div class="chips wl-nav" data-live-part="chips" role="navigation" aria-label="Month">
+  <a href="{{ nav.prev }}">← {{ month|add_months:-1|date:"M Y" }}</a><a class="on" href="?u={{ u.pk }}&amp;m={{ month|date:'Y-m' }}" aria-current="page">{{ month|date:"F Y" }}</a><a href="{{ nav.next }}">{{ month|add_months:1|date:"M Y" }} →</a>
+</div>
+
+<div data-live-part="body">
+<div class="kpis wl-kpis">
+  <div class="kpi"><span>Productive hours</span><b>{{ tot.hours|hours }}</b></div>
+  <div class="kpi"><span>Days logged</span><b>{{ tot.logged }}<small> / {{ tot.workdays }}</small></b></div>
+  <div class="kpi{% if tot.missing %} bad{% endif %}"><span>Not logged</span><b>{{ tot.missing }}</b></div>
+  <div class="kpi"><span>Leave days</span><b>{{ tot.leave }}</b></div>
+  <div class="kpi"><span>Late days</span><b>{{ tot.late }}</b></div>
+  <div class="kpi"><span>Extra work (after hours)</span><b>{{ tot.extra|hours }} h</b></div>
+</div>
+
+<section class="card wl-films">
+  <div class="title"><h2>Hours by film</h2><span class="small muted">{{ films|length }} film{{ films|length|pluralize }} this month</span></div>
+  <div class="wl-film-grid">{% for f in films %}<div class="wl-film" style="--h:{{ f.p.pk|hue }}">
+    <div><b>{{ f.p.couple }}</b> <span class="small muted">{{ f.p.deliverable }}{% if f.p.agency.code %} · {{ f.p.agency.code }}{% endif %}</span></div>
+    <div class="small muted">{{ f.stages|join:", " }} · {{ f.days }} day{{ f.days|pluralize }}</div>
+    <div class="wl-film-h"><b>{{ f.h|hours }} h</b>{% if f.extra %} <span class="small muted">+ {{ f.extra|hours }} h extra</span>{% endif %}</div>
+  </div>{% empty %}<p class="small muted">Nothing logged against films this month.</p>{% endfor %}</div>
+</section>
+<div class="wl-row">
+<section class="card grow" style="min-width:0">
+  <div class="title"><h2>{{ u.profile.name }} · {{ month|date:"F Y" }}</h2><span class="small muted">{% if this_month %}Days after today aren't counted.{% endif %}</span></div>
+  <div class="scroll"><table class="wl-table">
+    <thead><tr><th>Date</th><th>Day</th><th>In – out</th><th class="right">Hours</th><th>Worked on (logged)</th><th>Planner had</th><th>Notes</th></tr></thead>
+    <tbody>{% for x in days %}<tr class="{% if x.off %}wl-off{% elif x.missing %}wl-miss{% elif x.future %}wl-future{% endif %}{% if x.today %} wl-today{% endif %}">
+      <td class="nowrap"><b>{{ x.d|date:"D j" }}</b></td>
+      <td class="nowrap">{% if x.missing %}<span class="tag bad">Not logged</span>{% elif x.kind_label %}<span class="tag {% if x.kind == 'leave' %}warn{% elif x.kind == 'wfh' %}info{% elif x.kind == 'half' %}gold{% endif %}">{{ x.kind_label }}</span>{% if x.holiday %}<div class="small muted">{{ x.holiday }}</div>{% endif %}{% elif x.future %}<span class="muted small">–</span>{% endif %}{% if x.log.is_late %} <span class="tag warn" title="Came in late">late</span>{% endif %}</td>
+      <td class="nowrap small">{% if x.log.time_in %}{{ x.log.time_in|time:"H:i" }} – {{ x.log.time_out|time:"H:i"|default:"?" }}{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td class="right nowrap">{% if x.log and x.log.hours %}<b>{{ x.log.hours|hours }}</b>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td><div class="wl-work">{% for t in x.tasks %}<span class="wl-chip" style="--h:{{ t.p.pk|hue }}" title="{{ t.p }}"><b>{{ t.p.couple }}</b> {{ t.p.deliverable }}{% if t.p.agency.code %} · {{ t.p.agency.code }}{% endif %} <span class="muted">· {{ t.stage }} ·</span> <b>{{ t.h|hours }} h</b>{% if not t.typed %}<span class="muted" title="Hours not typed: shared from the day's in/out time">*</span>{% endif %}</span>{% endfor %}
+        {% for e in x.extras %}<span class="wl-chip extra" title="Extra work after hours {{ e.when }}{% if e.note %}: {{ e.note }}{% endif %}">＋ <b>{{ e.p.couple }}</b> {{ e.p.deliverable }} <span class="muted">· extra {{ e.when }} ·</span> <b>{{ e.h|hours }} h</b></span>{% endfor %}
+        {% if x.log and not x.tasks and x.log.hours %}<span class="small" style="color:var(--warn)">No films logged</span>{% elif x.unlogged_hours > 0.5 and x.tasks %}<span class="small muted">{{ x.unlogged_hours|hours }} h not on a film</span>{% endif %}</div></td>
+      <td class="wl-plan small">{% for e in x.planned %}<span class="{% if x.off_plan %}wl-offplan{% endif %}">{% if e.project_id %}{% if e.is_revision %}Rev: {% endif %}{{ e.project.couple }} · {{ e.project.deliverable }}{% else %}{{ e.label }}{% endif %}</span>{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">–</span>{% endfor %}{% if x.off_plan %}<div class="tag warn" title="Logged films don't match the Planner">different from plan</div>{% endif %}</td>
+      <td class="small muted wl-notes">{{ x.log.notes }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="small muted" style="margin:6px 0 0">* hours not typed by the editor: the day's productive time is shared equally between those films.</p>
+</section>
+
+
+</div>
+</div>
+{% else %}<p class="muted">Add your team under Team &amp; attendance first.</p>{% endif %}
+{% endblock %}

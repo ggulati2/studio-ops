@@ -115,3 +115,12 @@ def highlight(text, q):
     if not words:
         return mark_safe(text)
     return mark_safe(re.sub("(" + "|".join(words) + ")", r"<mark>\1</mark>", text, flags=re.I))
+
+
+@register.filter
+def add_months(d, n):
+    from ..services import add_months as _add
+    try:
+        return _add(d, int(n))
+    except (TypeError, ValueError):
+        return d

@@ -2,6 +2,7 @@ from .common import *        # noqa
 from .admin import *         # noqa
 from .couples import *       # noqa
 from .folders import *       # noqa
+from .worklog import *       # noqa
 from .team import *          # noqa
 from .money import *         # noqa
 from .drives import *        # noqa

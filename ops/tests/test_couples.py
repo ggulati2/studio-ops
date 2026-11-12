@@ -764,3 +764,48 @@ class MemorySafety(SeededTestCase):
         self.assertFalse(any('"data"' in s for s in photo_sql), photo_sql)
         img = d.photos.first()
         self.assertEqual(bytes(f.get(f"/img/{img.pk}/").content), b"x" * 1000)    # still served in full
+
+
+class WorkLog(SeededTestCase):
+    """Founders see an editor's whole month: films, stages, hours, planned vs logged."""
+
+    def setUp(self):
+        from datetime import time
+        from django.contrib.auth import get_user_model
+        from ops.models import DayLog, PlanEntry, TaskEntry
+        self.u = get_user_model().objects.get(username="pratik")
+        self.f = self.login("ag")
+        self.d = timezone.localdate().replace(day=2) if timezone.localdate().day > 2 else timezone.localdate()
+        DayLog.objects.filter(user=self.u, date=self.d).delete()
+        PlanEntry.objects.filter(user=self.u, date=self.d).delete()
+        self.p = Project.objects.create(couple="Log Check", deliverable="Trailer", agency=Agency.objects.get(code="BRC"))
+        self.q = Project.objects.create(couple="Plan Only", deliverable="Teaser", agency=Agency.objects.get(code="BRC"))
+        log = DayLog.objects.create(user=self.u, date=self.d, day_type=DayLog.OFFICE, time_in=time(10), time_out=time(19),
+                                    notes="first cut")
+        TaskEntry.objects.create(daylog=log, project=self.p, stage="Edit", hours=5)
+        PlanEntry.objects.create(user=self.u, date=self.d, slot=1, project=self.q)
+
+    def test_month_view(self):
+        r = self.f.get(f"/team/work-log/?u={self.u.pk}&m={self.d:%Y-%m}")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn("Log Check", html)
+        self.assertIn("first cut", html)
+        self.assertIn("different from plan", html)
+        day = next(x for x in r.context["days"] if x["d"] == self.d)
+        self.assertEqual([t["h"] for t in day["tasks"]], [5.0])
+        self.assertTrue(any(f["p"].pk == self.p.pk and f["h"] == 5.0 for f in r.context["films"]))
+        self.assertEqual(len(r.context["days"]), (__import__("ops.services", fromlist=["x"]).month_end(self.d) - self.d.replace(day=1)).days + 1)
+
+    def test_csv(self):
+        r = self.f.get(f"/team/work-log/?u={self.u.pk}&m={self.d:%Y-%m}&format=csv")
+        self.assertEqual(r["Content-Type"], "text/csv; charset=utf-8")
+        body = r.content.decode()
+        self.assertIn("Log Check", body)
+        self.assertIn(self.d.isoformat(), body)
+
+    def test_only_founders(self):
+        self.assertNotEqual(self.login("pratik").get("/team/work-log/").status_code, 200)
+
+    def test_linked_from_team(self):
+        self.assertContains(self.f.get("/team/"), f"/team/work-log/?u={self.u.pk}")

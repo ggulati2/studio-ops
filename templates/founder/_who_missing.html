@@ -1,5 +1,5 @@
 <span class="who-miss{% if r.missing %} has{% endif %}"{% if r.missing %} tabindex="0" aria-describedby="miss-{{ r.u.pk }}-{{ tip }}"{% endif %}>
-  <b>{{ r.u.profile.name }}</b>{% if not r.u.profile.active %} <span class="tag">inactive</span>{% endif %}{% if r.u.profile.is_contract %} <span class="tag">contract</span>{% endif %}
+  <a class="who-link" href="{% url 'work_log' %}?u={{ r.u.pk }}&amp;m={{ month|date:'Y-m' }}" title="Open {{ r.u.profile.name }}'s work log"><b>{{ r.u.profile.name }}</b></a>{% if not r.u.profile.active %} <span class="tag">inactive</span>{% endif %}{% if r.u.profile.is_contract %} <span class="tag">contract</span>{% endif %}
   {% if r.missing %}<span class="miss-count" aria-hidden="true">{{ r.missing|length }} not logged</span>
   <span class="miss-tip" role="tooltip" id="miss-{{ r.u.pk }}-{{ tip }}">
     <b>Not logged in {{ month|date:"F" }}</b>

@@ -272,6 +272,7 @@
         if (el.selectedIndex < 0) el.selectedIndex = 0;
       } else if (el !== doc.activeElement) {
         el.value = v;
+        if (el._dp && window.StudioDatePicker && window.StudioDatePicker.refresh) window.StudioDatePicker.refresh(el);
       }
     });
   }
@@ -375,6 +376,7 @@
     if (st) st.value = url.searchParams.has("status") ? url.searchParams.get("status") : statusDefault;
     var vw = filterForm.querySelector('input[name="view"]');
     if (vw) vw.value = url.searchParams.get("view") || "";
+    syncForm(url.href);       // every other filter field follows the link too (e.g. the month)
     // show the choice straight away; the list follows a moment later
     var group = a.closest("[data-live-part]");
     if (group && !group.matches('[data-live-part="clear"]')) {

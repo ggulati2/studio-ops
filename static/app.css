@@ -1123,3 +1123,38 @@ tr[data-href]:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 .plan-month thead th .ds{display:inline-block;margin:2px 2px 0 0;padding:0 4px;border-radius:999px;background:var(--ok);color:#fff;font-size:.625rem;font-weight:600}
 .plan-month .start-dot{display:inline-block;font-size:9px;font-weight:700;color:var(--ok);margin-right:3px}
 td.starts{box-shadow:inset 3px 0 0 var(--ok)}
+
+/* Work log */
+.wl-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
+.wl-filters label{display:flex;flex-direction:column;gap:4px}
+.wl-nav{margin-bottom:14px}
+.wl-kpis{margin-bottom:14px}
+.kpi.bad b{color:var(--bad)}
+.kpi b small{font-size:.6em;color:var(--muted);font-weight:500}
+.wl-row{align-items:flex-start}
+.wl-table{min-width:980px}
+.wl-table td{vertical-align:top}
+.wl-table tr.wl-off td{background:var(--sunk);color:var(--muted)}
+.wl-table tr.wl-miss td{background:var(--bad-bg)}
+.wl-table tr.wl-future td{opacity:.55}
+.wl-table tr.wl-today td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.wl-work{display:flex;flex-wrap:wrap;gap:4px;min-width:320px}
+.wl-chip{display:inline-flex;flex-wrap:wrap;gap:0 4px;align-items:baseline;font-size:var(--t-sm);padding:3px 8px;border-radius:7px;background:hsl(var(--h,210) 70% 95%);border:1px solid hsl(var(--h,210) 45% 82%);line-height:1.35}
+.wl-chip.extra{background:var(--gold-bg, #fff6e0);border-color:var(--warn-line)}
+:root[data-theme="dark"] .wl-chip{background:hsl(var(--h,210) 35% 18%);border-color:hsl(var(--h,210) 30% 30%)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .wl-chip{background:hsl(var(--h,210) 35% 18%);border-color:hsl(var(--h,210) 30% 30%)}}
+.wl-plan{min-width:150px}
+.wl-offplan{text-decoration:line-through;text-decoration-color:var(--warn)}
+.wl-notes{max-width:220px}
+.wl-films{min-width:260px}
+.wl-film{padding:8px 0;border-top:1px solid var(--line2);display:flex;flex-direction:column;gap:2px}
+.wl-film-h{font-size:15px}
+.who-link{color:inherit;text-decoration:none}
+.who-link:hover b{text-decoration:underline}
+.wl-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.wl-kpis .kpi{padding:12px 14px}
+.wl-kpis .kpi b{font-size:24px}
+.wl-films{margin-bottom:14px}
+.wl-film-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.wl-film-grid .wl-film{border:1px solid var(--line);border-left:4px solid hsl(var(--h,210) 55% 55%);border-radius:var(--r-sm);padding:10px 12px}
+.wl-row>.card{width:100%}

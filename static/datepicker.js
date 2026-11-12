@@ -350,6 +350,7 @@
     input.dataset.dp = "1";
     w.orig = input.value;
     w.hidden = input; w.field = field; w.box = box;
+    input._dp = w;
     field.value = fmt(parseIso(input.value), w.compact, month);
 
     field.addEventListener("click", function () { open(w); });
@@ -408,7 +409,14 @@
     if (state && !pop.contains(e.target)) { if (window.innerWidth < 560) return; place(); }
   }, true);
 
-  window.StudioDatePicker = { enhance: enhanceAll, parse: parseTyped };
+  window.StudioDatePicker = { refresh: function (input) {      // the hidden value was changed by code: show it
+      var w = input && input._dp;
+      if (!w) return;
+      w.field.value = fmt(parseIso(input.value), w.compact, w.month);
+      w.orig = input.value;
+      w.box.classList.remove("bad");
+      w.field.setCustomValidity("");
+    }, enhance: enhanceAll, parse: parseTyped };
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", function () { enhanceAll(); });
   else enhanceAll();
 })();

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="head">
   <div><h1>Team &amp; attendance</h1><p>{{ month|date:"F Y" }} so far. Available hours already exclude leave, holidays and half days.</p></div>
-  <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn primary" href="{% url 'person_new' %}">+ Add a person</a></div>
+  <div class="actions"><a class="btn" href="{% qs m=prev|date:'Y-m' %}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="{% qs m=next|date:'Y-m' %}">→</a><a class="btn" href="{% url 'work_log' %}?m={{ month|date:'Y-m' }}">Work log</a><a class="btn primary" href="{% url 'person_new' %}">+ Add a person</a></div>
 </div>
 {% if missing_total %}<div class="missing-bar" role="note"><span><b>{{ missing_total }}</b> working day{{ missing_total|pluralize }} with nothing logged this month. Hover a name (or tap it) to see the dates.</span></div>{% endif %}
 <section class="card"><h2>Attendance</h2><div class="scroll"><table style="min-width:1100px">
