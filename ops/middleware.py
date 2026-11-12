@@ -9,6 +9,13 @@ from django.urls import reverse
 
 SESSION_TOUCH_SECONDS = 300
 SLOW_MS = 800
+MEMORY_JUMP_MB = 40
+
+
+def _peak_mb():
+    """This process's highest memory use so far (Linux reports KB)."""
+    import resource
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
 log = logging.getLogger("ops.perf")
 
 CSP = "; ".join([
@@ -116,6 +123,7 @@ class RequestMemoMiddleware:
             return execute(sql, params, many, context)
 
         perf.begin()
+        peak_before = _peak_mb()
         start = time.perf_counter()
         try:
             with connection.execute_wrapper(count):
@@ -125,6 +133,9 @@ class RequestMemoMiddleware:
         ms = (time.perf_counter() - start) * 1000
         if ms > SLOW_MS and not request.path.startswith("/static/"):
             log.warning("slow request %s %s: %.0f ms, %d queries", request.method, request.path, ms, counter["n"])
+        grew = _peak_mb() - peak_before
+        if grew >= MEMORY_JUMP_MB:     # this request pushed the process's memory peak up a lot: say which one
+            log.warning("memory jump %s %s: peak +%d MB (now %d MB)", request.method, request.path, grew, _peak_mb())
         if settings.DEBUG:
             response["Server-Timing"] = f'app;dur={ms:.0f};desc="{counter["n"]} queries"'
         return response

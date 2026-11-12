@@ -1,6 +1,7 @@
 """Business rules. Views call these; nothing here touches the request."""
 import calendar
 import io
+import threading
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -346,14 +347,27 @@ def refresh_overdue():
 
 
 # ---------------------------------------------------------------- images
+_IMAGE_LOCK = threading.Lock()
+
+
 def store_image(upload, max_side=1600, quality=78):
-    """Shrink an uploaded photo to a small JPEG and keep it in the database."""
+    """Shrink an uploaded photo to a small JPEG and keep it in the database.
+
+    Memory matters on the 512 MB host: a 40-megapixel phone photo decoded at full size
+    (then rotated and converted) peaks at ~300 MB. JPEGs are decoded straight at a
+    reduced scale (draft), shrunk *before* rotating, and only one photo is processed
+    at a time per server process, so an upload stays around 60 MB at worst."""
     from PIL import Image, ImageOps
-    img = Image.open(upload)
-    img = ImageOps.exif_transpose(img).convert("RGB")
-    img.thumbnail((max_side, max_side))
-    buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=quality, optimize=True)
+    with _IMAGE_LOCK:
+        with Image.open(upload) as src:
+            src.draft("RGB", (max_side, max_side))          # JPEG: decode at 1/2, 1/4 or 1/8 size
+            src.thumbnail((max_side, max_side))
+            img = ImageOps.exif_transpose(src)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=quality, optimize=True)
+            del img
     return StoredImage.objects.create(data=buf.getvalue())
 
 

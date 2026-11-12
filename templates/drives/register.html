@@ -61,7 +61,7 @@
             {% if d.photos.all %}<span class="ph-pop" role="tooltip">{% for ph in d.photos.all|slice:":3" %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" loading="lazy">{% endfor %}{% if d.photos.all|length > 3 %}<span class="small muted">+{{ d.photos.all|length|add:"-3" }} more on the drive page</span>{% endif %}</span>{% endif %}</span>
           <a class="mono" href="{% url 'drive_edit' d.pk %}"><b>{{ d.code }}</b></a> <span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span>
           {% if d.contents %}<div class="small muted ellip">{{ d.contents }}</div>{% endif %}</td>
-        <td>{% if d.studio_owned %}Studio{% else %}{{ d.agency.code|default:d.agency.name|default:"–" }}{% endif %}</td>
+        <td>{% if d.studio_owned %}Studio{% elif d.agency %}{{ d.agency.code|default:d.agency.name }}{% else %}–{% endif %}</td>
         <td><span class="tag {{ d.status|drive_class }}">{{ d.get_status_display }}</span>{% if d.damaged_on_arrival %} <span class="tag bad">arrived damaged</span>{% endif %}</td>
         <td class="right nowrap">{% if d.data_gb %}<b>{{ d.data_gb|hours }}</b> GB{% if d.used_pct is not None %}<div class="bar sm"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
         <td class="nowrap">{% if d.n_folders %}📁 {{ d.n_folders }}{% if d.n_waiting %} <span class="tag warn">{{ d.n_waiting }} waiting</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>

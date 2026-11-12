@@ -191,9 +191,16 @@ class AgencyRate(models.Model):
         unique_together = ("agency", "deliverable")
 
 
+class _NoBlobManager(models.Manager):
+    """Lists of photos never pull the image bytes; they load only when a photo is actually served."""
+    def get_queryset(self):
+        return super().get_queryset().defer("data")
+
+
 class StoredImage(models.Model):
     """Small JPEG kept in the database so free hosts need no disk."""
     data = models.BinaryField()
+    objects = _NoBlobManager()
     content_type = models.CharField(max_length=40, default="image/jpeg")
     created = models.DateTimeField(auto_now_add=True)
 

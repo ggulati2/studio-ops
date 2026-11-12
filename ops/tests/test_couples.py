@@ -724,3 +724,43 @@ class StartDates(SeededTestCase):
         self.assertContains(self.f.get("/projects/?view=list&status="), "<th data-col=\"start\">Start date</th>", html=False)
         codes = [j["p"].pk for j in self.f.get("/projects/?view=list&status=&sort=start").context["jobs"]]
         self.assertIn(self.p.pk, codes)
+
+
+class MemorySafety(SeededTestCase):
+    """The free host has 512 MB: photo handling must stay small."""
+
+    def test_big_photo_upload_is_processed_at_low_memory(self):
+        import io
+        import resource
+        import subprocess
+        import sys
+        code = (
+            "import io,resource,django,os;os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings');django.setup()\n"
+            "from PIL import Image\n"
+            "b=io.BytesIO();Image.new('RGB',(8000,5000),(120,80,60)).save(b,'JPEG',quality=90);d=b.getvalue()\n"
+            "import gc;gc.collect();base=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
+            "from ops import services as S\n"
+            "from unittest import mock\n"
+            "with mock.patch.object(S.StoredImage.objects,'create',lambda **k:k):\n"
+            "    out=S.store_image(io.BytesIO(d))\n"
+            "im=Image.open(io.BytesIO(out['data']));print(max(im.size),(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss-base)//1024)\n")
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=".", env={**__import__("os").environ, "DEBUG": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        side, extra_mb = map(int, r.stdout.split())
+        self.assertEqual(side, 1600)
+        self.assertLess(extra_mb, 120)       # was ~300 MB for a 40 MP photo
+
+    def test_photo_bytes_not_loaded_in_lists(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from ops.models import HardDrive, StoredImage
+        d = HardDrive.objects.create(code="HDD-61")
+        d.photos.add(StoredImage.objects.create(data=b"x" * 1000))
+        f = self.login("ag")
+        with CaptureQueriesContext(connection) as q:
+            f.get("/drives/?view=list")
+        photo_sql = [x["sql"] for x in q.captured_queries if "ops_storedimage" in x["sql"]]
+        self.assertTrue(photo_sql)
+        self.assertFalse(any('"data"' in s for s in photo_sql), photo_sql)
+        img = d.photos.first()
+        self.assertEqual(bytes(f.get(f"/img/{img.pk}/").content), b"x" * 1000)    # still served in full

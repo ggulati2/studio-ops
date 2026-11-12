@@ -145,6 +145,8 @@ class Flows(SeededTestCase):
     def test_planner_and_holidays(self):
         ca = self.login("ag")
         d = self.today + timedelta(days=3)
+        while not S.is_workday_for(self.nikhil, d):     # a holiday only takes away a day that is a working day
+            d += timedelta(days=1)
         ca.post("/planner/", {"user": self.nikhil.pk, "date": d.isoformat(), "value": "Back-up"})
         self.assertEqual(PlanEntry.objects.get(user=self.nikhil, date=d).label, "Back-up")
         ca.post("/settings/", {"add_holiday": "1", "h-date": d.isoformat(), "h-name": "Test Holiday", "h-kind": "full"})
