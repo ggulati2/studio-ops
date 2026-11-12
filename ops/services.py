@@ -84,11 +84,16 @@ def all_project_hours():
 
     def compute():
         out = defaultdict(float)
-        for log in DayLog.objects.filter(tasks__isnull=False).distinct().prefetch_related("tasks"):
+        # only the columns the sums need: this runs over every day ever logged
+        tasks = TaskEntry.objects.only("id", "daylog_id", "project_id", "hours")
+        logs = (DayLog.objects.filter(tasks__isnull=False).distinct()
+                .only("id", "date", "time_in", "time_out", "day_type", "user_id")
+                .prefetch_related(models.Prefetch("tasks", queryset=tasks)))
+        for log in logs:
             sh = split_hours(log)
             for t in log.tasks.all():
                 out[t.project_id] += sh.get(t.id, 0)
-        for e in ExtraEntry.objects.all():
+        for e in ExtraEntry.objects.only("project_id", "date", "start", "end"):
             out[e.project_id] += e.hours
         return {k: round(v, 1) for k, v in out.items()}
 

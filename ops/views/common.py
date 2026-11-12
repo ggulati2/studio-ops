@@ -32,14 +32,21 @@ def no_access(request, exception=None):
 @login_required
 def image(request, pk):
     """Photos are private. Drive photos: drive desk and founders. Trailblazer of the Month photos: everyone signed in."""
-    img = get_object_or_404(StoredImage, pk=pk)
+    img = get_object_or_404(StoredImage, pk=pk)          # the bytes aren't loaded yet (deferred)
     is_drive_photo = img.drives.exists() or img.drivereturn_set.exists()
     if is_drive_photo and not has_perm(request.user, "drives.manage"):
         raise PermissionDenied
     if not is_drive_photo and role_of(request.user) is None:
         raise PermissionDenied
-    resp = HttpResponse(bytes(img.data), content_type=img.content_type)
-    resp["Cache-Control"] = "private, max-age=86400"
+    # A stored photo never changes (a new upload gets a new id), so the browser keeps it for a
+    # year and asks again only with its tag: "not modified" costs no database bandwidth.
+    etag = f'"img-{img.pk}"'
+    if etag in request.headers.get("If-None-Match", ""):
+        resp = HttpResponse(status=304)
+    else:
+        resp = HttpResponse(bytes(img.data), content_type=img.content_type)
+    resp["ETag"] = etag
+    resp["Cache-Control"] = "private, max-age=31536000, immutable"
     resp["X-Content-Type-Options"] = "nosniff"
     resp["Content-Disposition"] = "inline"
     return resp
@@ -59,7 +66,9 @@ SPECULATION_RULES = {
             {"not": {"href_matches": "/reports/print/*"}},
             {"not": {"selector_matches": "[download], [target=_blank], [data-no-prefetch]"}},
         ]},
-        "eagerness": "moderate",
+        # "conservative": only once the link is being clicked. Hover-prefetching loaded many pages
+        # nobody opened, and every one of them pulled data from the database (bandwidth quota).
+        "eagerness": "conservative",
     }],
 }
 

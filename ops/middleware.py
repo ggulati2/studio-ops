@@ -42,7 +42,11 @@ class SecurityHeadersMiddleware:
         response.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
         response.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         if request.user.is_authenticated and not request.path.startswith("/static/"):
-            response["Cache-Control"] = "private, no-store"
+            # Signed-in pages are never stored. A response that chose its own caching (photos: a
+            # year, they never change) keeps it; overriding it made every page re-download every
+            # photo from the database.
+            if not response.has_header("Cache-Control") or response.get("Content-Type", "").startswith("text/html"):
+                response["Cache-Control"] = "private, no-store"
             if response.get("Content-Type", "").startswith("text/html"):
                 response["Speculation-Rules"] = '"/speculation-rules.json"'     # hover-to-preload (ops/views/common.py)
         return response

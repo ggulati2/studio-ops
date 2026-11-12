@@ -61,10 +61,12 @@ class _Ctx:
 
 def _options():
     open_projects = list(Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
-                         .select_related("agency", "editor__profile").order_by("deadline", "couple"))
+                         .select_related("agency", "editor__profile").defer("brief", "agency__billing_address", "agency__notes")
+                         .order_by("deadline", "couple"))
     delivered = list(Project.objects.filter(status__in=(Project.CLOSED, Project.SENT_AGENCY),
                                             first_delivered_on__gte=timezone.localdate() - timedelta(days=120))
-                     .select_related("agency").order_by("-first_delivered_on"))
+                     .select_related("agency").defer("brief", "agency__billing_address", "agency__notes")
+                     .order_by("-first_delivered_on"))
     return open_projects, delivered
 
 

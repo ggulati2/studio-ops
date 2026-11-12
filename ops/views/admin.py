@@ -67,7 +67,8 @@ def week_load(people, today):
 def dashboard(request):
     today = timezone.localdate()
     month = month_start(today)
-    open_jobs = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "editor__profile")
+    open_jobs = (Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "editor__profile")
+                 .defer("brief", "agency__billing_address", "agency__notes"))
     people = list(team())
     rows, week_days = week_load(people, today)
     counts = defaultdict(int)
@@ -115,7 +116,9 @@ def dashboard(request):
 def project_filter(g):
     """The Projects page filters, shared by the list, the grouped view and couple blocks.
     Returns (queryset, {"status", "q", "f", "active"})."""
-    qs = Project.objects.select_related("agency", "editor__profile", "drive")
+    # long text that list pages never show stays in the database (Supabase bandwidth quota)
+    qs = (Project.objects.select_related("agency", "editor__profile", "drive")
+          .defer("brief", "agency__billing_address", "agency__notes", "drive__notes"))
     status = g.get("status", "open")
     q = g.get("q", "").strip()
     f = {k: g.get(k, "") for k in ("agency", "editor", "film", "due", "source", "kind", "sort")}
@@ -179,7 +182,8 @@ def projects(request):
         if v == "list":
             params["view"] = v
         switch[v] = "?" + params.urlencode()
-    queue = list(Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).select_related("agency", "drive"))
+    queue = list(Project.objects.filter(editor__isnull=True).exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
+                 .select_related("agency", "drive").defer("brief", "agency__billing_address", "agency__notes", "drive__notes"))
     # Draw PAGE rows at a time; "Show more" adds the next batch without reloading
     try:
         show = max(PAGE, min(int(request.GET.get("show", PAGE)), 5000))

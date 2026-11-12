@@ -809,3 +809,36 @@ class WorkLog(SeededTestCase):
 
     def test_linked_from_team(self):
         self.assertContains(self.f.get("/team/"), f"/team/work-log/?u={self.u.pk}")
+
+
+class DatabaseBandwidth(SeededTestCase):
+    """Supabase free plan: keep data pulled from the database small."""
+
+    def test_photos_cached_by_browser_and_304_without_bytes(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from ops.models import HardDrive, StoredImage
+        img = StoredImage.objects.create(data=b"y" * 5000)
+        HardDrive.objects.create(code="HDD-55").photos.add(img)
+        f = self.login("ag")
+        r = f.get(f"/img/{img.pk}/")
+        self.assertIn("immutable", r["Cache-Control"])
+        etag = r["ETag"]
+        with CaptureQueriesContext(connection) as q:
+            r = f.get(f"/img/{img.pk}/", HTTP_IF_NONE_MATCH=etag)
+        self.assertEqual(r.status_code, 304)
+        self.assertFalse(any('"data"' in x["sql"] for x in q.captured_queries))
+
+    def test_prefetch_only_on_click(self):
+        r = self.client.get("/speculation-rules.json")
+        self.assertEqual(r.json()["prefetch"][0]["eagerness"], "conservative")
+
+    def test_lists_skip_long_text(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        f = self.login("ag")
+        with CaptureQueriesContext(connection) as q:
+            f.get("/projects/?view=list&status=")
+        film_sql = [x["sql"] for x in q.captured_queries if 'FROM "ops_project"' in x["sql"] and "ops_agency" in x["sql"]]
+        self.assertTrue(film_sql)
+        self.assertFalse(any('"brief"' in s or '"billing_address"' in s for s in film_sql))

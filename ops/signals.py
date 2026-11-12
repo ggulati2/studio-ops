@@ -5,7 +5,7 @@ from django.db.models.signals import post_delete, post_save
 
 from . import perf
 
-HOURS_MODELS = {"DayLog", "TaskEntry", "ExtraEntry", "Project"}
+HOURS_MODELS = {"DayLog", "TaskEntry", "ExtraEntry"}   # a film's own edits don't change logged hours
 BADGE_MODELS = {"DelayReport", "LeaveRequest", "EmployeeOfMonth"}
 
 
