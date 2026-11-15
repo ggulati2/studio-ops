@@ -1024,3 +1024,29 @@ class AgenciesFY(SeededTestCase):
         self.assertEqual(after[ag.name], before.get(ag.name, 0) + 12345)
         self.assertEqual(sum(after.values()), r.context["fy"]["revenue"])
         self.assertContains(r, "Agencies · FY")
+
+
+class ValueVsCost(SeededTestCase):
+    def test_periods_films_and_extra(self):
+        from datetime import time
+        from django.contrib.auth import get_user_model
+        from ops.models import DayLog, ExtraEntry, TaskEntry
+        u = get_user_model().objects.get(username="pratik")
+        today = timezone.localdate()
+        p = Project.objects.create(couple="Value Check", deliverable="Trailer", agency=Agency.objects.get(code="BRC"),
+                                   invoice_amount=40000, editor=u, is_extra=True, extra_basis="hourly", extra_rate=200)
+        log, _ = DayLog.objects.get_or_create(user=u, date=today, defaults={"day_type": DayLog.OFFICE, "time_in": time(10),
+                                                                            "time_out": time(19)})
+        TaskEntry.objects.create(daylog=log, project=p, stage="Edit", hours=4)
+        ExtraEntry.objects.create(user=u, project=p, date=today, start=time(20), end=time(22))
+        f = self.login("ag")
+        for vp in ("", "fy", "all"):
+            r = f.get(f"/team/?vp={vp}")
+            card = next(c for c in r.context["vcards"] if c["u"].pk == u.pk)
+            film = next(x for x in card["films"] if x["p"].pk == p.pk)
+            self.assertEqual((film["h"], film["xh"]), (4.0, 2.0))
+            self.assertGreaterEqual(card["extra"], 400)                  # 2 h x 200 counted in cost
+            self.assertEqual(card["cost"], card["salary"] + card["extra"])
+        self.assertContains(r, "Value Check · Trailer")
+        self.assertContains(r, 'data-swap-id="value"')
+        self.assertEqual(f.get("/team/?vp=fy").context["vperiod"], "fy")

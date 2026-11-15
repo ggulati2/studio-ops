@@ -44,14 +44,28 @@
   </table></div>
 </section>
 
-<section class="card">
-  <div class="title"><h2>Value of work vs salary</h2><span class="small muted">Only founders see this</span></div>
-  <div class="grid wide">{% for r in rows %}{% if r.u.profile.does_editing %}
+<section class="card" id="value" data-swap-id="value">
+  <div class="title"><h2>Value of work vs cost</h2>
+    <nav class="seg" aria-label="Period">
+      <a href="{{ vlinks.month }}" data-swap="value" class="{% if vperiod == 'month' %}on{% endif %}">{{ month|date:"F" }}</a>
+      <a href="{{ vlinks.fy }}" data-swap="value" class="{% if vperiod == 'fy' %}on{% endif %}">Financial year</a>
+      <a href="{{ vlinks.all }}" data-swap="value" class="{% if vperiod == 'all' %}on{% endif %}">Overall</a>
+    </nav>
+    <span class="small muted">{{ vlabel }} · only founders see this · hover a name for the films</span></div>
+  <div class="grid wide">{% for r in vcards %}
     <div class="card tight" style="gap:7px">
-      <div style="display:flex;justify-content:space-between"><b>{{ r.u.profile.name }}</b>{% if r.multiple is not None %}<span class="tag {% if r.multiple < 1.5 %}bad{% elif r.multiple >= 3 %}info{% else %}ok{% endif %}">{{ r.multiple }}×</span>{% endif %}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <span class="hrs-hover" tabindex="0" aria-describedby="vt-{{ r.u.pk }}"><b>{{ r.u.profile.name }}</b>
+          <span class="hrs-tip" role="tooltip" id="vt-{{ r.u.pk }}"><b>Films worked on · {{ vlabel }}</b>
+            {% for f in r.films %}<span class="ht-row"><span>{{ f.p.couple }} · {{ f.p.deliverable }}{% if f.p.agency.code %} · {{ f.p.agency.code }}{% endif %}</span><span>{{ f.h|hours }} h{% if f.xh %} + {{ f.xh|hours }} h extra{% endif %}</span><b>₹{{ f.v|money }}</b></span>{% empty %}<span class="muted">No hours logged on films in this period.</span>{% endfor %}
+            {% if r.films %}<span class="ht-total">{{ r.hours|hours }} h{% if r.xhours %} + {{ r.xhours|hours }} h extra{% endif %} · value <b>₹{{ r.value|money }}</b></span>{% endif %}
+          </span></span>
+        {% if r.multiple is not None %}<span class="tag {% if r.multiple < 1.5 %}bad{% elif r.multiple >= 3 %}info{% else %}ok{% endif %}">{{ r.multiple }}×</span>{% endif %}</div>
       <div class="small" style="display:flex;justify-content:space-between"><span class="muted">Value of work</span><b>₹{{ r.value|money }}</b></div>
-      <div class="small" style="display:flex;justify-content:space-between"><span class="muted">Salary</span><span>₹{{ r.u.profile.monthly_salary|money }}</span></div>
-    </div>{% endif %}{% endfor %}</div>
-  <p class="small muted" style="margin:0">Value = each INR film's invoice shared by the hours each editor spent on it. Guide: under 1.5× costs more than it brings in, 2–3× is healthy. New juniors start low.</p>
+      <div class="small" style="display:flex;justify-content:space-between"><span class="muted">Salary{% if vmonths > 1 %} ({{ vmonths }} months){% endif %}</span><span>₹{{ r.salary|money }}</span></div>
+      <div class="small" style="display:flex;justify-content:space-between"><span class="muted">+ Extra-work pay</span><span>₹{{ r.extra|money }}</span></div>
+      <div class="small" style="display:flex;justify-content:space-between;border-top:1px solid var(--line2);padding-top:5px"><span class="muted">= Cost</span><b>₹{{ r.cost|money }}</b></div>
+    </div>{% endfor %}</div>
+  <p class="small muted" style="margin:0">Value = each INR film's invoice shared by the hours each editor spent on it, extra-work hours included. Cost = salary (payroll figures where payroll was run) + extra-work pay. Guide: under 1.5× costs more than it brings in, 2–3× is healthy. New juniors start low.</p>
 </section>
 {% endblock %}

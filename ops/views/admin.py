@@ -719,12 +719,65 @@ def team_view(request):
                      "avg": round(att["hours"] / worked, 1) if worked else None,
                      "target": round(worked * hpd, 1)})
     return render(request, "founder/team.html", {
+        **_value_vs_cost(request, month),
         "rows": rows, "month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
         "pods": list(Pod.objects.all()), "can_edit_people": has_perm(request.user, "people.manage"),
         "days": [{"d": d, "hol": hols.get(d), "off": d.weekday() not in StudioSettings.get().weekdays,
                   "today": d == today} for d in days],
         "hpd": hpd, "missing_total": sum(len(r["missing"]) for r in rows),
         "team_hours": round(sum(r["att"]["hours"] for r in rows), 1)})
+
+
+def _value_vs_cost(request, month):
+    """Value of work vs what each editor costs (salary + extra-work pay) for a period:
+    the page's month, the financial year so far, or everything since tracking started."""
+    from ..models import Payslip
+    period = request.GET.get("vp", "")
+    today = timezone.localdate()
+    st = StudioSettings.get()
+    fy_a, fy_b = fy_bounds(today)
+    if period == "fy":
+        a = max(fy_a, st.tracking_start) if st.tracking_start else fy_a
+        b, label = today, f"FY {fy_a.year}–{str(fy_b.year)[2:]} so far"
+    elif period == "all":
+        first = Project.objects.order_by("created").values_list("created", flat=True).first()
+        a = st.tracking_start or (timezone.localtime(first).date() if first else today)
+        b, label = today, f"Overall, since {a:%-d %b %Y}"
+    else:
+        period, a, b, label = "", month_start(month), month_end(month), f"{month:%B %Y}"
+    months = []
+    m = month_start(a)
+    while m <= b:
+        months.append(m)
+        m = add_months(m, 1)
+    detail = S.editor_value_detail(a, b)
+    slips = defaultdict(dict)
+    for sl in Payslip.objects.filter(payroll__month__in=months).select_related("payroll").only(
+            "user_id", "salary", "leave_deduction", "other", "payroll__month"):
+        slips[sl.user_id][sl.payroll.month] = sl.salary - sl.leave_deduction + sl.other
+    entries, fixed = S._extras_between(a, b)
+    cards = []
+    for u in team():
+        if not u.profile.does_editing:
+            continue
+        d = detail.get(u.id, {"value": 0, "films": []})
+        salary = sum(slips[u.id].get(mm, u.profile.monthly_salary) for mm in months)
+        extra = sum(e.pay for e in entries.get(u.id, [])) + fixed.get(u.id, 0)
+        cost = salary + extra
+        if not cost and not d["value"]:
+            continue                      # nothing to compare (e.g. a contract editor with no work here)
+        cards.append({"u": u, "value": d["value"], "films": d["films"], "salary": salary, "extra": extra, "cost": cost,
+                      "multiple": round(d["value"] / cost, 1) if cost else None,
+                      "hours": round(sum(f["h"] for f in d["films"]), 1), "xhours": round(sum(f["xh"] for f in d["films"]), 1)})
+    params = request.GET.copy()
+    links = {}
+    for key in ("", "fy", "all"):
+        q = params.copy()
+        q.pop("vp", None)
+        if key:
+            q["vp"] = key
+        links[key or "month"] = "?" + q.urlencode()
+    return {"vcards": cards, "vperiod": period or "month", "vlabel": label, "vlinks": links, "vmonths": len(months)}
 
 
 @requires("people.manage")

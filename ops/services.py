@@ -291,6 +291,36 @@ def editor_value(month):
     return {k: int(v) for k, v in value.items()}
 
 
+def editor_value_detail(a, b):
+    """Per editor over a date range: value of work (regular + extra hours, each film's invoice
+    shared by hours as in editor_value) and the films behind it.
+    {user_id: {"value": int, "films": [{"p", "h", "xh", "v"}]}}"""
+    bench = benchmarks()
+    rate = {}
+    hrs = task_hours(DayLog.objects.filter(date__range=(a, b)))
+    extra = defaultdict(float)
+    for e in ExtraEntry.objects.filter(date__range=(a, b)).only("user_id", "project_id", "date", "start", "end"):
+        extra[(e.user_id, e.project_id)] += e.hours
+    keys = set(hrs) | set(extra)
+    films = Project.objects.select_related("agency").in_bulk({pid for _, pid in keys})
+    out = defaultdict(lambda: {"value": 0.0, "films": []})
+    for uid, pid in keys:
+        p = films.get(pid)
+        if not p:
+            continue
+        if pid not in rate:
+            denom = max(project_hours(p), bench.get(p.deliverable, 0))
+            rate[pid] = (p.invoice_amount / denom) if (denom and p.agency.currency == "INR") else 0
+        h, xh = hrs.get((uid, pid), 0), extra.get((uid, pid), 0)
+        v = (h + xh) * rate[pid]
+        out[uid]["value"] += v
+        out[uid]["films"].append({"p": p, "h": round(h, 1), "xh": round(xh, 1), "v": int(v)})
+    for d in out.values():
+        d["value"] = int(d["value"])
+        d["films"].sort(key=lambda f: -f["v"])
+    return out
+
+
 # ---------------------------------------------------------------- client-facing status
 CLIENT_STAGE = {
     Project.NOT_STARTED: "Scheduled", Project.IN_PROGRESS: "Editing", Project.TL_REVIEW: "Final checks",

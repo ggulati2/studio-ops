@@ -396,4 +396,32 @@
     load(location.pathname + location.search, false);
   });
   window.StudioLive = { reload: function () { return load(location.pathname + location.search, false); } };
+
+})();
+
+/* Links that redraw one section of the page in place: <a data-swap="name"> inside
+   <… data-swap-id="name">. Used for period switches (e.g. Team: month / financial year / overall). */
+(function () {
+  "use strict";
+  var doc = document;
+  doc.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a[data-swap]");
+    if (!a || e.metaKey || e.ctrlKey || !window.fetch || !window.DOMParser) return;
+    var id = a.getAttribute("data-swap"), box = doc.querySelector('[data-swap-id="' + id + '"]');
+    if (!box) return;
+    e.preventDefault();
+    Array.prototype.forEach.call(a.parentNode.querySelectorAll("a[data-swap]"), function (x) { x.classList.toggle("on", x === a); });
+    box.classList.add("live-loading");
+    fetch(a.href, { credentials: "same-origin", headers: { "X-Requested-With": "fetch-page" } })
+      .then(function (r) { if (!r.ok) throw new Error(); return r.text(); })
+      .then(function (html) {
+        var n = new DOMParser().parseFromString(html, "text/html").querySelector('[data-swap-id="' + id + '"]');
+        if (!n) throw new Error();
+        box.innerHTML = n.innerHTML;
+        box.classList.remove("live-loading");
+        box.classList.remove("live-in"); void box.offsetWidth; box.classList.add("live-in");
+        history.replaceState(history.state, "", a.href);
+      })
+      .catch(function () { location.href = a.href; });
+  });
 })();
