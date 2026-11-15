@@ -1,0 +1,15 @@
+{% load ops_extras %}<tr data-extra-film="{{ p.pk }}">
+  <td><span class="hrs-hover" tabindex="0" aria-describedby="xt-{{ p.pk }}"><b>{{ p.couple }}</b> <span class="small muted">{{ p.deliverable }}{% if p.agency.code %} · {{ p.agency.code }}{% endif %}</span>
+    <span class="hrs-tip" role="tooltip" id="xt-{{ p.pk }}"><b>Extra hours logged on {{ p }}</b>
+      {% for e in p.x_month %}<span class="ht-row"><span>{{ e.date|date:"D j M" }} · {{ e.start|time:"H:i" }}–{{ e.end|time:"H:i" }}</span><span>{{ e.get_stage_display }}{% if e.user_id != p.editor_id %} · {{ e.user.profile.name }}{% endif %}</span><b>{{ e.hours|hours }} h</b>{% if e.note %}<i>{{ e.note }}</i>{% endif %}</span>{% empty %}<span class="muted">Nothing logged in {{ month|date:"F" }}.</span>{% endfor %}
+      <span class="ht-total">{{ month|date:"F" }}: <b>{{ p.x_hours_month|hours }} h</b>{% if p.x_hours_all != p.x_hours_month %} · all months: <b>{{ p.x_hours_all|hours }} h</b>{% endif %}</span>
+    </span></span></td>
+  <td>{{ p.editor.profile.name|default:"–" }}</td>
+  <td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span></td>
+  <td class="nowrap"><b>{{ p.x_hours_month|hours }} h</b>{% if p.x_hours_all != p.x_hours_month %} <span class="small muted">of {{ p.x_hours_all|hours }}</span>{% endif %}</td>
+  <td class="right nowrap"><form method="post" action="{% url 'extra_film_pay' p.pk %}" data-live class="cell-edit extra-amt">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}"><input type="hidden" name="m" value="{{ month|date:'Y-m' }}">
+    <span class="amt-wrap"><span class="amt-cur" aria-hidden="true">₹</span><input class="cell-input num" name="amount" inputmode="numeric" pattern="[0-9,]*" value="{% if p.extra_basis == 'fixed' and p.extra_rate %}{{ p.extra_rate }}{% endif %}" placeholder="{% if p.extra_basis == 'hourly' %}{{ p.x_hourly_pay }}{% else %}0{% endif %}" data-save-on-leave aria-label="Pay to the editor for {{ p }}"></span>
+    <noscript><button class="btn sm">Save</button></noscript></form>
+    {% if p.extra_basis == "hourly" %}<div class="small muted">by the hour: ₹{{ p.extra_rate|money }}/h</div>{% endif %}</td>
+  <td class="small nowrap">{% if p.extra_basis == "hourly" %}Monthly, by hours{% elif p.x_paid_in %}<span class="tag ok">{{ p.x_paid_in|date:"M" }} payroll</span>{% elif p.extra_rate %}When delivered{% else %}<span class="muted">–</span>{% endif %}</td>
+</tr>

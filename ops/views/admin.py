@@ -26,7 +26,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
                         week_start)
 
 User = get_user_model()
-__all__ = ["extra_amount", "backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
+__all__ = ["extra_amount", "extra_film_pay", "backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "person_pod", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
@@ -757,9 +757,79 @@ def extra_admin(request):
                         "pct": round(keep / p.invoice_amount * 100) if keep is not None and p.invoice_amount else None})
     return render(request, "founder/extra.html", {"month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
                                                 "rows": rows, "flagged": flagged, "margins": margins,
-                                                "entries": entries.select_related("project__agency").order_by("-date", "-start"),
+                                                "films": _extra_films(month),
                                                 "total_pay": sum(r["pay"] for r in rows),
                                                 "total_hours": round(sum(r["extra"] for r in rows), 1)})
+
+
+def _film_row(p, a, b):
+    """One extra-work film for the month: hours (this month / all time) and the logged entries for the hover."""
+    allx = sorted(p.extra_entries.all(), key=lambda e: (e.date, e.start))
+    month_x = [e for e in allx if a <= e.date <= b]
+    p.x_month = month_x
+    p.x_hours_month = round(sum(e.hours for e in month_x), 2)
+    p.x_hours_all = round(sum(e.hours for e in allx), 2)
+    p.x_hourly_pay = sum(e.pay for e in month_x) if p.extra_basis == "hourly" else 0
+    p.x_paid_in = p.closed_on if (p.extra_basis == "fixed" and p.status == Project.CLOSED and p.closed_on) else None
+    return p
+
+
+def _extra_films(month):
+    """Every film with extra work this month, plus open extra jobs and those delivered this month."""
+    a, b = month_start(month), month_end(month)
+    qs = (Project.objects.filter(Q(extra_entries__date__range=(a, b)) | Q(is_extra=True) & (
+        ~Q(status=Project.CLOSED) | Q(closed_on__range=(a, b))))
+          .distinct().select_related("editor__profile", "agency")
+          .defer("brief", "agency__billing_address", "agency__notes")
+          .prefetch_related(models.Prefetch("extra_entries", queryset=ExtraEntry.objects.select_related("user__profile")))
+          .order_by("couple", "deliverable"))
+    return [_film_row(p, a, b) for p in qs]
+
+
+@requires("extra.manage")
+def extra_film_pay(request, pk):
+    """Set the money the editor gets for a whole extra-work film (paid with the payroll of the
+    month the film is delivered). Empty clears it."""
+    from ..perf import clear as clear_memo
+    p = get_object_or_404(Project.objects.select_related("editor__profile", "agency"), pk=pk)
+    back = S.safe_next(request, request.POST.get("next"), reverse("extra_admin"))
+    if request.method != "POST":
+        return redirect(back)
+    month = parse_month(request.POST.get("m"))
+    raw = (request.POST.get("amount") or "").replace(",", "").replace("₹", "").strip()
+    if raw and (not raw.isdigit() or int(raw) > 10_000_000):
+        say = [("error", "Enter the amount in whole rupees, e.g. 5000 (or leave it empty).")]
+    else:
+        old = f"₹{p.extra_rate:,} fixed" if p.extra_basis == "fixed" else f"₹{p.extra_rate:,}/h"
+        new = int(raw) if raw else 0
+        if (p.extra_basis, p.extra_rate) != ("fixed", new):
+            p.extra_basis, p.extra_rate = "fixed", new
+            if not p.is_extra and new:
+                p.is_extra = True
+            p.save(update_fields=["extra_basis", "extra_rate", "is_extra"])
+            record(request, "extra.pay", str(p), f"{old} -> ₹{new:,} fixed")
+        who = p.editor.profile.name if p.editor_id else "the editor"
+        say = [("success", (f"{p}: ₹{new:,} for {who}, " + ("paid with this month's payroll (delivered)."
+                                                            if p.status == Project.CLOSED else "paid with the payroll of the month it's delivered."))
+                if new else f"{p}: no pay set for this film.")]
+    if request.headers.get("X-Requested-With") == "fetch":
+        clear_memo()
+        a, b = month_start(month), month_end(month)
+        p = Project.objects.prefetch_related(models.Prefetch("extra_entries", queryset=ExtraEntry.objects.select_related("user__profile"))
+                                             ).select_related("editor__profile", "agency").get(pk=p.pk)
+        rows = _extra_summary(request, month)
+        bad = any(l == "error" for l, _ in say)
+        row = render_to_string("founder/_extra_film.html", {"p": _film_row(p, a, b), "back": back, "month": month}, request=request)
+        summary = render_to_string("founder/_extra_summary.html", {
+            "rows": rows, "total_pay": sum(r["pay"] for r in rows), "total_hours": round(sum(r["extra"] for r in rows), 1),
+            "flagged_n": str(sum(1 for x in ExtraEntry.objects.filter(date__range=(a, b)).select_related("user")
+                                 if x.overlaps_office))}, request=request)
+        return JsonResponse({"ok": not bad, "messages": [{"level": l, "text": t} for l, t in say],
+                             "swap": [{"sel": f'[data-extra-film="{p.pk}"]', "mode": "outer", "html": row},
+                                      {"sel": "[data-extra-summary]", "mode": "outer", "html": summary}]})
+    for level, text in say:
+        getattr(messages, level)(request, text)
+    return redirect(back)
 
 
 def _extra_summary(request, month):

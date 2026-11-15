@@ -42,6 +42,7 @@ urlpatterns = [
     path("team/<int:pk>/", v.person_edit, name="person_edit"),
     path("extra-work/", v.extra_admin, name="extra_admin"),
     path("extra-work/<int:pk>/amount/", v.extra_amount, name="extra_amount"),
+    path("extra-work/film/<int:pk>/pay/", v.extra_film_pay, name="extra_film_pay"),
     path("payroll/", v.payroll, name="payroll"),
     path("payroll/save/", v.payroll_save, name="payroll_save"),
     path("payslip/<int:pk>/", v.payslip_view, name="payslip"),

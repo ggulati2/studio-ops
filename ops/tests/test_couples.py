@@ -889,8 +889,34 @@ class ExtraTaskPay(SeededTestCase):
         self.e1.refresh_from_db()
         self.assertIsNone(self.e1.amount)
 
-    def test_page_lists_tasks(self):
+    def test_page_lists_films_with_hours_on_hover(self):
         r = self.f.get("/extra-work/")
-        self.assertContains(r, "Tasks this month")
-        self.assertContains(r, f'data-extra="{self.e1.pk}"')
-        self.assertContains(r, 'placeholder="600"')
+        self.assertContains(r, "Films this month")
+        self.assertContains(r, f'data-extra-film="{self.hourly.pk}"')
+        self.assertContains(r, f'data-extra-film="{self.fixed.pk}"')
+        self.assertContains(r, 'class="hrs-tip"')
+        self.assertContains(r, "20:00–22:00")           # the logged entry, shown on hover
+        self.assertContains(r, 'placeholder="600"')     # hourly film: 2 h x 300 so far
+
+    def test_pay_per_film(self):
+        from ops.perf import clear
+        from ops.services import extra_pay
+        today = timezone.localdate()
+        r = self.f.post(f"/extra-work/film/{self.fixed.pk}/pay/", {"amount": "5,000", "m": f"{today:%Y-%m}"},
+                        HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertTrue(r["ok"])
+        self.assertEqual({x["sel"] for x in r["swap"]}, {f'[data-extra-film="{self.fixed.pk}"]', "[data-extra-summary]"})
+        self.fixed.refresh_from_db()
+        self.assertEqual((self.fixed.extra_basis, self.fixed.extra_rate), ("fixed", 5000))
+        month = today.replace(day=1)
+        clear()
+        before = extra_pay(self.u, month)
+        self.fixed.status = Project.CLOSED      # paid with the payroll of the month it's delivered
+        self.fixed.save()
+        clear()
+        self.assertEqual(extra_pay(self.u, month), before + 5000)
+        # an hourly film switches to a set amount when one is typed
+        self.f.post(f"/extra-work/film/{self.hourly.pk}/pay/", {"amount": "3000"}, HTTP_X_REQUESTED_WITH="fetch")
+        self.hourly.refresh_from_db()
+        self.assertEqual((self.hourly.extra_basis, self.hourly.extra_rate), ("fixed", 3000))
+        self.assertNotEqual(self.login("pratik").post(f"/extra-work/film/{self.hourly.pk}/pay/", {"amount": "1"}).status_code, 200)

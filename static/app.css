@@ -1166,3 +1166,15 @@ td.starts{box-shadow:inset 3px 0 0 var(--ok)}
 .extra-amt input{width:96px;text-align:right}
 .extra-amt input::placeholder{color:var(--faint)}
 .extra-tasks td{vertical-align:middle}
+.hrs-hover{position:relative;display:inline-block;cursor:help;border-bottom:1px dotted var(--faint)}
+.hrs-tip{position:absolute;left:0;top:calc(100% + 6px);z-index:50;min-width:280px;max-width:380px;display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:0 14px 40px rgba(0,0,0,.2);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility .12s;font-size:var(--t-sm);font-weight:400;cursor:default}
+.hrs-hover:hover .hrs-tip,.hrs-hover:focus .hrs-tip,.hrs-hover:focus-within .hrs-tip{opacity:1;visibility:visible;transform:none}
+.ht-row{display:grid;grid-template-columns:1fr auto;gap:0 10px;padding-top:6px;border-top:1px solid var(--line2)}
+.ht-row b{grid-column:2;grid-row:1}
+.ht-row span:nth-child(2){color:var(--muted);font-size:var(--t-xs)}
+.ht-row i{grid-column:1/-1;color:var(--muted);font-size:var(--t-xs)}
+.ht-total{padding-top:6px;border-top:1px solid var(--line)}
+.extra-tasks .scroll,.card:has(.extra-tasks) .scroll{overflow:visible}
+.hrs-tip.fixed{position:fixed}
+.hrs-hover:focus:not(:focus-visible) .hrs-tip{opacity:0;visibility:hidden}
+.hrs-hover:hover .hrs-tip{opacity:1!important;visibility:visible!important}
