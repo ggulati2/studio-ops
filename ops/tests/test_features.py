@@ -511,15 +511,28 @@ class AdvanceLeave(SeededTestCase):
 
 class RevenueEstimated(SeededTestCase):
     def test_new_project_adds_to_estimate(self):
+        """Financial-year estimate: a film counts when it's due (or sent) inside the FY, not when it's logged."""
+        from datetime import timedelta
+        from django.utils import timezone
         from ops.models import Agency
+        from ops.views.admin import fy_bounds
         f = self.login("ag")
-        before = f.get("/dashboard/").context["revenue_est"]
+        before = f.get("/dashboard/").context["fy"]
         ag = Agency.objects.filter(currency="INR").first()
-        Project.objects.create(couple="Estimate Test", deliverable="Trailer", agency=ag, invoice_amount=25000)
+        today = timezone.localdate()
+        _, fy_end = fy_bounds(today)
+        Project.objects.create(couple="Estimate Test", deliverable="Trailer", agency=ag, invoice_amount=25000,
+                               deadline=today + timedelta(days=5))
+        Project.objects.create(couple="Next Year", deliverable="Teaser", agency=ag, invoice_amount=7000,
+                               deadline=fy_end + timedelta(days=10))
+        Project.objects.create(couple="No Date", deliverable="Teaser", agency=ag, invoice_amount=3000)
         r = f.get("/dashboard/")
-        self.assertEqual(r.context["revenue_est"], before + 25000)
+        fy = r.context["fy"]
+        self.assertEqual(fy["revenue"], before["revenue"] + 25000)          # due this FY: counted
+        self.assertEqual(fy["undated"], before["undated"] + 3000)           # no deadline: kept apart
+        self.assertEqual(fy["profit"], fy["revenue"] - fy["costs"])
         html = r.content.decode()
-        self.assertIn("Revenue estimated (INR)", html)
+        self.assertIn("Revenue estimate · FY", html)
         self.assertIn("Revenue delivered (INR)", html)
 
 

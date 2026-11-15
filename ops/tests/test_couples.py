@@ -943,32 +943,27 @@ class ExtraNoAcceptNeeded(SeededTestCase):
 
 
 class EstimatedProfit(SeededTestCase):
-    def test_profit_is_revenue_minus_costs(self):
-        from django.contrib.auth import get_user_model
-        from ops.models import Profile, StudioSettings
-        from ops.services import extra_pay, month_start, team
-        from ops.views.admin import estimated_profit
+    def test_fy_profit_is_revenue_minus_full_year_costs(self):
+        from datetime import date
+        from ops.models import StudioSettings
+        from ops.views.admin import fy_bounds, fy_estimate
+        self.assertEqual(fy_bounds(date(2026, 11, 16)), (date(2026, 4, 1), date(2027, 3, 31)))
+        self.assertEqual(fy_bounds(date(2027, 2, 1)), (date(2026, 4, 1), date(2027, 3, 31)))
+        self.assertEqual(fy_bounds(date(2027, 4, 1)), (date(2027, 4, 1), date(2028, 3, 31)))
         s = StudioSettings.get()
         s.monthly_overheads = 25000
         s.save()
-        month = month_start(timezone.localdate())
-        r = estimated_profit(month, 500000, 600000)
-        U = get_user_model()
-        salaries = sum(u.profile.monthly_salary for u in U.objects.filter(profile__active=True)
-                       .exclude(profile__employment=Profile.CONTRACT).select_related("profile"))
-        extra = sum(extra_pay(u, month) for u in team())
-        self.assertEqual(r["salaries"], salaries)
-        self.assertEqual(r["extra"], extra)
-        self.assertEqual(r["overheads"], 25000)
-        self.assertEqual(r["value"], 600000 - salaries - extra - r["contract"] - 25000)     # on revenue estimated
-        self.assertEqual(r["on_delivered"], 500000 - r["costs"])
+        r = fy_estimate()
+        self.assertEqual(r["overheads"], 300000)
+        self.assertEqual(r["revenue"], r["delivered"] + r["due"])
+        self.assertEqual(r["costs"], r["salaries"] + r["extra"] + r["contract"] + r["overheads"])
+        self.assertEqual(r["profit"], r["revenue"] - r["costs"])
 
     def test_dashboard_tile_and_setting(self):
         f = self.login("ag")
         r = f.get("/dashboard/")
-        self.assertContains(r, "Estimated profit (INR)")
-        self.assertContains(r, "Rent + electricity")
-        self.assertIn("profit", r.context)
+        self.assertContains(r, "Estimated profit · FY")
+        self.assertContains(r, "Rent + electricity, 12 months")
         from ops.forms import StudioSettingsForm
         self.assertIn("monthly_overheads", StudioSettingsForm().fields)
 

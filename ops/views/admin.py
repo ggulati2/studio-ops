@@ -65,24 +65,62 @@ def week_load(people, today):
     return out, days
 
 
-def estimated_profit(month, revenue, revenue_est):
-    """This month: revenue estimated (INR) minus full-time salaries, extra-work pay, contract-editor fees
-    and the studio's fixed monthly costs (rent + electricity, from Settings). Costs are for the
-    whole month, so early in the month the figure is low; it fills in as films are delivered."""
-    a, b = month_start(month), month_end(month)
-    staff = list(User.objects.filter(profile__active=True).exclude(profile__employment=Profile.CONTRACT)
-                 .select_related("profile"))
-    salaries = sum(u.profile.monthly_salary for u in staff)
-    extra = sum(extra_pay(u, month) for u in team())
-    contract = sum(Project.objects.filter(Q(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__range=(a, b))
-                                          | Q(status=Project.SENT_AGENCY, first_delivered_on__range=(a, b)),
-                                          contractor_fee__gt=0).values_list("contractor_fee", flat=True))
-    overheads = StudioSettings.get().monthly_overheads
-    costs = salaries + extra + contract + overheads
-    # The headline works on revenue estimated (every film logged this month); delivered is shown alongside
-    return {"value": revenue_est - costs, "on_delivered": revenue - costs, "revenue": revenue_est,
-            "salaries": salaries, "extra": extra, "contract": contract, "overheads": overheads, "costs": costs,
-            "margin": round((revenue_est - costs) / revenue_est * 100) if revenue_est else None}
+def fy_bounds(day):
+    """Indian financial year containing day: 1 April to 31 March."""
+    start = date(day.year if day.month >= 4 else day.year - 1, 4, 1)
+    return start, date(start.year + 1, 3, 31)
+
+
+def fy_estimate(today=None):
+    """Financial-year estimate (1 Apr – 31 Mar), INR.
+
+    Revenue = films already sent/delivered this FY + open films due by 31 March (agency's
+    deadline, else the editor's; overdue ones included: still expected). Films with no deadline
+    are kept apart. Costs = full-year salaries (payroll actuals for months already run, profile
+    salary for the rest), extra-work pay (paid so far + fixed amounts booked on open extra films
+    due this FY), contract-editor fees on the films counted, and 12 months of rent + electricity."""
+    today = today or timezone.localdate()
+    a, b = fy_bounds(today)
+    films = (Project.objects.select_related("agency").filter(agency__currency="INR")
+             .only("id", "status", "invoice_amount", "first_delivered_on", "closed_on", "deadline", "agency_deadline",
+                   "contractor_fee", "is_extra", "extra_basis", "extra_rate", "editor_id", "agency__currency"))
+    delivered = films.filter(Q(first_delivered_on__range=(a, b)) |
+                             Q(first_delivered_on__isnull=True, status=Project.CLOSED, closed_on__range=(a, b)))
+    open_ = (films.filter(first_delivered_on__isnull=True)
+             .exclude(status__in=(Project.CLOSED, Project.SENT_AGENCY, Project.CLIENT_REV, Project.ON_HOLD)))
+    due, undated = [], []
+    for p in open_:
+        when = p.agency_deadline or p.deadline
+        if when is None:
+            undated.append(p)
+        elif when <= b:
+            due.append(p)
+    delivered = list(delivered)
+    rev_done = sum(p.invoice_amount for p in delivered)
+    rev_due = sum(p.invoice_amount for p in due)
+    # costs
+    from ..models import Payslip
+    months = [date(a.year + (a.month - 1 + i) // 12, (a.month - 1 + i) % 12 + 1, 1) for i in range(12)]
+    run = defaultdict(int)
+    for sl in Payslip.objects.filter(payroll__month__range=(a, b)).select_related("payroll").only(
+            "salary", "leave_deduction", "other", "payroll__month"):
+        run[sl.payroll.month] += sl.salary - sl.leave_deduction + sl.other
+    monthly = sum(User.objects.filter(profile__active=True).exclude(profile__employment=Profile.CONTRACT)
+                  .values_list("profile__monthly_salary", flat=True))
+    salaries = sum(run[m] if m in run else monthly for m in months)
+    entries, fixed = S._extras_between(a, min(b, today))
+    extra_paid = sum(e.pay for es in entries.values() for e in es) + sum(fixed.values())
+    extra_booked = sum(p.extra_rate for p in due if p.is_extra and p.extra_basis == "fixed")
+    contract = sum(p.contractor_fee for p in delivered + due)
+    overheads = StudioSettings.get().monthly_overheads * 12
+    costs = salaries + extra_paid + extra_booked + contract + overheads
+    revenue = rev_done + rev_due
+    return {"start": a, "end": b, "label": f"FY {a.year}–{str(b.year)[2:]}", "revenue": revenue,
+            "delivered": rev_done, "delivered_n": len(delivered), "due": rev_due, "due_n": len(due),
+            "undated": sum(p.invoice_amount for p in undated), "undated_n": len(undated),
+            "salaries": salaries, "payroll_months": len(run), "extra": extra_paid + extra_booked, "contract": contract,
+            "overheads": overheads, "costs": costs, "profit": revenue - costs,
+            "margin": round((revenue - costs) / revenue * 100) if revenue else None}
 
 
 @requires("dashboard.view")
@@ -107,15 +145,8 @@ def dashboard(request):
         if p.agency.currency == "INR":
             rev_by_agency[p.agency.name] += p.invoice_amount
     total_rev = sum(rev_by_agency.values()) or 0
-    # Revenue estimated: the value of every film logged this month, delivered or not
-    est_inr, est_other = 0, defaultdict(int)
-    for p in Project.objects.filter(created__date__gte=month).select_related("agency"):
-        if p.agency.currency == "INR":
-            est_inr += p.invoice_amount
-        else:
-            est_other[p.agency.currency] += p.invoice_amount
     pipeline = sum(p.invoice_amount for p in open_jobs if p.agency.currency == "INR")
-    profit = estimated_profit(month, total_rev, est_inr)
+    fy = fy_estimate(today)
     ctx = {
         "unassigned": open_jobs.filter(editor__isnull=True).count(),
         "overdue": [p for p in open_jobs if p.days_left is not None and p.days_left < 0],
@@ -123,10 +154,7 @@ def dashboard(request):
         "delivered_count": delivered.count(),
         "on_time_pct": round(sum(1 for p in on_time if not p.delivered_late) / len(on_time) * 100) if on_time else None,
         "revenue": total_rev,
-        "revenue_est": est_inr,
-        "revenue_est_other": sorted(est_other.items()),
-        "revenue_est_count": Project.objects.filter(created__date__gte=month).count(),
-        "pipeline": pipeline, "profit": profit,
+        "pipeline": pipeline, "fy": fy,
         "agencies": sorted(({"name": k, "amount": v, "share": round(v / total_rev * 100) if total_rev else 0}
                             for k, v in rev_by_agency.items()), key=lambda x: -x["amount"]),
         "rows": rows, "week_days": week_days, "week_start": week_days[0],
