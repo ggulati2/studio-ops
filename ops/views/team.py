@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -264,10 +265,14 @@ def my_extra(request):
         messages.success(request, msg)
         return redirect("my_extra")
     a, b = month_start(month), month_end(month)
+    # No accepting needed: every extra job given to them, and any film they logged extra hours on
+    jobs = list(Project.objects.filter(Q(editor=user, is_extra=True) | Q(extra_entries__user=user))
+                .exclude(extra_accepted=False).distinct().select_related("agency")
+                .defer("brief", "agency__billing_address", "agency__notes").order_by("status", "-pk"))
+    coming = [p for p in jobs if p.extra_basis == "fixed" and p.extra_rate and p.status != Project.CLOSED]
     return render(request, "team/extra.html", {
         "form": form, "month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
-        "offers": Project.objects.filter(editor=user, is_extra=True, extra_accepted__isnull=True),
-        "jobs": Project.objects.filter(editor=user, is_extra=True, extra_accepted=True).select_related("agency"),
+        "jobs": jobs, "coming": coming, "coming_total": sum(p.extra_rate for p in coming),
         "entries": ExtraEntry.objects.filter(user=user, date__range=(a, b)).select_related("project"),
         "pay": extra_pay(user, month), "hours": extra_hours(user, month)})
 

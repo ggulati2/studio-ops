@@ -3,12 +3,6 @@
 {% block content %}
 <div class="head"><div><h1>Extra work</h1><p>Jobs you take on outside working hours. Logged straight away and paid with your salary.</p></div>
   <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
-{% for p in offers %}
-<section class="card" style="background:var(--red-soft);border-color:var(--red-line);flex-direction:row;flex-wrap:wrap;align-items:center">
-  <div style="flex:1 1 280px"><span class="small" style="color:var(--red-dark);font-weight:600">New extra job offered to you</span><div style="font-size:16px;font-weight:600">{{ p }}</div>
-  <span class="small" style="color:var(--red-dark)">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate|money }}/hr{% else %}Fixed ₹{{ p.extra_rate|money }} for the job{% endif %}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}{% if p.source_label %} · {{ p.source_label }}{% endif %}</span></div>
-  <form method="post" action="{% url 'extra_respond' p.pk %}" class="actions">{% csrf_token %}<button class="btn" name="answer" value="no">Decline</button><button class="btn primary" name="answer" value="yes">Accept</button></form>
-</section>{% endfor %}
 <div class="row">
   <div class="grow">
     <form method="post" class="card">{% csrf_token %}<h2>Log extra hours</h2>{% include "_form.html" %}<button class="btn primary">Save hours</button>
@@ -21,8 +15,9 @@
     </table></div></section>
   </div>
   <aside class="aside">
-    <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="letter-spacing:-.03em;font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · fixed jobs count when the job is closed · paid with your salary on the 1st</span></section>
-    <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate }}/hr{% else %}Fixed ₹{{ p.extra_rate|money }}{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
+    <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="letter-spacing:-.03em;font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · paid with your salary on the 1st</span>
+      {% if coming %}<div class="coming"><span class="small">Coming when delivered: <b>₹{{ coming_total|money }}</b></span>{% for p in coming %}<span class="small" style="color:var(--faint)">{{ p.couple }} · {{ p.deliverable }}: ₹{{ p.extra_rate|money }}</span>{% endfor %}</div>{% endif %}</section>
+    <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate|money }}/hr{% elif p.extra_rate %}₹{{ p.extra_rate|money }} for the film{% if p.status != 'closed' %}, paid when delivered{% endif %}{% else %}Pay not set yet{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
   </aside>
 </div>
 {% endblock %}

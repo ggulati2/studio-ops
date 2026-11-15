@@ -920,3 +920,23 @@ class ExtraTaskPay(SeededTestCase):
         self.hourly.refresh_from_db()
         self.assertEqual((self.hourly.extra_basis, self.hourly.extra_rate), ("fixed", 3000))
         self.assertNotEqual(self.login("pratik").post(f"/extra-work/film/{self.hourly.pk}/pay/", {"amount": "1"}).status_code, 200)
+
+class ExtraNoAcceptNeeded(SeededTestCase):
+    def test_editor_sees_film_and_amount_without_accepting(self):
+        from datetime import time
+        from django.contrib.auth import get_user_model
+        from ops.models import ExtraEntry
+        u = get_user_model().objects.get(username="pratik")
+        ag = Agency.objects.get(code="BRC")
+        offered = Project.objects.create(couple="No Accept", deliverable="Teaser", agency=ag, editor=u, is_extra=True,
+                                         extra_basis="fixed", extra_rate=0)
+        other = Project.objects.create(couple="Logged On", deliverable="Reels", agency=ag, editor=u)
+        ExtraEntry.objects.create(user=u, project=other, date=timezone.localdate(), start=time(20), end=time(21))
+        self.login("ag").post(f"/extra-work/film/{offered.pk}/pay/", {"amount": "1200"}, HTTP_X_REQUESTED_WITH="fetch")
+        r = self.login("pratik").get("/my-extra/")
+        self.assertNotContains(r, "New extra job offered to you")
+        self.assertContains(r, "No Accept")
+        self.assertContains(r, "₹1,200 for the film, paid when delivered")
+        self.assertContains(r, "Coming when delivered")
+        self.assertContains(r, "No Accept · Teaser: ₹1,200")
+        self.assertContains(r, "Logged On")

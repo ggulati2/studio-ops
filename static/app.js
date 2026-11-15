@@ -89,12 +89,29 @@
 
     /* Inline dates save when you leave the field or press Enter, not on every keystroke
        (a date being typed is "valid" after each digit) */
+    function isDate(el) { return el.type === "date" || el.dataset.dp === "1"; }
     function saveDate(el) {
+      clearTimeout(el._saveTimer);
       if (!el.form || el.value === el.defaultValue || el.form.classList.contains("is-saving")) return;
-      if (el.value && (+el.value.slice(0, 4) < 2000 || !el.checkValidity())) return;
+      // a date being typed is "valid" after each digit: only a full year counts (not for amounts!)
+      if (el.value && ((isDate(el) && +el.value.slice(0, 4) < 2000) || !el.checkValidity())) return;
+      el.defaultValue = el.value;          // so leaving the box again doesn't send it twice
       el.form.classList.add("is-saving");
       if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
     }
+    /* Amounts and other typed values also save a moment after you stop typing, so going to
+       another page straight away doesn't lose them */
+    doc.addEventListener("input", function (e) {
+      var el = e.target;
+      if (!el.matches || !el.matches("[data-save-on-leave]") || isDate(el)) return;
+      clearTimeout(el._saveTimer);
+      el._saveTimer = setTimeout(function () { saveDate(el); }, 900);
+    });
+    window.addEventListener("pagehide", function () {
+      Array.prototype.forEach.call(doc.querySelectorAll("[data-save-on-leave]"), function (el) {
+        if (!isDate(el) && el.form && el.value !== el.defaultValue) saveDate(el);
+      });
+    });
     doc.addEventListener("focusout", function (e) {
       if (e.target.matches && e.target.matches("[data-save-on-leave]")) saveDate(e.target);
     });

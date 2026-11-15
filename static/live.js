@@ -78,6 +78,7 @@
     if (row) row.classList.add("row-saving");
     return fetch(form.getAttribute("action") || form.action, {
       method: "POST", credentials: "same-origin", body: body,
+      keepalive: true,      // a save still reaches the server if you go to another page right away
       headers: { "X-Requested-With": "fetch", "X-CSRFToken": csrfOf(form), "Accept": "application/json" }
     }).then(function (r) {
       if (r.status === 403) throw new Error("Your session has ended. Reload the page and sign in again.");
