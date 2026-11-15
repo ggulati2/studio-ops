@@ -17,6 +17,17 @@
   <div class="kpi"><span>On-time delivery</span><b>{% if on_time_pct is not None %}{{ on_time_pct }}%{% else %}–{% endif %}</b></div>
   <div class="kpi"><span>Revenue estimated (INR)</span><b>₹{{ revenue_est|money }}</b><small>{{ revenue_est_count }} film{{ revenue_est_count|pluralize }} logged this month{% for cur, amt in revenue_est_other %} · +{{ amt|money }} {{ cur }}{% endfor %}</small></div>
   <div class="kpi"><span>Revenue delivered (INR)</span><b>₹{{ revenue|money }}</b><small>{% if revenue_est %}{% widthratio revenue revenue_est 100 %}% of estimated · {% endif %}₹{{ pipeline|money }} still in open films</small></div>
+  <div class="kpi profit-kpi{% if profit.value < 0 %} neg{% endif %}" tabindex="0" aria-describedby="profit-tip"><span>Estimated profit (INR)</span><b>{% if profit.value < 0 %}−{% endif %}₹{{ profit.value|abs_money }}</b>
+    <small>{% if profit.margin is not None %}{{ profit.margin }}% of delivered revenue · {% endif %}on estimated revenue: {% if profit.on_estimated < 0 %}−{% endif %}₹{{ profit.on_estimated|abs_money }}</small>
+    <span class="profit-tip" role="tooltip" id="profit-tip"><b>{% now "F" %} so far</b>
+      <span>Revenue delivered <b>₹{{ revenue|money }}</b></span>
+      <span>− Salaries (full-time) <b>₹{{ profit.salaries|money }}</b></span>
+      <span>− Extra-work pay <b>₹{{ profit.extra|money }}</b></span>
+      {% if profit.contract %}<span>− Contract editors <b>₹{{ profit.contract|money }}</b></span>{% endif %}
+      <span>− Rent + electricity <b>₹{{ profit.overheads|money }}</b></span>
+      <span class="pt-total">= Estimated profit <b>{% if profit.value < 0 %}−{% endif %}₹{{ profit.value|abs_money }}</b></span>
+      <span class="small muted">Costs are for the whole month, so the figure grows as films are delivered. Rent + electricity is set in <a href="{% url 'settings' %}">Settings</a>.</span>
+    </span></div>
   <div class="kpi"><span>Outstanding invoices (INR)</span><b>₹{{ outstanding|money }}</b><small><a href="{% url 'invoices' %}">Invoices →</a></small></div>
 </div>
 

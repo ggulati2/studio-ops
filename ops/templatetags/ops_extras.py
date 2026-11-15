@@ -124,3 +124,11 @@ def add_months(d, n):
         return _add(d, int(n))
     except (TypeError, ValueError):
         return d
+
+
+@register.filter
+def abs_money(v):
+    try:
+        return money(abs(int(round(float(v)))))
+    except (TypeError, ValueError):
+        return v

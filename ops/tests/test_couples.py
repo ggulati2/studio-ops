@@ -940,3 +940,34 @@ class ExtraNoAcceptNeeded(SeededTestCase):
         self.assertContains(r, "Coming when delivered")
         self.assertContains(r, "No Accept · Teaser: ₹1,200")
         self.assertContains(r, "Logged On")
+
+
+class EstimatedProfit(SeededTestCase):
+    def test_profit_is_revenue_minus_costs(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import Profile, StudioSettings
+        from ops.services import extra_pay, month_start, team
+        from ops.views.admin import estimated_profit
+        s = StudioSettings.get()
+        s.monthly_overheads = 25000
+        s.save()
+        month = month_start(timezone.localdate())
+        r = estimated_profit(month, 500000, 600000)
+        U = get_user_model()
+        salaries = sum(u.profile.monthly_salary for u in U.objects.filter(profile__active=True)
+                       .exclude(profile__employment=Profile.CONTRACT).select_related("profile"))
+        extra = sum(extra_pay(u, month) for u in team())
+        self.assertEqual(r["salaries"], salaries)
+        self.assertEqual(r["extra"], extra)
+        self.assertEqual(r["overheads"], 25000)
+        self.assertEqual(r["value"], 500000 - salaries - extra - r["contract"] - 25000)
+        self.assertEqual(r["on_estimated"], 600000 - r["costs"])
+
+    def test_dashboard_tile_and_setting(self):
+        f = self.login("ag")
+        r = f.get("/dashboard/")
+        self.assertContains(r, "Estimated profit (INR)")
+        self.assertContains(r, "Rent + electricity")
+        self.assertIn("profit", r.context)
+        from ops.forms import StudioSettingsForm
+        self.assertIn("monthly_overheads", StudioSettingsForm().fields)

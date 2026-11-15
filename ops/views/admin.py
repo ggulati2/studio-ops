@@ -65,6 +65,25 @@ def week_load(people, today):
     return out, days
 
 
+def estimated_profit(month, revenue, revenue_est):
+    """This month: revenue (INR) minus full-time salaries, extra-work pay, contract-editor fees
+    and the studio's fixed monthly costs (rent + electricity, from Settings). Costs are for the
+    whole month, so early in the month the figure is low; it fills in as films are delivered."""
+    a, b = month_start(month), month_end(month)
+    staff = list(User.objects.filter(profile__active=True).exclude(profile__employment=Profile.CONTRACT)
+                 .select_related("profile"))
+    salaries = sum(u.profile.monthly_salary for u in staff)
+    extra = sum(extra_pay(u, month) for u in team())
+    contract = sum(Project.objects.filter(Q(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__range=(a, b))
+                                          | Q(status=Project.SENT_AGENCY, first_delivered_on__range=(a, b)),
+                                          contractor_fee__gt=0).values_list("contractor_fee", flat=True))
+    overheads = StudioSettings.get().monthly_overheads
+    costs = salaries + extra + contract + overheads
+    return {"value": revenue - costs, "on_estimated": revenue_est - costs, "salaries": salaries, "extra": extra,
+            "contract": contract, "overheads": overheads, "costs": costs,
+            "margin": round((revenue - costs) / revenue * 100) if revenue else None}
+
+
 @requires("dashboard.view")
 def dashboard(request):
     today = timezone.localdate()
@@ -95,6 +114,7 @@ def dashboard(request):
         else:
             est_other[p.agency.currency] += p.invoice_amount
     pipeline = sum(p.invoice_amount for p in open_jobs if p.agency.currency == "INR")
+    profit = estimated_profit(month, total_rev, est_inr)
     ctx = {
         "unassigned": open_jobs.filter(editor__isnull=True).count(),
         "overdue": [p for p in open_jobs if p.days_left is not None and p.days_left < 0],
@@ -105,7 +125,7 @@ def dashboard(request):
         "revenue_est": est_inr,
         "revenue_est_other": sorted(est_other.items()),
         "revenue_est_count": Project.objects.filter(created__date__gte=month).count(),
-        "pipeline": pipeline,
+        "pipeline": pipeline, "profit": profit,
         "agencies": sorted(({"name": k, "amount": v, "share": round(v / total_rev * 100) if total_rev else 0}
                             for k, v in rev_by_agency.items()), key=lambda x: -x["amount"]),
         "rows": rows, "week_days": week_days, "week_start": week_days[0],

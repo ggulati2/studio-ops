@@ -34,6 +34,9 @@ class StudioSettings(models.Model):
     bank_name = models.CharField(max_length=80, blank=True)
     upi_id = models.CharField(max_length=80, blank=True)
     gst_percent = models.PositiveSmallIntegerField(default=0, help_text="0 = no GST line on invoices")
+    monthly_overheads = models.PositiveIntegerField(
+        "Studio rent + electricity (₹ per month)", default=25000,
+        help_text="Used for Estimated profit on the Dashboard. Include anything else fixed you pay every month.")
     free_leaves_per_month = models.DecimalField(max_digits=4, decimal_places=1, default=2)
     day_pay_basis = models.CharField(
         max_length=10, default="calendar",

@@ -420,7 +420,7 @@
 (function () {
   "use strict";
   function place(host) {
-    var tip = host.querySelector(".miss-tip, .hrs-tip");
+    var tip = host.querySelector(".miss-tip, .hrs-tip, .profit-tip");
     if (!tip) return;
     var r = host.getBoundingClientRect();
     tip.classList.add("fixed");
@@ -432,11 +432,11 @@
     tip.style.top = top + "px";
   }
   document.addEventListener("mouseover", function (e) {
-    var host = e.target.closest && e.target.closest(".who-miss.has, .hrs-hover");
+    var host = e.target.closest && e.target.closest(".who-miss.has, .hrs-hover, .profit-kpi");
     if (host) place(host);
   });
   document.addEventListener("focusin", function (e) {
-    var host = e.target.closest && e.target.closest(".who-miss.has, .hrs-hover");
+    var host = e.target.closest && e.target.closest(".who-miss.has, .hrs-hover, .profit-kpi");
     if (host) place(host);
   });
 })();
