@@ -17,7 +17,7 @@ from django.utils import timezone
 from .. import services as S
 from ..audit import record
 from ..folders import parse_many
-from ..models import Agency, Couple, DriveFolder, HardDrive, Project
+from ..models import START_REQUIRED, Agency, Couple, DriveFolder, HardDrive, Project
 from ..rbac import requires
 from ..services import team
 
@@ -186,6 +186,7 @@ def folder_decide(request, pk):
     err = ("Give the couple a name." if not name else "Pick the agency." if not agency
            else "Tick at least one film to add." if not films
            else "One of the dates isn't valid." if ed is False or ad is False or sd is False
+           else START_REQUIRED if not sd
            else "The editor's deadline can't be after the agency's." if ed and ad and ed > ad
            else "The start date can't be after the editor's deadline." if sd and ed and sd > ed else "")
     if err:
@@ -211,6 +212,9 @@ def folders_bulk(request):
         return _reply(request, [("success", f"Declined {len(folders)} folder(s). They stay listed on their drives.")],
                       back, refresh=True)
     films = [x for x in P.getlist("films") if x in Project.DELIVERABLES]
+    sd = _date(P.get("start_date"))
+    if not sd:
+        return _reply(request, [("error", "That start date isn't valid." if sd is False else START_REQUIRED)], back)
     say, done, left = [], 0, []
     with transaction.atomic():
         for f in folders:
@@ -218,7 +222,7 @@ def folders_bulk(request):
             if not f.drive.agency or not mine:
                 left.append(f.name)
                 continue
-            accept(request, f, f.couple_guess, f.drive.agency, mine)
+            accept(request, f, f.couple_guess, f.drive.agency, mine, start_date=sd)
             done += 1
     say.append(("success", f"Added {done} folder(s) as projects."))
     if left:

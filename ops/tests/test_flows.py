@@ -199,7 +199,7 @@ class Flows(SeededTestCase):
         self.assertNotContains(r, "₹")
 
     def test_new_project_makes_one_job_per_deliverable(self):
-        self.login("ag").post("/projects/new/", {"couple": "Test Couple", "agency": self.agency.pk, "deliverables": ["Trailer", "Teaser"],
+        self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Test Couple", "agency": self.agency.pk, "deliverables": ["Trailer", "Teaser"],
                                                  "deadline": self.today + timedelta(days=20)})
         made = Project.objects.filter(couple="Test Couple")
         self.assertEqual(made.count(), 2)

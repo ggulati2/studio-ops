@@ -17,7 +17,7 @@ from ..audit import record
 from ..rbac import ADMIN, has_perm, requires
 from ..forms import (AgencyForm, AssignForm, EOTMForm, HolidayForm, NewProjectForm, PersonForm, ProjectForm,
                      StudioSettingsForm)
-from ..models import (Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Invoice, PlanEntry, Pod,
+from ..models import (START_REQUIRED, Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Invoice, PlanEntry, Pod,
                       Profile, Project, StudioSettings)
 from .. import services as S
 from ..services import (add_months, attendance, available_days, benchmarks, celebrated_award, client_view,
@@ -149,6 +149,7 @@ def dashboard(request):
     fy = fy_estimate(today)
     ctx = {
         "unassigned": open_jobs.filter(editor__isnull=True).count(),
+        "no_start": open_jobs.filter(start_date__isnull=True).count(),
         "overdue": [p for p in open_jobs if p.days_left is not None and p.days_left < 0],
         "due_soon": [p for p in open_jobs if p.days_left is not None and 0 <= p.days_left <= 3],
         "delivered_count": delivered.count(),
@@ -212,6 +213,8 @@ def project_filter(g):
         qs = qs.filter(delays__isnull=False).distinct()
     elif f["kind"] == "client_rev":
         qs = qs.filter(client_revisions__isnull=False).distinct()
+    elif f["kind"] == "nostart":
+        qs = qs.filter(start_date__isnull=True)
     sorts = {"deadline": ("deadline", "couple"), "start": ("start_date", "deadline"), "agency_deadline": ("agency_deadline", "deadline"),
              "newest": ("-created",), "couple": ("couple", "deliverable"), "agency": ("agency__name", "deadline")}
     qs = qs.order_by(*sorts.get(f["sort"], sorts["deadline"]))
@@ -241,7 +244,7 @@ def projects(request):
     except ValueError:
         show = PAGE
     from .folders import inbox_context
-    ctx = {**inbox_context(), "queue": queue, "queue_groups": queue_groups(queue), "drive_opts": S.drive_options(), "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+    ctx = {**inbox_context(), "no_start": Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).filter(start_date__isnull=True).count(), "queue": queue, "queue_groups": queue_groups(queue), "drive_opts": S.drive_options(), "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
            "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
            "assign_form": AssignForm(), "view": view, "switch": switch}
     if view == "grouped":
@@ -409,6 +412,8 @@ def project_status(request, pk):
             sd = new if field == "start_date" else p.start_date
             if new is False:
                 say.append(("error", f"{p}: that isn't a valid date."))
+            elif field == "start_date" and not new:
+                say.append(("error", f"{p}: {START_REQUIRED} Not cleared."))
             elif sd and ed and sd > ed:
                 say.append(("error", f"{p}: the start date ({sd:%-d %b}) can't be after the editor's deadline ({ed:%-d %b}). Not saved."))
             elif ed and ad and ed > ad:
@@ -760,7 +765,7 @@ def _value_vs_cost(request, month):
     for u in team():
         if not u.profile.does_editing:
             continue
-        d = detail.get(u.id, {"value": 0, "films": []})
+        d = detail.get(u.id, {"value": 0, "days": 0, "hours": 0, "rhours": 0, "films": []})
         salary = sum(slips[u.id].get(mm, u.profile.monthly_salary) for mm in months)
         extra = sum(e.pay for e in entries.get(u.id, [])) + fixed.get(u.id, 0)
         cost = salary + extra
@@ -768,7 +773,8 @@ def _value_vs_cost(request, month):
             continue                      # nothing to compare (e.g. a contract editor with no work here)
         cards.append({"u": u, "value": d["value"], "films": d["films"], "salary": salary, "extra": extra, "cost": cost,
                       "multiple": round(d["value"] / cost, 1) if cost else None,
-                      "hours": round(sum(f["h"] for f in d["films"]), 1), "xhours": round(sum(f["xh"] for f in d["films"]), 1)})
+                      "days": d["days"], "hours": d["hours"], "rhours": d["rhours"],
+                      "rshare": round(100 * d["rhours"] / d["hours"]) if d["hours"] else 0})
     params = request.GET.copy()
     links = {}
     for key in ("", "fy", "all"):

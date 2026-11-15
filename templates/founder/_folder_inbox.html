@@ -10,8 +10,9 @@
     <span class="small"><b>Ticked folders:</b> add with films</span>
     {% for d in deliverables %}{% if forloop.counter <= 6 %}<label class="chk small"><input type="checkbox" name="films" value="{{ d }}"> {{ d }}</label>{% endif %}{% endfor %}
     <span class="small muted">(none ticked = the films read from each folder name)</span>
+    <label class="small">Start date <input type="date" name="start_date" class="input" required></label>
     <button class="btn primary sm" name="op" value="accept">Add ticked as projects</button>
-    <button class="btn sm" name="op" value="decline">Decline ticked</button>
+    <button class="btn sm" name="op" value="decline" formnovalidate>Decline ticked</button>
   </form>
   <div class="folder-cards">{% for f in folders %}
   <form method="post" action="{% url 'folder_decide' f.pk %}" data-live class="folder-card" data-folder="{{ f.pk }}" data-ff-item data-status="pending" data-drive="{{ f.drive_id }}" data-ff-extra="{{ f.drive.code }} {{ f.path }} {{ f.drive.agency.name|default:'' }}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -26,7 +27,7 @@
       {% if not f.drive.agency %}<label class="small">Agency <select name="agency" class="input" required><option value="">Pick</option>{% for a in agencies %}<option value="{{ a.pk }}">{{ a.name }}</option>{% endfor %}</select></label>{% endif %}
       <fieldset class="fc-films"><legend class="small">Films</legend>{% for d in deliverables %}<label class="chk small"><input type="checkbox" name="films" value="{{ d }}"{% if d in f.films_list %} checked{% endif %}{% if d in f.existing %} disabled title="Already on Projects"{% endif %}> {{ d }}</label>{% endfor %}</fieldset>
       <label class="small">Editor <select name="editor" class="input"><option value="">Unassigned</option>{% for u in editors %}<option value="{{ u.pk }}">{{ u.profile.name }}</option>{% endfor %}</select></label>
-      <label class="small">Start date <input type="date" name="start_date" class="input"></label>
+      <label class="small">Start date <input type="date" name="start_date" class="input" required></label>
       <label class="small">Editor's deadline <input type="date" name="deadline" class="input"></label>
       <label class="small">Agency's deadline <input type="date" name="agency_deadline" class="input"></label>
     </div>

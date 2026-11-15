@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from .. import services as S
 from ..audit import record
-from ..models import Couple, Project, couple_key
+from ..models import START_REQUIRED, Couple, Project, couple_key
 from ..rbac import requires
 from ..services import team
 from .admin import project_filter
@@ -332,6 +332,8 @@ def couple_action(request, pk):
             say.append(("error", "Pick which film to add."))
         elif ed is False or ad is False or sd is False:
             say.append(("error", "One of the dates isn't valid."))
+        elif not sd:
+            say.append(("error", START_REQUIRED))
         elif ed and ad and ed > ad:
             say.append(("error", "The editor's deadline can't be after the agency's."))
         elif sd and ed and sd > ed:

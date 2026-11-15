@@ -12,7 +12,7 @@ from django.db import models
 from django.utils import timezone
 
 from .models import (DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Invoice, Profile, Project,
-                     StoredImage, StudioSettings, TaskEntry)
+                     StoredImage, StudioSettings, TaskEntry, TaskStage)
 
 User = get_user_model()
 
@@ -274,50 +274,128 @@ def payslip_figures(user, month):
 
 # ---------------------------------------------------------------- value vs salary
 def editor_value(month):
-    """Invoice value earned per editor in a month: each film's invoice is shared
-    by hours; a film's rate = invoice ÷ max(actual hours, usual hours)."""
-    a, b = month_start(month), month_end(month)
-    bench = benchmarks()
-    rate_cache = {}
-    value = defaultdict(float)
-    hrs = task_hours(DayLog.objects.filter(date__range=(a, b)))
-    films = Project.objects.select_related("agency").in_bulk({pid for _, pid in hrs})
-    for (uid, pid), h in hrs.items():
-        if pid not in rate_cache:
-            p = films[pid]
-            denom = max(project_hours(p), bench.get(p.deliverable, 0))
-            rate_cache[pid] = (p.invoice_amount / denom) if (denom and p.agency.currency == "INR") else 0
-        value[uid] += h * rate_cache[pid]
-    return {k: int(v) for k, v in value.items()}
+    """Invoice value earned per editor in a month (see editor_value_detail)."""
+    return {uid: d["value"] for uid, d in editor_value_detail(month_start(month), month_end(month)).items()}
+
+
+REVISION_STAGES = {TaskStage.REVISIONS, TaskStage.CLIENT}
+
+
+def film_span(p, first_logged=None, today=None):
+    """(start, end) of a film's own editing, for spreading its value over working days.
+    Start = start date, else the first day anyone logged it. End = first sent to the agency,
+    else the editor's deadline, else today (still running). None when it can't be placed."""
+    start = p.start_date or first_logged
+    end = p.first_delivered_on or p.deadline or (today or date.today())
+    if not start:
+        return (p.first_delivered_on, p.first_delivered_on) if p.first_delivered_on else None
+    return (start, max(start, end))
 
 
 def editor_value_detail(a, b):
-    """Per editor over a date range: value of work (regular + extra hours, each film's invoice
-    shared by hours as in editor_value) and the films behind it.
-    {user_id: {"value": int, "films": [{"p", "h", "xh", "v"}]}}"""
-    bench = benchmarks()
-    rate = {}
-    hrs = task_hours(DayLog.objects.filter(date__range=(a, b)))
-    extra = defaultdict(float)
-    for e in ExtraEntry.objects.filter(date__range=(a, b)).only("user_id", "project_id", "date", "start", "end"):
-        extra[(e.user_id, e.project_id)] += e.hours
-    keys = set(hrs) | set(extra)
-    films = Project.objects.select_related("agency").in_bulk({pid for _, pid in keys})
-    out = defaultdict(lambda: {"value": 0.0, "films": []})
-    for uid, pid in keys:
-        p = films.get(pid)
-        if not p:
+    from .perf import memo
+    return memo(("value", a, b), lambda: _editor_value_detail(a, b))
+
+
+def _editor_value_detail(a, b):
+    """Per editor over [a, b]: value of work and the films behind it.
+
+    New films: a film's INR invoice is spread evenly over the working days from its start
+    date to the day it was first sent to the agency (the editor's deadline until then);
+    the days in [a, b] go to the film's editor.
+    Revisions (hours logged as Revisions / Client Changes, or on a film after it was first
+    sent) add no value - the invoice already pays for the film - unless the film has a
+    revision charge, which is shared by those revision hours.
+    {user_id: {"value", "days", "hours", "rhours", "films": [{"p", "days", "v", "h", "rh"}]}}"""
+    from django.db.models import Min, Q
+    today = timezone.localdate()
+    weekdays = StudioSettings.get().weekdays
+    # films whose editing may touch [a, b]
+    films = {p.id: p for p in Project.objects.select_related("agency").filter(editor__isnull=False)
+             .filter(Q(start_date__lte=b) | Q(start_date__isnull=True))
+             .filter(Q(first_delivered_on__gte=a) | Q(first_delivered_on__isnull=True))}
+    no_start = [pid for pid, p in films.items() if not p.start_date]
+    first_log = dict(TaskEntry.objects.filter(project_id__in=no_start).values("project_id")
+                     .annotate(d=Min("daylog__date")).values_list("project_id", "d")) if no_start else {}
+    spans = {}
+    for pid, p in films.items():
+        sp = film_span(p, first_log.get(pid), today)
+        if sp and sp[0] <= b and sp[1] >= a:
+            spans[pid] = sp
+    workdays = set()
+    if spans:
+        lo, hi = min(s[0] for s in spans.values()), max(s[1] for s in spans.values())
+        hols = holidays_between(lo, hi)
+        d = lo
+        while d <= hi:
+            if d.weekday() in weekdays and not (d in hols and hols[d].kind == Holiday.FULL):
+                workdays.add(d)
+            d += timedelta(days=1)
+
+    out = defaultdict(lambda: {"value": 0.0, "days": 0, "hours": 0.0, "rhours": 0.0, "films": {}})
+
+    def row(uid, p):
+        return out[uid]["films"].setdefault(p.id, {"p": p, "days": 0, "v": 0.0, "h": 0.0, "rh": 0.0})
+
+    for pid, (s0, s1) in spans.items():
+        p = films[pid]
+        days = [d for d in workdays if s0 <= d <= s1] or [s1]     # a film placed on an off day still counts once
+        mine = [d for d in days if a <= d <= b]
+        if not mine:
             continue
-        if pid not in rate:
-            denom = max(project_hours(p), bench.get(p.deliverable, 0))
-            rate[pid] = (p.invoice_amount / denom) if (denom and p.agency.currency == "INR") else 0
-        h, xh = hrs.get((uid, pid), 0), extra.get((uid, pid), 0)
-        v = (h + xh) * rate[pid]
-        out[uid]["value"] += v
-        out[uid]["films"].append({"p": p, "h": round(h, 1), "xh": round(xh, 1), "v": int(v)})
+        per_day = p.invoice_amount / len(days) if p.agency.currency == "INR" else 0
+        r = row(p.editor_id, p)
+        r["days"] += len(mine)
+        r["v"] += per_day * len(mine)
+        out[p.editor_id]["days"] += len(mine)
+
+    # hours logged in [a, b], split into film work and revisions
+    def is_rev(stage, day, p):
+        return stage in REVISION_STAGES or bool(p.first_delivered_on and day > p.first_delivered_on)
+
+    logged = []      # (uid, pid, day, stage, hours)
+    for log in DayLog.objects.filter(date__range=(a, b), tasks__isnull=False).distinct().prefetch_related("tasks"):
+        sh = split_hours(log)
+        for t in log.tasks.all():
+            logged.append((log.user_id, t.project_id, log.date, t.stage, sh.get(t.id, 0)))
+    for e in ExtraEntry.objects.filter(date__range=(a, b)).only("user_id", "project_id", "date", "start", "end", "stage"):
+        logged.append((e.user_id, e.project_id, e.date, e.stage, e.hours))
+    missing = {pid for _, pid, *_ in logged} - set(films)
+    if missing:
+        films.update(Project.objects.select_related("agency").in_bulk(missing))
+    charged = {pid: p for pid, p in films.items() if p.revision_charge and p.agency.currency == "INR"}
+    rev_total = {}
+    if charged:      # all revision hours ever logged on films with a charge, to share it
+        for pid, p in charged.items():
+            tot = 0.0
+            for log in DayLog.objects.filter(tasks__project_id=pid).distinct().prefetch_related("tasks"):
+                sh = split_hours(log)
+                tot += sum(sh.get(t.id, 0) for t in log.tasks.all() if t.project_id == pid and is_rev(t.stage, log.date, p))
+            tot += sum(e.hours for e in ExtraEntry.objects.filter(project_id=pid) if is_rev(e.stage, e.date, p))
+            rev_total[pid] = tot
+    for uid, pid, day, stage, h in logged:
+        p = films.get(pid)
+        if not p or not h:
+            continue
+        r = row(uid, p)
+        out[uid]["hours"] += h
+        if is_rev(stage, day, p):
+            r["rh"] += h
+            out[uid]["rhours"] += h
+            if pid in rev_total and rev_total[pid]:
+                share = p.revision_charge * h / rev_total[pid]
+                r["v"] += share
+        else:
+            r["h"] += h
+
     for d in out.values():
-        d["value"] = int(d["value"])
-        d["films"].sort(key=lambda f: -f["v"])
+        fl = list(d["films"].values())
+        for f in fl:
+            f["v"] = int(round(f["v"]))
+            f["h"], f["rh"] = round(f["h"], 1), round(f["rh"], 1)
+        d["value"] = sum(f["v"] for f in fl)
+        d["hours"], d["rhours"] = round(d["hours"], 1), round(d["rhours"], 1)
+        d["films"] = sorted(fl, key=lambda f: (-f["v"], -f["days"], -(f["h"] + f["rh"])))
     return out
 
 

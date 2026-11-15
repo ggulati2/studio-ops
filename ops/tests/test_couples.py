@@ -8,6 +8,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from ops import services as S
 from ops.models import Agency, AuditEvent, Couple, Project, couple_key
 
 from .base import SeededTestCase
@@ -170,11 +171,11 @@ class CoupleActions(_WithCouple):
 
     def test_add_film_uses_agency_rate(self):
         rate = self.ag.rates.filter(deliverable="Highlight").values_list("amount", flat=True).first() or 0
-        d = self.act({"op": "add", "deliverable": "Highlight", "deadline": "", "agency_deadline": ""})
+        d = self.act({"op": "add", "start_date": str(timezone.localdate()), "deliverable": "Highlight", "deadline": "", "agency_deadline": ""})
         self.assertTrue(d["ok"])
         p = Project.objects.get(client=self.c, deliverable="Highlight")
         self.assertEqual((p.couple, p.agency_id, p.invoice_amount), ("Meera & Dev", self.ag.pk, rate))
-        bad = self.act({"op": "add", "deliverable": "Teaser", "deadline": "2030-02-10", "agency_deadline": "2030-02-01"})
+        bad = self.act({"op": "add", "start_date": str(timezone.localdate()), "deliverable": "Teaser", "deadline": "2030-02-10", "agency_deadline": "2030-02-01"})
         self.assertFalse(bad["ok"])
 
     def test_rename_updates_films_and_merges_on_clash(self):
@@ -474,7 +475,7 @@ class DriveFolders(SeededTestCase):
         self.add("Rhea & Aryan - Teaser+Trailer")
         f = self.DF.objects.get(drive=self.d)
         self.assertContains(self.f.get("/projects/"), "New folders from drives")
-        r = self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "couple": "Rhea & Aryan",
+        r = self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "start_date": str(timezone.localdate()), "couple": "Rhea & Aryan",
                                                        "films": ["Teaser", "Trailer", "Reels"]}, **FETCH).json()
         self.assertTrue(r["ok"])
         self.assertTrue(r["refresh"])
@@ -487,7 +488,7 @@ class DriveFolders(SeededTestCase):
         # a second folder of the same couple doesn't duplicate films
         self.add("Rhea_Aryan_Reception")
         g = self.DF.objects.get(drive=self.d, status="pending")
-        r = self.f.post(f"/projects/folders/{g.pk}/", {"op": "accept", "couple": "rhea and aryan",
+        r = self.f.post(f"/projects/folders/{g.pk}/", {"op": "accept", "start_date": str(timezone.localdate()), "couple": "rhea and aryan",
                                                        "films": ["Teaser", "Full Film"]}, **FETCH).json()
         self.assertEqual(Project.objects.filter(couple="Rhea & Aryan", agency=self.ag).count(), 4)
         self.assertIn("already had Teaser", " ".join(m["text"] for m in r["messages"]))
@@ -507,10 +508,10 @@ class DriveFolders(SeededTestCase):
     def test_bulk_accept_and_decline(self):
         self.add("Amit_Tanya_Teaser\nSara weds Om\nJunk_Folder")
         a, s, j = (self.DF.objects.get(drive=self.d, path=p) for p in ("Amit_Tanya_Teaser", "Sara weds Om", "Junk_Folder"))
-        r = self.f.post("/projects/folders/", {"op": "accept", "ids": [a.pk, s.pk]}, **FETCH).json()
+        r = self.f.post("/projects/folders/", {"op": "accept", "start_date": str(timezone.localdate()), "ids": [a.pk, s.pk]}, **FETCH).json()
         self.assertTrue(Project.objects.filter(couple="Amit & Tanya", deliverable="Teaser").exists())
         self.assertIn("Sara weds Om", " ".join(m["text"] for m in r["messages"]))   # no films read: left for one-by-one
-        self.f.post("/projects/folders/", {"op": "accept", "ids": [s.pk], "films": ["Full Film"]}, **FETCH)
+        self.f.post("/projects/folders/", {"op": "accept", "start_date": str(timezone.localdate()), "ids": [s.pk], "films": ["Full Film"]}, **FETCH)
         self.assertTrue(Project.objects.filter(couple="Sara & Om", deliverable="Full Film").exists())
         self.f.post("/projects/folders/", {"op": "decline", "ids": [j.pk]}, **FETCH)
         j.refresh_from_db()
@@ -523,7 +524,7 @@ class DriveFolders(SeededTestCase):
         self.assertContains(r, "2026/Amit_Tanya_Wedding")
         self.assertIn(self.d, list(r.context["drives"]))
         f = self.DF.objects.get(path="2026/Amit_Tanya_Wedding")
-        self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "couple": "Amit & Tanya", "films": ["Teaser"]}, **FETCH)
+        self.f.post(f"/projects/folders/{f.pk}/", {"op": "accept", "start_date": str(timezone.localdate()), "couple": "Amit & Tanya", "films": ["Teaser"]}, **FETCH)
         self.assertContains(self.f.get("/projects/?q=Amit"), "HDD-77")
 
 
@@ -1027,26 +1028,84 @@ class AgenciesFY(SeededTestCase):
 
 
 class ValueVsCost(SeededTestCase):
-    def test_periods_films_and_extra(self):
-        from datetime import time
+    """Value of work: a film's invoice spread over its working days (start -> first sent);
+    revisions add no value unless the film has a paid revision charge."""
+
+    def setUp(self):
+        from datetime import date
         from django.contrib.auth import get_user_model
-        from ops.models import DayLog, ExtraEntry, TaskEntry
-        u = get_user_model().objects.get(username="pratik")
-        today = timezone.localdate()
-        p = Project.objects.create(couple="Value Check", deliverable="Trailer", agency=Agency.objects.get(code="BRC"),
-                                   invoice_amount=40000, editor=u, is_extra=True, extra_basis="hourly", extra_rate=200)
-        log, _ = DayLog.objects.get_or_create(user=u, date=today, defaults={"day_type": DayLog.OFFICE, "time_in": time(10),
-                                                                            "time_out": time(19)})
-        TaskEntry.objects.create(daylog=log, project=p, stage="Edit", hours=4)
-        ExtraEntry.objects.create(user=u, project=p, date=today, start=time(20), end=time(22))
+        self.u = get_user_model().objects.get(username="soham")
+        self.D = date
+        self.p = Project.objects.create(couple="Value Check", deliverable="Trailer", agency=Agency.objects.get(code="BRC"),
+                                        invoice_amount=18000, editor=self.u, start_date=date(2030, 11, 27),
+                                        deadline=date(2030, 12, 5))
+
+    def film(self, a, b):
+        d = S.editor_value_detail(a, b).get(self.u.pk, {"value": 0, "films": []})
+        return next((f for f in d["films"] if f["p"].pk == self.p.pk), None), d
+
+    def test_spread_over_working_days(self):
+        D = self.D
+        nov_days = S.leave_working_days(self.u, D(2030, 11, 27), D(2030, 11, 30))
+        all_days = S.leave_working_days(self.u, D(2030, 11, 27), D(2030, 12, 5))
+        nov, _ = self.film(D(2030, 11, 1), D(2030, 11, 30))
+        dec, _ = self.film(D(2030, 12, 1), D(2030, 12, 31))
+        self.assertEqual(nov["days"], len(nov_days))
+        self.assertEqual(nov["days"] + dec["days"], len(all_days))
+        self.assertEqual(nov["v"], round(18000 * len(nov_days) / len(all_days)))
+        self.assertAlmostEqual(nov["v"] + dec["v"], 18000, delta=1)
+        # once sent later than planned, the same invoice spreads over more days
+        self.p.first_delivered_on = D(2030, 12, 9)
+        self.p.save()
+        nov2, _ = self.film(D(2030, 11, 1), D(2030, 11, 30))
+        self.assertLess(nov2["v"], nov["v"])
+
+    def test_revisions_add_no_value_unless_charged(self):
+        from datetime import time
+        from ops.models import DayLog, TaskEntry, TaskStage
+        D = self.D
+        self.p.first_delivered_on = D(2030, 12, 5)
+        self.p.save()
+        before, _ = self.film(D(2030, 12, 1), D(2030, 12, 31))
+        log = DayLog.objects.create(user=self.u, date=D(2030, 12, 10), day_type=DayLog.OFFICE, time_in=time(10), time_out=time(19))
+        TaskEntry.objects.create(daylog=log, project=self.p, stage=TaskStage.EDIT, hours=6)   # after sending = revision
+        after, d = self.film(D(2030, 12, 1), D(2030, 12, 31))
+        self.assertEqual((after["rh"], after["v"]), (6.0, before["v"]))
+        self.assertEqual(d["rhours"], 6.0)
+        self.p.revision_charge = 3000
+        self.p.save()
+        paid, _ = self.film(D(2030, 12, 1), D(2030, 12, 31))
+        self.assertEqual(paid["v"], before["v"] + 3000)
+
+    def test_team_page_periods_and_cost(self):
         f = self.login("ag")
         for vp in ("", "fy", "all"):
             r = f.get(f"/team/?vp={vp}")
-            card = next(c for c in r.context["vcards"] if c["u"].pk == u.pk)
-            film = next(x for x in card["films"] if x["p"].pk == p.pk)
-            self.assertEqual((film["h"], film["xh"]), (4.0, 2.0))
-            self.assertGreaterEqual(card["extra"], 400)                  # 2 h x 200 counted in cost
-            self.assertEqual(card["cost"], card["salary"] + card["extra"])
-        self.assertContains(r, "Value Check · Trailer")
+            for c in r.context["vcards"]:
+                self.assertEqual(c["cost"], c["salary"] + c["extra"])
         self.assertContains(r, 'data-swap-id="value"')
         self.assertEqual(f.get("/team/?vp=fy").context["vperiod"], "fy")
+
+
+class StartDateRequired(SeededTestCase):
+    def test_every_way_of_adding_a_film_needs_a_start_date(self):
+        from ops.models import START_REQUIRED
+        f = self.login("ag")
+        ag = Agency.objects.get(code="BRC")
+        r = f.post("/projects/new/", {"couple": "No Start", "agency": ag.pk, "deliverables": ["Teaser"]})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Add the start date")
+        self.assertFalse(Project.objects.filter(couple="No Start").exists())
+        p = Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD)).first()
+        Project.objects.filter(pk=p.pk).update(start_date=timezone.localdate(), deadline=None)
+        d = f.post(f"/projects/{p.pk}/status/", {"start_date": ""}, **FETCH).json()
+        self.assertFalse(d["ok"])
+        p.refresh_from_db()
+        self.assertIsNotNone(p.start_date)
+        # flagged on Projects and the Dashboard
+        Project.objects.filter(pk=p.pk).update(start_date=None)
+        r = f.get("/projects/?kind=nostart&view=list")
+        self.assertContains(r, "No start date")
+        self.assertIn(p, [j["p"] for j in r.context["jobs"]])
+        self.assertGreaterEqual(f.get("/dashboard/").context["no_start"], 1)
+        self.assertTrue(START_REQUIRED)

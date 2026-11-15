@@ -1214,3 +1214,8 @@ td.starts{box-shadow:inset 3px 0 0 var(--ok)}
 .q-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 0 12px}
 .q-row select{width:auto}
 .footage-select{min-width:96px;max-width:150px}
+/* Films missing a start date */
+.chips a.chip-bad{border-color:var(--bad);color:var(--bad);gap:6px}
+.chips a.chip-bad.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+.cell-input[data-missing]{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
+td[data-col="start"] .tag.bad{margin-left:6px}

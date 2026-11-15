@@ -27,6 +27,7 @@
     <a href="{% qs status='revisions' %}" class="{% if status == 'revisions' %}on{% endif %}">Any revisions</a>
     {% for v, l in statuses %}<a href="{% qs status=v %}" class="{% if status == v %}on{% endif %}">{{ l }}</a>{% endfor %}
     <a href="{% qs status='' %}" class="{% if status == '' %}on{% endif %}">All</a>
+    {% if no_start %}<a href="{% if f.kind == 'nostart' %}{% qs kind='' %}{% else %}{% qs kind='nostart' %}{% endif %}" class="chip-bad{% if f.kind == 'nostart' %} on{% endif %}" title="Open films with no start date: fill them in so the Planner and the value of work can use them">No start date <b>{{ no_start }}</b></a>{% endif %}
   </div>
   <form method="get" class="filters" role="search" aria-label="Filter projects" data-live-filter>
     <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="view" value="{% if view == 'list' %}list{% endif %}">
@@ -50,7 +51,7 @@
     </select>
     <select class="input" name="kind" data-autosubmit aria-label="Other">
       <option value="">Everything</option><option value="extra" {% if f.kind == 'extra' %}selected{% endif %}>Extra work</option>
-      <option value="delayed" {% if f.kind == 'delayed' %}selected{% endif %}>Had a delay</option><option value="client_rev" {% if f.kind == 'client_rev' %}selected{% endif %}>Had client revisions</option>
+      <option value="delayed" {% if f.kind == 'delayed' %}selected{% endif %}>Had a delay</option><option value="client_rev" {% if f.kind == 'client_rev' %}selected{% endif %}>Had client revisions</option><option value="nostart" {% if f.kind == 'nostart' %}selected{% endif %}>No start date</option>
     </select>
     <select class="input" name="sort" data-autosubmit aria-label="Sort by">
       <option value="deadline" {% if f.sort == 'deadline' or not f.sort %}selected{% endif %}>Sort: editor's deadline</option>

@@ -28,7 +28,7 @@ class AutoPlanner(SeededTestCase):
     def test_new_project_with_editor_and_deadline_fills_planner(self):
         dl = self.today + timedelta(days=20)
         PlanEntry.objects.filter(user=self.harsh, date__gte=self.today).delete()
-        r = self.login("ag").post("/projects/new/", {"couple": "Plan Test", "agency": self.agency.pk, "deliverables": ["Trailer"],
+        r = self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Plan Test", "agency": self.agency.pk, "deliverables": ["Trailer"],
                                                      "deadline": dl, "editor": self.harsh.pk}, follow=True)
         job = Project.objects.get(couple="Plan Test")
         planned = PlanEntry.objects.filter(project=job, user=self.harsh)
@@ -41,7 +41,7 @@ class AutoPlanner(SeededTestCase):
         d = next_workday(self.today + timedelta(days=1), self.harsh)
         PlanEntry.objects.filter(user=self.harsh, date__gte=self.today).delete()
         PlanEntry.objects.create(user=self.harsh, date=d, label="Back-up")
-        self.login("ag").post("/projects/new/", {"couple": "Keep Test", "agency": self.agency.pk, "deliverables": ["Teaser"],
+        self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Keep Test", "agency": self.agency.pk, "deliverables": ["Teaser"],
                                                  "deadline": self.today + timedelta(days=15), "editor": self.harsh.pk})
         self.assertEqual(PlanEntry.objects.get(user=self.harsh, date=d).label, "Back-up")
         job = Project.objects.get(couple="Keep Test")
@@ -224,7 +224,7 @@ class PlannerTwoThings(SeededTestCase):
         while d <= dl:                                     # fill every day with other work
             PlanEntry.objects.update_or_create(user=harsh, date=d, slot=1, defaults={"label": "Back-up", "project": None})
             d += timedelta(days=1)
-        self.login("ag").post("/projects/new/", {"couple": "Busy Test", "agency": Agency.objects.first().pk,
+        self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Busy Test", "agency": Agency.objects.first().pk,
                                                  "deliverables": ["Reels"], "deadline": dl, "editor": harsh.pk})
         job = Project.objects.get(couple="Busy Test")
         self.assertTrue(PlanEntry.objects.filter(project=job, slot=2).exists())
@@ -242,7 +242,7 @@ class NewProjectOptions(SeededTestCase):
         t, f = film_key("Trailer"), film_key("Full Film")
         base = self.today + timedelta(days=10)
         r = self.login("ag").post("/projects/new/", {
-            "couple": "Two Films", "agency": self.agency.pk, "deliverables": ["Trailer", "Full Film"], 
+            "start_date": self.today, "couple": "Two Films", "agency": self.agency.pk, "deliverables": ["Trailer", "Full Film"], 
             "deadline": base, "agency_deadline": base + timedelta(days=3),
             f"f{f}_deadline": base + timedelta(days=12), f"f{f}_agency_deadline": base + timedelta(days=16), f"f{f}_amount": 52000})
         self.assertEqual(r.status_code, 302)
@@ -251,14 +251,14 @@ class NewProjectOptions(SeededTestCase):
         self.assertEqual((ff.deadline, ff.agency_deadline, ff.invoice_amount), (base + timedelta(days=12), base + timedelta(days=16), 52000))
 
     def test_editor_deadline_must_not_pass_agency_deadline(self):
-        r = self.login("ag").post("/projects/new/", {"couple": "Bad Dates", "agency": self.agency.pk, "deliverables": ["Teaser"],
+        r = self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Bad Dates", "agency": self.agency.pk, "deliverables": ["Teaser"],
                                                      "deadline": self.today + timedelta(days=9),
                                                      "agency_deadline": self.today + timedelta(days=5)})
         self.assertContains(r, "is after the agency")
         self.assertFalse(Project.objects.filter(couple="Bad Dates").exists())
 
     def test_cloud_source(self):
-        self.login("ag").post("/projects/new/", {"couple": "Online Couple", "agency": self.agency.pk, "deliverables": ["Teaser"],
+        self.login("ag").post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Online Couple", "agency": self.agency.pk, "deliverables": ["Teaser"],
                                                  "source": "cloud", "cloud_link": "https://wetransfer.com/x",
                                                  "editor": U.objects.get(username="pratik").pk})
         p = Project.objects.get(couple="Online Couple")

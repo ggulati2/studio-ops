@@ -338,6 +338,9 @@ class Couple(models.Model):
         return obj
 
 
+START_REQUIRED = "Add the start date — it's needed to plan the film and to work out its value."
+
+
 class Project(models.Model):
     NOT_STARTED, IN_PROGRESS, TL_REVIEW, QC, REVISIONS, QC_PASSED, CLOSED, ON_HOLD = (
         "not_started", "in_progress", "tl_review", "qc", "revisions", "qc_passed", "closed", "on_hold")
@@ -368,6 +371,9 @@ class Project(models.Model):
                                        help_text="The date promised to the agency. Founders only; never shown to editors.")
     status = models.CharField(max_length=12, choices=STATUSES, default=NOT_STARTED)
     invoice_amount = models.PositiveIntegerField(default=0, help_text="In the agency's currency")
+    revision_charge = models.PositiveIntegerField("Paid revision charge", default=0,
+                                                  help_text="Only if the agency pays extra for changes. Counted as value, "
+                                                            "shared by the revision hours logged.")
     drive = models.ForeignKey(HardDrive, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects")
     received_online = models.BooleanField("Footage received online (cloud)", default=False)
     cloud_link = models.URLField("Download link (cloud)", blank=True,

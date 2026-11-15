@@ -8,6 +8,7 @@
 
 <div class="grid">
   <a class="kpi warn" href="{% url 'projects' %}" style="text-decoration:none;color:inherit"><span>Needs an editor</span><b>{{ unassigned }}</b><small>Assign from Projects</small></a>
+  {% if no_start %}<a class="kpi bad" href="{% url 'projects' %}?kind=nostart" style="text-decoration:none;color:inherit"><span>No start date</span><b>{{ no_start }}</b><small>Open film{{ no_start|pluralize }} to fill in on Projects</small></a>{% endif %}
   <a class="kpi {% if overdue %}bad{% endif %}" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Overdue</span><b>{{ overdue|length }}</b><small>{% for p in overdue|slice:":1" %}{{ p }}{% empty %}All on time{% endfor %}</small></a>
   <a class="kpi" href="{% url 'deadlines' %}" style="text-decoration:none;color:inherit"><span>Due in 3 days</span><b>{{ due_soon|length }}</b><small>{% for p in due_soon|slice:":1" %}Next: {{ p }}{% empty %}Nothing close{% endfor %}</small></a>
 </div>

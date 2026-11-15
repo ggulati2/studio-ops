@@ -2,7 +2,7 @@ from django import forms
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from .models import (Agency, ClientRevision, LeaveRequest, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
+from .models import (START_REQUIRED, Agency, ClientRevision, LeaveRequest, ContractPayment, DayLog, DelayReport, DriveReturn, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Pod,
                      Profile, Project, StudioSettings, TaskStage)
 from .services import is_company_drive_link, team
 
@@ -83,7 +83,7 @@ class ProjectForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = Project
         fields = ["couple", "deliverable", "agency", "editor", "received_on", "start_date", "deadline", "agency_deadline", "status",
-                  "invoice_amount", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
+                  "invoice_amount", "revision_charge", "brief", "cut_link", "cloud_link", "is_extra", "extra_basis", "extra_rate", "contractor_fee",
                   "first_delivered_on", "timing_override", "timing_note"]
         widgets = {"received_on": DATE, "start_date": DATE, "deadline": DATE, "agency_deadline": DATE, "first_delivered_on": DATE,
                    "brief": forms.Textarea(attrs={"rows": 3})}
@@ -97,6 +97,8 @@ class ProjectForm(StyledMixin, forms.ModelForm):
         self.fields["editor"].choices = editor_choices()
         self.fields["agency"].queryset = Agency.objects.filter(active=True)
         self.fields["source"].choices = source_choices()
+        self.fields["start_date"].required = True
+        self.fields["start_date"].error_messages["required"] = START_REQUIRED
         if self.instance.pk:
             self.initial["source"] = source_value(self.instance)
             if self.instance.drive_id and str(self.instance.drive_id) not in dict(self.fields["source"].choices):
@@ -165,8 +167,9 @@ class NewProjectForm(StyledMixin, forms.Form):
                                              widget=forms.CheckboxSelectMultiple)
     editor = forms.TypedChoiceField(required=False, coerce=int, empty_value=None,
                                     help_text="Leave unassigned to put it in the 'Needs an editor' queue")
-    start_date = forms.DateField(label="Start date", widget=DATE, required=False,
-                                 help_text="When editing starts (all films). The Planner fills days from here.")
+    start_date = forms.DateField(label="Start date", widget=DATE, error_messages={"required": START_REQUIRED},
+                                 help_text="When editing starts (all films). The Planner fills days from here; "
+                                           "a film's value is spread over its days from here to the day it's sent.")
     deadline = forms.DateField(label="Editor's deadline", widget=DATE, required=False,
                                help_text="For all films, unless you set one per film below. Editors see only this date.")
     agency_deadline = forms.DateField(label="Agency's deadline", widget=DATE, required=False,
