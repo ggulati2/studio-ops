@@ -953,9 +953,14 @@ class EstimatedProfit(SeededTestCase):
         s = StudioSettings.get()
         s.monthly_overheads = 25000
         s.save()
-        r = fy_estimate()
-        self.assertEqual(r["overheads"], 300000)
-        self.assertEqual(r["revenue"], r["delivered"] + r["due"])
+        s.tracking_start = date(2026, 11, 1)
+        s.save()
+        r = fy_estimate(date(2026, 11, 16))
+        self.assertEqual((r["start"], r["end"], r["months"]), (date(2026, 11, 1), date(2027, 3, 31), 5))
+        self.assertEqual(r["overheads"], 125000)                      # Nov-Mar = 5 months
+        self.assertEqual(r["revenue"], r["delivered"] + r["open"])
+        nxt = fy_estimate(date(2027, 6, 1))                           # next FY: full year from 1 April
+        self.assertEqual((nxt["start"], nxt["months"]), (date(2027, 4, 1), 12))
         self.assertEqual(r["costs"], r["salaries"] + r["extra"] + r["contract"] + r["overheads"])
         self.assertEqual(r["profit"], r["revenue"] - r["costs"])
 
@@ -963,7 +968,7 @@ class EstimatedProfit(SeededTestCase):
         f = self.login("ag")
         r = f.get("/dashboard/")
         self.assertContains(r, "Estimated profit · FY")
-        self.assertContains(r, "Rent + electricity, 12 months")
+        self.assertContains(r, "Rent + electricity,")
         from ops.forms import StudioSettingsForm
         self.assertIn("monthly_overheads", StudioSettingsForm().fields)
 

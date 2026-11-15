@@ -72,37 +72,32 @@ def fy_bounds(day):
 
 
 def fy_estimate(today=None):
-    """Financial-year estimate (1 Apr – 31 Mar), INR.
+    """Financial-year estimate, INR. The year runs 1 April – 31 March, but never starts before
+    Settings > "Tracking started on" (the portal began in November 2026, so FY 2026–27 is
+    counted from 1 Nov 2026).
 
-    Revenue = films already sent/delivered this FY + open films due by 31 March (agency's
-    deadline, else the editor's; overdue ones included: still expected). Films with no deadline
-    are kept apart. Costs = full-year salaries (payroll actuals for months already run, profile
-    salary for the rest), extra-work pay (paid so far + fixed amounts booked on open extra films
-    due this FY), contract-editor fees on the films counted, and 12 months of rent + electricity."""
+    Revenue estimate = invoice value of every film logged in that period (delivered or not).
+    Costs = salaries for each month of the period (payroll actuals where run, profile salaries
+    otherwise), extra-work pay (paid so far + fixed amounts set on open extra films), contract-
+    editor fees on those films, and rent + electricity for each month of the period."""
     today = today or timezone.localdate()
-    a, b = fy_bounds(today)
-    films = (Project.objects.select_related("agency").filter(agency__currency="INR")
-             .only("id", "status", "invoice_amount", "first_delivered_on", "closed_on", "deadline", "agency_deadline",
-                   "contractor_fee", "is_extra", "extra_basis", "extra_rate", "editor_id", "agency__currency"))
-    delivered = films.filter(Q(first_delivered_on__range=(a, b)) |
-                             Q(first_delivered_on__isnull=True, status=Project.CLOSED, closed_on__range=(a, b)))
-    open_ = (films.filter(first_delivered_on__isnull=True)
-             .exclude(status__in=(Project.CLOSED, Project.SENT_AGENCY, Project.CLIENT_REV, Project.ON_HOLD)))
-    due, undated = [], []
-    for p in open_:
-        when = p.agency_deadline or p.deadline
-        if when is None:
-            undated.append(p)
-        elif when <= b:
-            due.append(p)
-    delivered = list(delivered)
-    rev_done = sum(p.invoice_amount for p in delivered)
-    rev_due = sum(p.invoice_amount for p in due)
-    # costs
+    fy_a, b = fy_bounds(today)
+    st = StudioSettings.get()
+    a = max(fy_a, st.tracking_start) if st.tracking_start else fy_a
+    films = list(Project.objects.select_related("agency").filter(agency__currency="INR", created__date__range=(a, b))
+                 .only("id", "status", "invoice_amount", "first_delivered_on", "closed_on", "contractor_fee",
+                       "is_extra", "extra_basis", "extra_rate", "agency__currency"))
+    revenue = sum(p.invoice_amount for p in films)
+    delivered = sum(p.invoice_amount for p in films if p.first_delivered_on or p.status == Project.CLOSED)
+    # costs, month by month over the period
     from ..models import Payslip
-    months = [date(a.year + (a.month - 1 + i) // 12, (a.month - 1 + i) % 12 + 1, 1) for i in range(12)]
+    months = []
+    m = month_start(a)
+    while m <= b:
+        months.append(m)
+        m = add_months(m, 1)
     run = defaultdict(int)
-    for sl in Payslip.objects.filter(payroll__month__range=(a, b)).select_related("payroll").only(
+    for sl in Payslip.objects.filter(payroll__month__range=(months[0], b)).select_related("payroll").only(
             "salary", "leave_deduction", "other", "payroll__month"):
         run[sl.payroll.month] += sl.salary - sl.leave_deduction + sl.other
     monthly = sum(User.objects.filter(profile__active=True).exclude(profile__employment=Profile.CONTRACT)
@@ -110,14 +105,12 @@ def fy_estimate(today=None):
     salaries = sum(run[m] if m in run else monthly for m in months)
     entries, fixed = S._extras_between(a, min(b, today))
     extra_paid = sum(e.pay for es in entries.values() for e in es) + sum(fixed.values())
-    extra_booked = sum(p.extra_rate for p in due if p.is_extra and p.extra_basis == "fixed")
-    contract = sum(p.contractor_fee for p in delivered + due)
-    overheads = StudioSettings.get().monthly_overheads * 12
+    extra_booked = sum(p.extra_rate for p in films if p.is_extra and p.extra_basis == "fixed" and p.status != Project.CLOSED)
+    contract = sum(p.contractor_fee for p in films)
+    overheads = st.monthly_overheads * len(months)
     costs = salaries + extra_paid + extra_booked + contract + overheads
-    revenue = rev_done + rev_due
-    return {"start": a, "end": b, "label": f"FY {a.year}–{str(b.year)[2:]}", "revenue": revenue,
-            "delivered": rev_done, "delivered_n": len(delivered), "due": rev_due, "due_n": len(due),
-            "undated": sum(p.invoice_amount for p in undated), "undated_n": len(undated),
+    return {"start": a, "end": b, "label": f"FY {fy_a.year}–{str(b.year)[2:]}", "months": len(months),
+            "revenue": revenue, "films": len(films), "delivered": delivered, "open": revenue - delivered,
             "salaries": salaries, "payroll_months": len(run), "extra": extra_paid + extra_booked, "contract": contract,
             "overheads": overheads, "costs": costs, "profit": revenue - costs,
             "margin": round((revenue - costs) / revenue * 100) if revenue else None}

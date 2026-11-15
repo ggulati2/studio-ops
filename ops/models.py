@@ -34,6 +34,10 @@ class StudioSettings(models.Model):
     bank_name = models.CharField(max_length=80, blank=True)
     upi_id = models.CharField(max_length=80, blank=True)
     gst_percent = models.PositiveSmallIntegerField(default=0, help_text="0 = no GST line on invoices")
+    tracking_start = models.DateField(
+        "Tracking started on", null=True, blank=True, default=date(2026, 11, 1),
+        help_text="The day the studio started using this portal. The financial-year estimate on the Dashboard "
+                  "doesn't count months before it.")
     monthly_overheads = models.PositiveIntegerField(
         "Studio rent + electricity (₹ per month)", default=25000,
         help_text="Used for Estimated profit on the Dashboard. Include anything else fixed you pay every month.")

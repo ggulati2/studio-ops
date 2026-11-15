@@ -15,20 +15,18 @@
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(168px,100%),1fr))">
   <div class="kpi"><span>Films delivered (this month)</span><b>{{ delivered_count }}</b></div>
   <div class="kpi"><span>On-time delivery</span><b>{% if on_time_pct is not None %}{{ on_time_pct }}%{% else %}–{% endif %}</b></div>
-  <div class="kpi"><span>Revenue estimate · {{ fy.label }}</span><b>₹{{ fy.revenue|money }}</b><small>₹{{ fy.delivered|money }} delivered + ₹{{ fy.due|money }} due by 31 Mar{% if fy.undated %} · +₹{{ fy.undated|money }} with no date yet{% endif %}</small></div>
+  <div class="kpi"><span>Revenue estimated · {{ fy.label }}</span><b>₹{{ fy.revenue|money }}</b><small>{{ fy.films }} film{{ fy.films|pluralize }} logged since {{ fy.start|date:"j M Y" }} · ₹{{ fy.delivered|money }} delivered, ₹{{ fy.open|money }} still open</small></div>
   <div class="kpi"><span>Revenue delivered (INR)</span><b>₹{{ revenue|money }}</b><small>This month · ₹{{ pipeline|money }} still in open films</small></div>
   <div class="kpi profit-kpi{% if fy.profit < 0 %} neg{% endif %}" tabindex="0" aria-describedby="profit-tip"><span>Estimated profit · {{ fy.label }}</span><b>{% if fy.profit < 0 %}−{% endif %}₹{{ fy.profit|abs_money }}</b>
-    <small>{% if fy.margin is not None %}{{ fy.margin }}% of the year's revenue estimate · {% endif %}1 Apr – 31 Mar · hover for details</small>
-    <span class="profit-tip" role="tooltip" id="profit-tip"><b>{{ fy.label }} · 1 Apr {{ fy.start.year }} – 31 Mar {{ fy.end.year }}</b>
-      <span>Delivered so far ({{ fy.delivered_n }} films) <b>₹{{ fy.delivered|money }}</b></span>
-      <span>+ Due by 31 Mar ({{ fy.due_n }} films) <b>₹{{ fy.due|money }}</b></span>
-      <span>= Revenue estimate <b>₹{{ fy.revenue|money }}</b></span>
-      <span>− Salaries, 12 months <b>₹{{ fy.salaries|money }}</b></span>
+    <small>{% if fy.margin is not None %}{{ fy.margin }}% of revenue estimated · {% endif %}{{ fy.start|date:"j M" }} – {{ fy.end|date:"j M" }} · hover for details</small>
+    <span class="profit-tip" role="tooltip" id="profit-tip"><b>{{ fy.label }} · {{ fy.start|date:"j M Y" }} – {{ fy.end|date:"j M Y" }}</b>
+      <span>Revenue estimated ({{ fy.films }} films logged) <b>₹{{ fy.revenue|money }}</b></span>
+      <span>− Salaries, {{ fy.months }} month{{ fy.months|pluralize }} <b>₹{{ fy.salaries|money }}</b></span>
       <span>− Extra-work pay <b>₹{{ fy.extra|money }}</b></span>
       {% if fy.contract %}<span>− Contract editors <b>₹{{ fy.contract|money }}</b></span>{% endif %}
-      <span>− Rent + electricity, 12 months <b>₹{{ fy.overheads|money }}</b></span>
+      <span>− Rent + electricity, {{ fy.months }} month{{ fy.months|pluralize }} <b>₹{{ fy.overheads|money }}</b></span>
       <span class="pt-total">= Estimated profit <b>{% if fy.profit < 0 %}−{% endif %}₹{{ fy.profit|abs_money }}</b></span>
-      <span class="small muted">Only films already in the portal count, so the estimate grows as agencies send work.{% if fy.undated %} Films with no deadline (₹{{ fy.undated|money }}) aren't counted yet.{% endif %} Salaries use payroll for the {{ fy.payroll_months }} month{{ fy.payroll_months|pluralize }} already run. Rent + electricity is set in <a href="{% url 'settings' %}">Settings</a>.</span>
+      <span class="small muted">Revenue estimated = invoice value of every film logged since {{ fy.start|date:"j M Y" }}, delivered or not. Salaries use payroll for the {{ fy.payroll_months }} month{{ fy.payroll_months|pluralize }} already run. Start date and rent + electricity are in <a href="{% url 'settings' %}">Settings</a>.</span>
     </span></div>
   <div class="kpi"><span>Outstanding invoices (INR)</span><b>₹{{ outstanding|money }}</b><small><a href="{% url 'invoices' %}">Invoices →</a></small></div>
 </div>
