@@ -1,0 +1,29 @@
+<details class="card warn queue-box grp-queue" data-key="queue">
+  <summary class="queue-sum"><span class="grp-caret" aria-hidden="true"></span>
+    <h2 style="color:var(--warn)">Needs an editor · {{ queue|length }} film{{ queue|length|pluralize }}</h2>
+    <span class="small" style="color:var(--warn)">{{ queue_groups|length }} agenc{{ queue_groups|length|pluralize:"y,ies" }}{% with q0=queue_groups.0 %}{% if q0.next %} · nearest deadline {{ q0.next|date:"j M" }}{% endif %}{% endwith %} · click to open</span></summary>
+  <div class="queue-body">
+  {% for a in queue_groups %}
+  <details class="q-agency grp-queue" data-key="qa{{ a.a.pk }}"{% if queue_groups|length == 1 %} open{% endif %}>
+    <summary><span class="grp-caret" aria-hidden="true"></span><b>{{ a.a.name }}</b>{% if a.a.code %} <span class="small muted">{{ a.a.code }}</span>{% endif %}
+      <span class="small muted">{{ a.list|length }} couple{{ a.list|length|pluralize }} · {{ a.n }} film{{ a.n|pluralize }}{% if a.next %} · next due {{ a.next|date:"j M" }}{% endif %}</span></summary>
+    <div class="q-couples">{% for c in a.list %}
+      <div class="q-couple">
+        <div class="q-head"><b>{{ c.name }}</b>
+          <span class="q-films">{% for p in c.films %}<span class="q-film" data-queue="{{ p.pk }}">{{ p.deliverable }}<span class="muted">{% if p.deadline %} · {{ p.deadline|date:"j M" }}{% endif %}{% if p.source_label %} · {{ p.source_label }}{% endif %}</span></span>{% endfor %}</span>
+          {% if c.client_id %}<form method="post" action="{% url 'couple_action' c.client_id %}" data-live class="q-all">{% csrf_token %}<input type="hidden" name="op" value="assign"><input type="hidden" name="refresh" value="1"><input type="hidden" name="qs" value="{{ request.GET.urlencode }}">
+            {% for p in c.films %}<input type="hidden" name="ids" value="{{ p.pk }}">{% endfor %}
+            <select name="editor" class="input" required aria-label="Editor for all of {{ c.name }}"><option value="">{% if c.films|length == 1 %}Give to…{% else %}Give all {{ c.films|length }} to…{% endif %}</option>{% for u in editors %}<option value="{{ u.pk }}">{{ u.profile.name }}</option>{% endfor %}</select>
+            <button class="btn primary sm">Assign</button></form>{% endif %}
+        </div>
+        {% if c.films|length > 1 %}<details class="q-one"><summary class="small">One by one</summary>
+          {% for p in c.films %}<form method="post" action="{% url 'project_assign' p.pk %}" data-live data-queue="{{ p.pk }}" class="q-row">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <span class="small"><b>{{ p.deliverable }}</b>{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</span>
+            <select name="editor" class="input" aria-label="Editor for {{ p }}">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+            <button class="btn sm">Assign</button></form>{% endfor %}
+        </details>{% endif %}
+      </div>{% endfor %}</div>
+  </details>
+  {% endfor %}
+  </div>
+</details>

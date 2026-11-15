@@ -971,3 +971,42 @@ class EstimatedProfit(SeededTestCase):
         self.assertIn("profit", r.context)
         from ops.forms import StudioSettingsForm
         self.assertIn("monthly_overheads", StudioSettingsForm().fields)
+
+
+class QueueAndFootage(SeededTestCase):
+    def setUp(self):
+        self.f = self.login("ag")
+        self.ag = Agency.objects.get(code="BRC")
+
+    def test_needs_an_editor_folded_by_agency_and_couple(self):
+        a = Project.objects.create(couple="Queue Pair", deliverable="Teaser", agency=self.ag)
+        b = Project.objects.create(couple="Queue Pair", deliverable="Trailer", agency=self.ag)
+        r = self.f.get("/projects/")
+        self.assertContains(r, 'class="card warn queue-box grp-queue"')
+        self.assertContains(r, f'data-key="qa{self.ag.pk}"')
+        self.assertContains(r, "Give all 2 to")
+        # assign the whole couple at once
+        from django.contrib.auth import get_user_model
+        ed = get_user_model().objects.get(username="pratik")
+        d = self.f.post(f"/projects/couple/{a.client_id}/action/", {"op": "assign", "editor": ed.pk, "refresh": "1",
+                                                                    "ids": [a.pk, b.pk], "qs": ""}, **FETCH).json()
+        self.assertTrue(d["refresh"])
+        self.assertEqual(Project.objects.filter(pk__in=[a.pk, b.pk], editor=ed).count(), 2)
+
+    def test_footage_is_editable(self):
+        from ops.models import HardDrive
+        d = HardDrive.objects.create(code="HDD-44", agency=self.ag)
+        p = Project.objects.filter(agency=self.ag).first()
+        html = self.f.get("/projects/?view=list&status=").content.decode()
+        self.assertIn('name="footage"', html)
+        r = self.f.post(f"/projects/{p.pk}/status/", {"footage": str(d.pk), "next": "/projects/"}, **FETCH).json()
+        self.assertTrue(r["ok"])
+        p.refresh_from_db()
+        self.assertEqual(p.drive_id, d.pk)
+        self.assertIn(f'value="{d.pk}" selected', r["row"])
+        r = self.f.post(f"/projects/{p.pk}/status/", {"footage": "cloud", "next": "/projects/"}, **FETCH).json()
+        p.refresh_from_db()
+        self.assertEqual((p.drive_id, p.received_online), (None, True))
+        self.f.post(f"/projects/{p.pk}/status/", r["undo"] | {"next": "/projects/"}, **FETCH)
+        p.refresh_from_db()
+        self.assertEqual(p.drive_id, d.pk)

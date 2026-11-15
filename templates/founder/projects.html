@@ -10,21 +10,7 @@
 </div>
 
 <div data-live-part="folders">{% include "founder/_folder_inbox.html" %}</div>
-<div data-live-part="queue">{% if queue %}
-<section class="card warn">
-  <div class="title"><h2 style="color:var(--warn)">Needs an editor · {{ queue|length }}</h2><span class="small" style="color:var(--warn)">Nearest deadline first</span></div>
-  {% for p in queue|slice:":12" %}
-  <form method="post" action="{% url 'project_assign' p.pk %}" data-live data-queue="{{ p.pk }}" class="card tight" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;border-color:var(--warn-line)">
-    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-    <div style="flex:1 1 260px"><b>{{ p }}</b><div class="small muted">{{ p.agency }}{% if p.source_label %} · {{ p.source_label }}{% endif %}</div></div>
-    <span class="small" style="color:var(--warn);font-weight:600">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% else %}No deadline{% endif %}{% if p.agency_deadline %} · agency {{ p.agency_deadline|date:"j M" }}{% endif %}</span>
-    <select name="editor" class="input" style="width:auto">{% for v, l in assign_form.fields.editor.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
-    <button class="btn primary sm">Assign</button>
-  </form>
-  {% endfor %}
-  {% if queue|length > 12 %}<a class="small" href="?status=open&amp;editor=none&amp;view=list">See all {{ queue|length }} films without an editor →</a>{% endif %}
-</section>
-{% endif %}</div>
+<div data-live-part="queue">{% if queue %}{% include "founder/_queue.html" %}{% endif %}</div>
 
 <section class="card">
   <div class="title">

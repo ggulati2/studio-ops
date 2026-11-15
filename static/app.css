@@ -1190,3 +1190,27 @@ td.starts{box-shadow:inset 3px 0 0 var(--ok)}
 .profit-tip .pt-total{border-top:1px solid var(--line);padding-top:6px;font-weight:600}
 .profit-kpi:hover .profit-tip,.profit-kpi:focus .profit-tip,.profit-kpi:focus-within .profit-tip{opacity:1;visibility:visible;transform:none}
 .profit-tip.fixed{position:fixed}
+
+/* Projects: "Needs an editor", folded by agency and couple */
+.queue-box{padding:0;display:block}
+.queue-box>summary,.q-agency>summary,.q-one>summary{list-style:none;cursor:pointer}
+.queue-box>summary::-webkit-details-marker,.q-agency>summary::-webkit-details-marker,.q-one>summary::-webkit-details-marker{display:none}
+.queue-sum{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;padding:14px 16px}
+.queue-sum h2{margin:0}
+.queue-box[open]>.queue-sum .small:last-child{visibility:hidden}
+.queue-body{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
+.q-agency{border:1px solid var(--warn-line);border-radius:var(--r-sm);background:var(--card)}
+.q-agency>summary{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding:10px 12px}
+.q-couples{display:flex;flex-direction:column;padding:0 12px 8px}
+.q-couple{padding:8px 0;border-top:1px solid var(--line2)}
+.q-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.q-head>b{min-width:150px}
+.q-films{display:flex;flex-wrap:wrap;gap:4px;flex:1 1 260px}
+.q-film{font-size:var(--t-sm);padding:2px 8px;border-radius:999px;background:var(--sunk);border:1px solid var(--line)}
+.q-all{display:flex;gap:6px;align-items:center;margin:0}
+.q-all select{width:auto;min-width:170px}
+.q-one{margin-top:6px}
+.q-one>summary{color:var(--muted);text-decoration:underline dotted}
+.q-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 0 12px}
+.q-row select{width:auto}
+.footage-select{min-width:96px;max-width:150px}

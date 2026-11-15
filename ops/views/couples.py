@@ -133,6 +133,7 @@ def _totals(ids):
 
 def _body_ctx(params):
     return {"editors": team(), "statuses": Project.STATUSES, "deliverables": Project.DELIVERABLES,
+            "drive_opts": S.drive_options(),
             "back": _back(params), "page_qs": _page_qs(params)}
 
 
@@ -391,6 +392,8 @@ def couple_action(request, pk):
             refresh = True
     else:
         say.append(("error", "Unknown action."))
+    if P.get("refresh"):            # e.g. from the "Needs an editor" box: redraw the whole page parts
+        refresh = True
 
     if _is_fetch(request):
         bad = any(level == "error" for level, _ in say)

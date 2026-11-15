@@ -17,7 +17,7 @@ from ..audit import record
 from ..rbac import ADMIN, has_perm, requires
 from ..forms import (AgencyForm, AssignForm, EOTMForm, HolidayForm, NewProjectForm, PersonForm, ProjectForm,
                      StudioSettingsForm)
-from ..models import (Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Invoice, PlanEntry, Pod,
+from ..models import (Agency, AgencyRate, DayLog, EmployeeOfMonth, ExtraEntry, HardDrive, Holiday, Invoice, PlanEntry, Pod,
                       Profile, Project, StudioSettings)
 from .. import services as S
 from ..services import (add_months, attendance, available_days, benchmarks, celebrated_award, client_view,
@@ -212,7 +212,7 @@ def projects(request):
     except ValueError:
         show = PAGE
     from .folders import inbox_context
-    ctx = {**inbox_context(), "queue": queue, "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
+    ctx = {**inbox_context(), "queue": queue, "queue_groups": queue_groups(queue), "drive_opts": S.drive_options(), "status": status, "q": q, "statuses": Project.STATUSES, "f": f, "active_filters": active,
            "agencies": Agency.objects.order_by("name"), "editors": team(), "films": Project.DELIVERABLES,
            "assign_form": AssignForm(), "view": view, "switch": switch}
     if view == "grouped":
@@ -336,6 +336,26 @@ def project_status(request, pk):
                     say.append(("info", f"Planner updated: {made} day(s) planned for {now}."))
                 if short:
                     say.append(("warning", f"{short} day(s) of work didn't fit before the deadline. Check the Planner."))
+    elif "footage" in P:
+        raw = P["footage"]
+        old_label = p.source_label or "nothing"
+        before = {"footage": "cloud" if (p.received_online and not p.drive_id) else str(p.drive_id or "")}
+        if raw == "cloud":
+            p.drive, p.received_online = None, True
+        elif raw.isdigit():
+            d = HardDrive.objects.filter(pk=raw).first()
+            if not d:
+                say.append(("error", "That drive isn't in the register any more."))
+            p.drive, p.received_online = d or p.drive, False if d else p.received_online
+        else:
+            p.drive, p.received_online = None, False
+        now = {"footage": "cloud" if (p.received_online and not p.drive_id) else str(p.drive_id or "")}
+        if now != before and not say:
+            p.save(update_fields=["drive", "received_online"])
+            undo = before
+            record(request, "project.footage", str(p), f"{old_label} -> {p.source_label or 'nothing'}")
+            say.append(("success", f"{p}: footage " + (f"on {p.drive}" if p.drive_id else "in the cloud" if p.received_online
+                                                       else "not set") + "."))
     elif "invoice_amount" in P:
         raw = P["invoice_amount"].replace(",", "").strip() or "0"
         if not raw.isdigit() or int(raw) > 100_000_000:
@@ -389,7 +409,8 @@ def _project_reply(request, p, nxt, say, undo=None, remove_queue=False):
         p = S.plan_others([Project.objects.select_related("agency", "editor__profile", "drive").get(pk=p.pk)])[0]
         layout = "couple" if request.POST.get("layout") == "couple" else ""
         row = render_to_string("founder/_project_row.html", {"p": p, "editors": team(), "statuses": Project.STATUSES,
-                                                             "back": nxt, "layout": layout}, request=request)
+                                                             "back": nxt, "layout": layout, "drive_opts": S.drive_options()},
+                               request=request)
         bad = any(level == "error" for level, _ in say)
         swap = []
         if layout and p.client_id:      # keep the couple's and agency's summary lines in step
@@ -461,6 +482,22 @@ def project_edit(request, pk):
         return redirect("projects")
     return render(request, "founder/project_edit.html", {"form": form, "p": p, "hours": project_hours(p),
                                                        "reviews": p.reviews.select_related("reviewer")})
+
+
+def queue_groups(queue):
+    """Films without an editor, folded Agency -> Couple, nearest deadline first."""
+    far = date.max
+    agencies = {}
+    for p in sorted(queue, key=lambda p: (p.deadline or far, p.couple)):
+        a = agencies.setdefault(p.agency_id, {"a": p.agency, "couples": {}, "next": p.deadline})
+        c = a["couples"].setdefault(p.client_id or f"x{p.pk}", {"name": p.couple, "client_id": p.client_id, "films": [],
+                                                              "next": p.deadline})
+        c["films"].append(p)
+    out = []
+    for a in agencies.values():
+        couples = list(a.pop("couples").values())
+        out.append({**a, "list": couples, "n": sum(len(c["films"]) for c in couples)})
+    return sorted(out, key=lambda a: (a["next"] or far, a["a"].name))
 
 
 @requires("projects.manage")

@@ -20,7 +20,14 @@
         {% if p.status == "sent_agency" and p.first_delivered_on %}<button type="button" class="linkbtn sent-on small" data-sent-edit title="Change the date it was sent">sent {{ p.first_delivered_on|date:"j M" }}</button>{% endif %}
         <div class="sent-ask" data-sent-ask hidden><label class="small">Sent to agency on <input type="date" name="sent_on" class="cell-input" value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}" disabled></label><span class="sent-btns"><button class="btn primary sm">Save</button><button type="button" class="btn sm ghost" data-sent-cancel>Cancel</button></span></div>
         <noscript><button class="btn sm">Save</button></noscript></form></td>
-      <td data-col="footage" class="mono">{{ p.source_label }}</td>
+      <td data-col="footage"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
+        <select name="footage" class="cell-input footage-select mono" data-autosubmit aria-label="Footage for {{ p }}">
+          <option value=""{% if not p.drive_id and not p.received_online %} selected{% endif %}>–</option>
+          <option value="cloud"{% if p.received_online and not p.drive_id %} selected{% endif %}>☁ Cloud</option>
+          {% if p.drive_id and p.drive.status == "sent" %}<option value="{{ p.drive_id }}" selected>{{ p.drive.code }} (sent back)</option>{% endif %}
+          <optgroup label="{{ p.agency.code|default:p.agency.name }} drives">{% for d in drive_opts %}{% if d.agency_id == p.agency_id %}<option value="{{ d.pk }}"{% if d.pk == p.drive_id %} selected{% endif %}>{{ d.code }}</option>{% endif %}{% endfor %}</optgroup>
+          <optgroup label="Other drives">{% for d in drive_opts %}{% if d.agency_id != p.agency_id %}<option value="{{ d.pk }}"{% if d.pk == p.drive_id %} selected{% endif %}>{{ d.code }}{% if d.studio_owned %} · studio{% elif d.agency %} · {{ d.agency.code|default:d.agency.name }}{% endif %}</option>{% endif %}{% endfor %}</optgroup>
+        </select><noscript><button class="btn sm">Save</button></noscript></form></td>
       <td data-col="invoice" class="right"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit money-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <span class="cur" aria-hidden="true">{{ p.agency.symbol }}</span><input type="number" name="invoice_amount" value="{{ p.invoice_amount }}" min="0" step="1" inputmode="numeric" class="cell-input num" data-autosubmit aria-label="Invoice amount for {{ p }} in {{ p.agency.currency }}"><noscript><button class="btn sm">Save</button></noscript></form></td>
     </tr>

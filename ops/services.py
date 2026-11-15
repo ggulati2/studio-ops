@@ -477,6 +477,15 @@ def auto_plan(project, start=None, trim=False):
     return made, max(need - have - made, 0)
 
 
+def drive_options():
+    """Drives to pick from in the Projects footage column (once per request): the ones in the studio."""
+    from . import perf
+    from .models import HardDrive
+    return perf.memo("drive_opts", lambda: list(HardDrive.objects.exclude(status="sent").select_related("agency")
+                                                 .only("id", "code", "agency_id", "studio_owned", "agency__code",
+                                                       "agency__name").order_by("code")))
+
+
 def plan_mismatches(limit=40):
     """Planner days ahead where a film is planned for someone who isn't its editor on Projects
     (or the film has no editor). Revisions are left out: anyone may be given those.

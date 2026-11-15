@@ -76,14 +76,13 @@
   /* toggle doesn't bubble: listen in the capture phase */
   doc.addEventListener("toggle", function (e) {
     var d = e.target;
-    if (!d.matches || !d.matches(".grp-agency, .grp-couple")) return;
+    if (!d.matches || !d.matches(".grp-agency, .grp-couple, .grp-queue")) return;
     if (d.dataset.restoring) { delete d.dataset.restoring; } else remember(d);
     if (d.open && d.matches(".grp-couple")) loadCouple(d);
   }, true);
 
   function restore() {
-    var r = root();
-    if (!r) return;
+    var r = doc;            // the grouped list and the "Needs an editor" box both remember what was open
     var open = read(KEY), couples = 0;
     open.forEach(function (k) {
       var d = r.querySelector('[data-key="' + k + '"]');
