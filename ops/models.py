@@ -593,6 +593,8 @@ class ExtraEntry(models.Model):
     end = models.TimeField()
     stage = models.CharField(max_length=20, choices=TaskStage.choices, default=TaskStage.EDIT)
     note = models.CharField(max_length=200, blank=True)
+    amount = models.PositiveIntegerField("Pay for this task (₹)", null=True, blank=True,
+                                         help_text="Set by a founder. Blank = worked out from the job's rate.")
 
     class Meta:
         ordering = ["-date", "-start"]
@@ -607,9 +609,15 @@ class ExtraEntry(models.Model):
         return round((b - a).total_seconds() / 3600, 2)
 
     @property
-    def pay(self):
+    def auto_pay(self):
+        """What the job's rate gives for this task: hours x rate for hourly jobs, nothing for fixed-price jobs."""
         p = self.project
         return int(round(self.hours * p.extra_rate)) if p.extra_basis == "hourly" else 0
+
+    @property
+    def pay(self):
+        """The money for this task: the amount a founder set, else the job's rate."""
+        return self.amount if self.amount is not None else self.auto_pay
 
     @property
     def overlaps_office(self):

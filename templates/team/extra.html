@@ -16,7 +16,7 @@
     <section class="card"><h2>My extra hours · {{ month|date:"F" }}</h2><div class="scroll"><table>
       <thead><tr><th>Date</th><th>Job</th><th>Time</th><th>Hrs</th><th>Pay</th><th></th></tr></thead>
       <tbody>{% for e in entries %}<tr><td>{{ e.date|date:"j M" }}</td><td>{{ e.project }}</td><td class="muted">{{ e.start|time:"g:i A" }} – {{ e.end|time:"g:i A" }}</td><td>{{ e.hours|hours }}</td>
-        <td>{% if e.project.extra_basis == 'hourly' %}₹{{ e.pay|money }}{% else %}<span class="tag">Fixed job</span>{% endif %}</td>
+        <td>{% if e.amount is not None or e.project.extra_basis == 'hourly' %}₹{{ e.pay|money }}{% else %}<span class="tag">Fixed job</span>{% endif %}</td>
         <td><form method="post" action="{% url 'extra_delete' e.pk %}">{% csrf_token %}<button class="btn sm" aria-label="Remove entry">✕</button></form></td></tr>{% empty %}<tr><td colspan="6" class="muted">Nothing logged this month.</td></tr>{% endfor %}</tbody>
     </table></div></section>
   </div>

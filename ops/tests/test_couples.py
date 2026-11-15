@@ -842,3 +842,55 @@ class DatabaseBandwidth(SeededTestCase):
         film_sql = [x["sql"] for x in q.captured_queries if 'FROM "ops_project"' in x["sql"] and "ops_agency" in x["sql"]]
         self.assertTrue(film_sql)
         self.assertFalse(any('"brief"' in s or '"billing_address"' in s for s in film_sql))
+
+
+class ExtraTaskPay(SeededTestCase):
+    def setUp(self):
+        from datetime import time
+        from django.contrib.auth import get_user_model
+        from ops.models import ExtraEntry
+        self.u = get_user_model().objects.get(username="pratik")
+        ag = Agency.objects.get(code="BRC")
+        self.hourly = Project.objects.create(couple="Extra H", deliverable="Teaser", agency=ag, editor=self.u, is_extra=True,
+                                             extra_basis="hourly", extra_rate=300)
+        self.fixed = Project.objects.create(couple="Extra F", deliverable="Reels", agency=ag, editor=self.u, is_extra=True,
+                                            extra_basis="fixed", extra_rate=0)
+        today = timezone.localdate()
+        self.e1 = ExtraEntry.objects.create(user=self.u, project=self.hourly, date=today, start=time(20), end=time(22))
+        self.e2 = ExtraEntry.objects.create(user=self.u, project=self.fixed, date=today, start=time(21), end=time(23))
+        self.f = self.login("ag")
+
+    def test_set_amount_per_task_counts_in_payroll(self):
+        from ops.services import extra_pay
+        from ops.perf import clear
+        month = timezone.localdate().replace(day=1)
+        base = extra_pay(self.u, month)
+        self.assertEqual(self.e1.pay, 600)       # 2 h x 300
+        self.assertEqual(self.e2.pay, 0)         # fixed job, nothing per task yet
+        r = self.f.post(f"/extra-work/{self.e2.pk}/amount/", {"amount": "1,500"}, HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertTrue(r["ok"])
+        self.assertEqual({s["sel"] for s in r["swap"]}, {f'[data-extra="{self.e2.pk}"]', "[data-extra-summary]"})
+        self.assertIn("1,500", r["swap"][1]["html"].replace("₹", "") if False else r["swap"][0]["html"] + r["messages"][0]["text"])
+        self.e2.refresh_from_db()
+        self.assertEqual(self.e2.pay, 1500)
+        self.f.post(f"/extra-work/{self.e1.pk}/amount/", {"amount": "1000"}, HTTP_X_REQUESTED_WITH="fetch")
+        clear()
+        self.assertEqual(extra_pay(self.u, month), base + 1500 + 1000 - 600)
+        # empty = back to the job's rate
+        self.f.post(f"/extra-work/{self.e1.pk}/amount/", {"amount": ""}, HTTP_X_REQUESTED_WITH="fetch")
+        self.e1.refresh_from_db()
+        self.assertIsNone(self.e1.amount)
+        self.assertEqual(self.e1.pay, 600)
+
+    def test_validation_and_permissions(self):
+        r = self.f.post(f"/extra-work/{self.e1.pk}/amount/", {"amount": "abc"}, HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertFalse(r["ok"])
+        self.assertNotEqual(self.login("pratik").post(f"/extra-work/{self.e1.pk}/amount/", {"amount": "99999"}).status_code, 200)
+        self.e1.refresh_from_db()
+        self.assertIsNone(self.e1.amount)
+
+    def test_page_lists_tasks(self):
+        r = self.f.get("/extra-work/")
+        self.assertContains(r, "Tasks this month")
+        self.assertContains(r, f'data-extra="{self.e1.pk}"')
+        self.assertContains(r, 'placeholder="600"')

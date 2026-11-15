@@ -7,7 +7,9 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db import models, transaction
 from django.db.models import Count, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
@@ -24,7 +26,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
                         week_start)
 
 User = get_user_model()
-__all__ = ["backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
+__all__ = ["extra_amount", "backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "person_pod", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
@@ -746,6 +748,22 @@ def extra_admin(request):
     a, b = month_start(month), month_end(month)
     entries = ExtraEntry.objects.filter(date__range=(a, b)).select_related("user__profile", "project")
     flagged = [e for e in entries if e.overlaps_office]
+    rows = _extra_summary(request, month)
+    margins = []
+    for p in Project.objects.filter(is_extra=True).select_related("editor__profile", "agency")[:30]:
+        cost = sum(e.pay for e in p.extra_entries.all()) + (p.extra_rate if p.extra_basis == "fixed" else 0)
+        keep = p.invoice_amount - cost if p.agency.currency == "INR" else None
+        margins.append({"p": p, "cost": cost, "keep": keep,
+                        "pct": round(keep / p.invoice_amount * 100) if keep is not None and p.invoice_amount else None})
+    return render(request, "founder/extra.html", {"month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
+                                                "rows": rows, "flagged": flagged, "margins": margins,
+                                                "entries": entries.select_related("project__agency").order_by("-date", "-start"),
+                                                "total_pay": sum(r["pay"] for r in rows),
+                                                "total_hours": round(sum(r["extra"] for r in rows), 1)})
+
+
+def _extra_summary(request, month):
+    a, b = month_start(month), month_end(month)
     rows = []
     for u in team():
         reg = sum(l.hours for l in DayLog.objects.filter(user=u, date__range=(a, b)))
@@ -754,16 +772,46 @@ def extra_admin(request):
         rows.append({"u": u, "jobs": Project.objects.filter(editor=u, is_extra=True, received_on__lte=b).exclude(
             closed_on__lt=a).count(), "extra": ex, "regular": round(reg, 1),
             "week": round((reg + ex) / weeks), "pay": extra_pay(u, month)})
-    margins = []
-    for p in Project.objects.filter(is_extra=True).select_related("editor__profile", "agency")[:30]:
-        cost = (sum(e.pay for e in p.extra_entries.all()) if p.extra_basis == "hourly" else p.extra_rate)
-        keep = p.invoice_amount - cost if p.agency.currency == "INR" else None
-        margins.append({"p": p, "cost": cost, "keep": keep,
-                        "pct": round(keep / p.invoice_amount * 100) if keep is not None and p.invoice_amount else None})
-    return render(request, "founder/extra.html", {"month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
-                                                "rows": rows, "flagged": flagged, "margins": margins,
-                                                "total_pay": sum(r["pay"] for r in rows),
-                                                "total_hours": round(sum(r["extra"] for r in rows), 1)})
+    return rows
+
+
+@requires("extra.manage")
+def extra_amount(request, pk):
+    """Set (or clear) the money an editor gets for one extra-work task."""
+    from ..perf import clear as clear_memo
+    e = get_object_or_404(ExtraEntry.objects.select_related("project", "user__profile"), pk=pk)
+    back = S.safe_next(request, request.POST.get("next"), reverse("extra_admin"))
+    if request.method != "POST":
+        return redirect(back)
+    raw = (request.POST.get("amount") or "").replace(",", "").replace("₹", "").strip()
+    if raw and (not raw.isdigit() or int(raw) > 10_000_000):
+        say = [("error", "Enter the amount in whole rupees, e.g. 1500 (or leave it empty to use the job's rate).")]
+    else:
+        old = e.amount
+        e.amount = int(raw) if raw else None
+        if e.amount != old:
+            e.save(update_fields=["amount"])
+            record(request, "extra.amount", str(e.project), f"{e.user.profile.name} {e.date:%d %b}: "
+                   f"{'₹' + format(old, ',') if old is not None else 'rate'} -> {'₹' + format(e.amount, ',') if e.amount is not None else 'rate'}")
+        say = [("success", f"{e.user.profile.name} · {e.project} · {e.date:%-d %b}: "
+                + (f"₹{e.amount:,} for this task." if e.amount is not None
+                   else f"back to the job's rate (₹{e.auto_pay:,}).") + " Payroll uses it.")]
+    if request.headers.get("X-Requested-With") == "fetch":
+        clear_memo()
+        month = month_start(e.date)
+        rows = _extra_summary(request, month)
+        bad = any(l == "error" for l, _ in say)
+        row = render_to_string("founder/_extra_entry.html", {"e": e, "back": back}, request=request)
+        summary = render_to_string("founder/_extra_summary.html", {
+            "rows": rows, "total_pay": sum(r["pay"] for r in rows), "total_hours": round(sum(r["extra"] for r in rows), 1),
+            "flagged_n": str(sum(1 for x in ExtraEntry.objects.filter(date__range=(month, month_end(month)))
+                                 .select_related("user") if x.overlaps_office))}, request=request)
+        return JsonResponse({"ok": not bad, "messages": [{"level": l, "text": t} for l, t in say],
+                             "swap": [{"sel": f'[data-extra="{e.pk}"]', "mode": "outer", "html": row},
+                                      {"sel": "[data-extra-summary]", "mode": "outer", "html": summary}]})
+    for level, text in say:
+        getattr(messages, level)(request, text)
+    return redirect(back)
 
 
 @requires("eotm.manage")

@@ -1,0 +1,12 @@
+{% load ops_extras %}<div data-extra-summary>
+<div class="grid">
+  <div class="kpi"><span>Extra hours</span><b>{{ total_hours|hours }}</b></div>
+  <div class="kpi"><span>Extra pay due</span><b>₹{{ total_pay|money }}</b><small>Goes into payroll automatically</small></div>
+  <div class="kpi {% if flagged_n and flagged_n != '0' %}warn{% endif %}"><span>Worth a look</span><b>{{ flagged_n }}</b><small>Overlaps office time</small></div>
+</div>
+<section class="card"><h2>By editor</h2><div class="scroll"><table style="min-width:680px">
+  <thead><tr><th>Editor</th><th>Extra jobs</th><th>Extra hrs</th><th>Regular hrs</th><th>Avg total / week</th><th class="right">Extra pay due</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td><b>{{ r.u.profile.name }}</b></td><td>{{ r.jobs }}</td><td>{{ r.extra|hours }}</td><td class="muted">{{ r.regular|hours }}</td>
+    <td {% if r.week > 60 %}style="color:var(--bad);font-weight:600"{% endif %}>{{ r.week }} h{% if r.week > 60 %} · over 60/week{% endif %}</td><td class="right"><b>₹{{ r.pay|money }}</b></td></tr>{% endfor %}</tbody>
+</table></div><p class="small muted" style="margin:0">Over 60 hours a week (regular + extra) is flagged: quality and revisions usually slip after that.</p></section>
+</div>

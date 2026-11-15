@@ -1,0 +1,12 @@
+{% load ops_extras %}<tr data-extra="{{ e.pk }}">
+  <td class="nowrap"><b>{{ e.date|date:"D j M" }}</b></td>
+  <td>{{ e.user.profile.name }}</td>
+  <td><b>{{ e.project.couple }}</b> <span class="small muted">{{ e.project.deliverable }}{% if e.project.agency.code %} · {{ e.project.agency.code }}{% endif %}</span>{% if e.note %}<div class="small muted">{{ e.note }}</div>{% endif %}</td>
+  <td class="small">{{ e.get_stage_display }}</td>
+  <td class="nowrap small">{{ e.start|time:"H:i" }}–{{ e.end|time:"H:i" }} · <b>{{ e.hours|hours }} h</b></td>
+  <td class="small muted nowrap">{% if e.project.extra_basis == "hourly" %}₹{{ e.project.extra_rate|money }}/h → ₹{{ e.auto_pay|money }}{% else %}Fixed job (₹{{ e.project.extra_rate|money }} on close){% endif %}</td>
+  <td class="right nowrap"><form method="post" action="{% url 'extra_amount' e.pk %}" data-live class="cell-edit extra-amt">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+    <span class="amt-wrap"><span class="amt-cur" aria-hidden="true">₹</span><input class="cell-input num" name="amount" inputmode="numeric" pattern="[0-9,]*" value="{{ e.amount|default_if_none:'' }}" placeholder="{{ e.auto_pay }}" data-save-on-leave aria-label="Pay for {{ e.user.profile.name }}'s task on {{ e.project }}, {{ e.date|date:'j M' }} (empty = job's rate)"></span>
+    <noscript><button class="btn sm">Save</button></noscript></form>
+    {% if e.amount is not None %}<span class="tag gold small" title="Set by a founder">set</span>{% endif %}</td>
+</tr>

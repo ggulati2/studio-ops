@@ -1158,3 +1158,11 @@ td.starts{box-shadow:inset 3px 0 0 var(--ok)}
 .wl-film-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .wl-film-grid .wl-film{border:1px solid var(--line);border-left:4px solid hsl(var(--h,210) 55% 55%);border-radius:var(--r-sm);padding:10px 12px}
 .wl-row>.card{width:100%}
+
+/* Extra work: pay per task */
+.amt-wrap{display:inline-flex;align-items:center;gap:2px}
+.amt-cur{color:var(--muted)}
+.extra-amt{display:inline-flex}
+.extra-amt input{width:96px;text-align:right}
+.extra-amt input::placeholder{color:var(--faint)}
+.extra-tasks td{vertical-align:middle}
