@@ -86,7 +86,12 @@ def fy_estimate(today=None):
     a = max(fy_a, st.tracking_start) if st.tracking_start else fy_a
     films = list(Project.objects.select_related("agency").filter(agency__currency="INR", created__date__range=(a, b))
                  .only("id", "status", "invoice_amount", "first_delivered_on", "closed_on", "contractor_fee",
-                       "is_extra", "extra_basis", "extra_rate", "agency__currency"))
+                       "is_extra", "extra_basis", "extra_rate", "agency__currency", "agency__name", "agency__code"))
+    by_agency = defaultdict(lambda: {"amount": 0, "films": 0})
+    for p in films:
+        g = by_agency[p.agency.name]
+        g["amount"] += p.invoice_amount
+        g["films"] += 1
     revenue = sum(p.invoice_amount for p in films)
     delivered = sum(p.invoice_amount for p in films if p.first_delivered_on or p.status == Project.CLOSED)
     # costs, month by month over the period
@@ -113,7 +118,9 @@ def fy_estimate(today=None):
             "revenue": revenue, "films": len(films), "delivered": delivered, "open": revenue - delivered,
             "salaries": salaries, "payroll_months": len(run), "extra": extra_paid + extra_booked, "contract": contract,
             "overheads": overheads, "costs": costs, "profit": revenue - costs,
-            "margin": round((revenue - costs) / revenue * 100) if revenue else None}
+            "margin": round((revenue - costs) / revenue * 100) if revenue else None,
+            "agencies": sorted(({"name": k, **v, "share": round(v["amount"] / revenue * 100) if revenue else 0}
+                                for k, v in by_agency.items()), key=lambda x: -x["amount"])}
 
 
 @requires("dashboard.view")

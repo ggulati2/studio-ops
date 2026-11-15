@@ -1010,3 +1010,17 @@ class QueueAndFootage(SeededTestCase):
         self.f.post(f"/projects/{p.pk}/status/", r["undo"] | {"next": "/projects/"}, **FETCH)
         p.refresh_from_db()
         self.assertEqual(p.drive_id, d.pk)
+
+
+
+class AgenciesFY(SeededTestCase):
+    def test_agency_panel_uses_financial_year(self):
+        f = self.login("ag")
+        ag = Agency.objects.filter(currency="INR").first()
+        before = {a["name"]: a["amount"] for a in f.get("/dashboard/").context["fy"]["agencies"]}
+        Project.objects.create(couple="Panel Check", deliverable="Teaser", agency=ag, invoice_amount=12345)
+        r = f.get("/dashboard/")
+        after = {a["name"]: a["amount"] for a in r.context["fy"]["agencies"]}
+        self.assertEqual(after[ag.name], before.get(ag.name, 0) + 12345)
+        self.assertEqual(sum(after.values()), r.context["fy"]["revenue"])
+        self.assertContains(r, "Agencies · FY")

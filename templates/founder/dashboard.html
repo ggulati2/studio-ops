@@ -51,14 +51,14 @@
     <p class="small muted load-key" style="margin:0"><span class="ld on"></span> film or revisions planned <span class="ld backup"></span> Back-up <span class="ld free"></span> nothing planned <span class="ld off"></span> leave / holiday / weekly off · <b>Full</b> = every working day this week has work; any free or Back-up day = <b>Can take more</b>. Hover a day to see what's planned.</p>
   </section>
   <section class="card aside">
-    <h2>Agencies this month</h2>
-    {% for a in agencies %}
+    <div class="title"><h2>Agencies · {{ fy.label }}</h2><span class="small muted">since {{ fy.start|date:"j M" }}</span></div>
+    {% for a in fy.agencies %}
       <div style="display:flex;flex-direction:column;gap:5px">
-        <div style="display:flex;justify-content:space-between;font-size:14px"><b style="font-weight:500">{{ a.name }}</b><span class="muted">₹{{ a.amount|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:14px"><b style="font-weight:500">{{ a.name }}</b><span class="muted">₹{{ a.amount|money }}</span></div>
         <div class="bar"><i style="width:{{ a.share }}%"></i></div>
-        <span class="small" {% if a.share > 30 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ a.share }}% of revenue{% if a.share > 30 %} · over 30%, dependency risk{% endif %}</span>
+        <span class="small" {% if a.share > 30 %}style="color:var(--warn);font-weight:600"{% endif %}>{{ a.share }}% of revenue · {{ a.films }} film{{ a.films|pluralize }}{% for m in agencies %}{% if m.name == a.name %} · ₹{{ m.amount|money }} delivered this month{% endif %}{% endfor %}{% if a.share > 30 %} · over 30%, dependency risk{% endif %}</span>
       </div>
-    {% empty %}<p class="muted small" style="margin:0">Revenue shows here as films are delivered this month.</p>{% endfor %}
+    {% empty %}<p class="muted small" style="margin:0">Agencies show here as films are logged.</p>{% endfor %}
   </section>
 </div>
 {% endblock %}
