@@ -66,7 +66,7 @@ def week_load(people, today):
 
 
 def estimated_profit(month, revenue, revenue_est):
-    """This month: revenue (INR) minus full-time salaries, extra-work pay, contract-editor fees
+    """This month: revenue estimated (INR) minus full-time salaries, extra-work pay, contract-editor fees
     and the studio's fixed monthly costs (rent + electricity, from Settings). Costs are for the
     whole month, so early in the month the figure is low; it fills in as films are delivered."""
     a, b = month_start(month), month_end(month)
@@ -79,9 +79,10 @@ def estimated_profit(month, revenue, revenue_est):
                                           contractor_fee__gt=0).values_list("contractor_fee", flat=True))
     overheads = StudioSettings.get().monthly_overheads
     costs = salaries + extra + contract + overheads
-    return {"value": revenue - costs, "on_estimated": revenue_est - costs, "salaries": salaries, "extra": extra,
-            "contract": contract, "overheads": overheads, "costs": costs,
-            "margin": round((revenue - costs) / revenue * 100) if revenue else None}
+    # The headline works on revenue estimated (every film logged this month); delivered is shown alongside
+    return {"value": revenue_est - costs, "on_delivered": revenue - costs, "revenue": revenue_est,
+            "salaries": salaries, "extra": extra, "contract": contract, "overheads": overheads, "costs": costs,
+            "margin": round((revenue_est - costs) / revenue_est * 100) if revenue_est else None}
 
 
 @requires("dashboard.view")

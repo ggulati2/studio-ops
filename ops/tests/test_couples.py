@@ -960,8 +960,8 @@ class EstimatedProfit(SeededTestCase):
         self.assertEqual(r["salaries"], salaries)
         self.assertEqual(r["extra"], extra)
         self.assertEqual(r["overheads"], 25000)
-        self.assertEqual(r["value"], 500000 - salaries - extra - r["contract"] - 25000)
-        self.assertEqual(r["on_estimated"], 600000 - r["costs"])
+        self.assertEqual(r["value"], 600000 - salaries - extra - r["contract"] - 25000)     # on revenue estimated
+        self.assertEqual(r["on_delivered"], 500000 - r["costs"])
 
     def test_dashboard_tile_and_setting(self):
         f = self.login("ag")
