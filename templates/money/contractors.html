@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% load ops_extras %}
 {% block title %}Contract editors{% endblock %}
 {% block content %}
+{% include "_qc_contract_tabs.html" with tab="contract" %}
 <div class="head"><div><h1>Contract editors</h1><p>People on contract aren't in payroll. Their pay is worked out from their basis (per film, hour, day or month); record each payment here to see what's due.</p></div>
   <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>
 <div class="grid">

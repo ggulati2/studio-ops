@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% load ops_extras %}
 {% block title %}{{ u.profile.name }} · contract{% endblock %}
 {% block content %}
+{% include "_qc_contract_tabs.html" with tab="contract" %}
 <div class="head"><div><a href="{% url 'contractors' %}?m={{ month|date:'Y-m' }}" class="small">← Contract editors</a><h1>{{ u.profile.name }}</h1>
 <p>Contract · {{ u.profile.get_contract_basis_display }}{% if u.profile.contract_basis != 'project' %} · ₹{{ u.profile.contract_rate|money }}{% endif %} · <a href="{% url 'person_edit' u.pk %}">change terms</a></p></div>
   <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}">←</a><b>{{ month|date:"F Y" }}</b><a class="btn" href="?m={{ next|date:'Y-m' }}">→</a></div></div>

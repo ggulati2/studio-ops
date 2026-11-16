@@ -35,7 +35,10 @@ MENU = [
     ("Settings", "settings", "settings.manage", "settings"),
 ]
 # Founders reach these from inside other screens; keep their menu focused.
-HIDE_FOR = {ADMIN: {"pod", "drive_returns", "leaderboard"}}
+HIDE_FOR = {ADMIN: {"pod", "drive_returns", "leaderboard", "contractors"}}
+# Founders: one menu item for QC and contract editors (tabs inside); it stays lit on both
+RENAME_FOR = {ADMIN: {"qc_queue": "QC & contract editors"}}
+ALSO_ACTIVE = {ADMIN: {"qc_queue": ["contractors"]}}
 ROLE_LABEL = {ADMIN: "Founder", TL: "Team lead", EDITOR: "Editor", INTERN: "Intern", QC: "Quality check", DRIVE: "Drive desk"}
 
 
@@ -43,10 +46,14 @@ def build_menu(user, path="/"):
     """[(label, href, icon, active)] — active is the item whose URL is the longest prefix of the page."""
     from django.urls import reverse
     r, perms = role_of(user), perms_of(user)
-    hidden = HIDE_FOR.get(r, set())
-    items = [(label, reverse(name), icon) for label, name, perm, icon in MENU if perm in perms and name not in hidden]
-    best = max((h for _, h, _ in items if path == h or path.startswith(h)), key=len, default=None)
-    return [(label, h, icon, h == best) for label, h, icon in items]
+    hidden, names = HIDE_FOR.get(r, set()), RENAME_FOR.get(r, {})
+    items = [(names.get(name, label), reverse(name), icon, [reverse(n) for n in ALSO_ACTIVE.get(r, {}).get(name, [])])
+             for label, name, perm, icon in MENU if perm in perms and name not in hidden]
+    def hit(h, extra):
+        return max((len(x) for x in [h] + extra if path == x or path.startswith(x)), default=0)
+    best = max(items, key=lambda i: hit(i[1], i[3]), default=None)
+    best = best[1] if best and hit(best[1], best[3]) else None
+    return [(label, h, icon, h == best) for label, h, icon, _ in items]
 
 
 def _pending_delays(r):

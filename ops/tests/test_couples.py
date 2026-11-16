@@ -1408,3 +1408,19 @@ class QCEarnings(SeededTestCase):
         ag.post(f"/qc/{p.pk}/entry/", {"op": "remove"})
         self.assertFalse(p.reviews.filter(kind="qc").exists())
         self.assertEqual(qc.post(f"/qc/{p.pk}/entry/", {"op": "remove"}).status_code, 403)
+
+
+class QCContractMerged(SeededTestCase):
+    def test_founder_menu_has_one_item_with_tabs(self):
+        f = self.login("ag")
+        r = f.get("/contract-editors/")
+        labels = [i[0] for i in r.context["nav_items"]]
+        self.assertIn("QC & contract editors", labels)
+        self.assertNotIn("Contract editors", labels)
+        self.assertNotIn("QC dashboard", labels)
+        self.assertEqual([i[0] for i in r.context["nav_items"] if i[3]], ["QC & contract editors"])   # lit on both
+        self.assertContains(r, 'aria-label="QC and contract editors"')
+        self.assertContains(f.get("/qc/"), 'aria-label="QC and contract editors"')
+        q = self.login("qc").get("/qc/")
+        self.assertIn("QC dashboard", [i[0] for i in q.context["nav_items"]])
+        self.assertNotContains(q, 'aria-label="QC and contract editors"')

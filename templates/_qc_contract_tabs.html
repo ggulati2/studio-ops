@@ -1,0 +1,2 @@
+{# Founders: QC and contract editors live under one menu item #}
+{% if is_founder %}<nav class="seg page-tabs" aria-label="QC and contract editors"><a href="{% url 'qc_queue' %}" class="{% if tab == 'qc' %}on{% endif %}">QC</a><a href="{% url 'contractors' %}" class="{% if tab == 'contract' %}on{% endif %}">Contract editors</a></nav>{% endif %}

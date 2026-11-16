@@ -1284,3 +1284,5 @@ html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--
 .qc-edit-row{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line2);padding-top:8px}
 /* the edit panel floats above the table (tables scroll and would clip it) */
 .qc-edit[open] .qc-edit-pop{position:fixed;right:max(16px,calc((100vw - 1400px)/2 + 24px));top:88px;max-height:calc(100vh - 120px);overflow:auto;width:min(420px,calc(100vw - 32px))}
+.page-tabs{display:inline-flex;margin-bottom:14px}
+nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
