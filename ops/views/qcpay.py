@@ -187,7 +187,8 @@ def qc_send(request):
         return redirect(back)
     P = request.POST
     raw = P.get("project", "")
-    p = Project.objects.filter(pk=raw, status__in=Project.WORKABLE + (Project.TL_REVIEW,)).first() if raw.isdigit() else None
+    p = (Project.objects.filter(Q(status__in=Project.WORKABLE) | Q(status=Project.TL_REVIEW)
+                                | Q(status=Project.QC, whole_review=False), pk=raw).first() if raw.isdigit() else None)
     link_raw = P.get("cut_link", "").strip()
     link = S.safe_web_link(link_raw)
     name = " ".join(P.get("event", "").split())[:40].strip()
@@ -206,12 +207,11 @@ def qc_send(request):
         e.status, e.sent_on = FilmEvent.QC, timezone.now()
         e.cut_link = link or e.cut_link
         e.save()
-        if p.status == Project.NOT_STARTED:
-            p.status = Project.IN_PROGRESS
-            p.save(update_fields=["status"])
+        S.sync_film_status(p)
         what = f"{p.couple} · {e.name}"
     else:
         p.status = Project.QC
+        p._status_was = None                    # the whole film is sent now (even if events had it In QC)
         p.cut_link = link or p.cut_link
         p.save(update_fields=["status", "cut_link"])
         what = str(p)

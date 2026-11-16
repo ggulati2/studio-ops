@@ -190,12 +190,21 @@
       Array.prototype.forEach.call(regions, function (r) {
         var n = next.querySelector('[data-live-region="' + r.getAttribute("data-live-region") + '"]');
         if (!n) return;
+        var wasOpen = r.tagName === "DETAILS" && r.open;
         syncAttrs(r, n);
+        if (wasOpen) r.open = true;                        // a panel you were using stays open
         r.innerHTML = n.innerHTML;
         enhance(r);
         r.classList.remove("live-in"); void r.offsetWidth; r.classList.add("live-in");
         firstErr = firstErr || r.querySelector(".err, .msg.error");
       });
+      // a form outside the redrawn parts is still on the page: make it usable again
+      if (doc.contains(form)) {
+        delete form.dataset.sending;
+        form.classList.remove("is-saving");
+        Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = false; });
+        if (!next.querySelector(".msgs .msg.error")) form.reset();
+      }
       if (window.StudioTables) window.StudioTables.init();
       doc.dispatchEvent(new CustomEvent("studio:parts"));
       if (window.StudioLive) window.StudioLive.reload();      // lists on the same page follow

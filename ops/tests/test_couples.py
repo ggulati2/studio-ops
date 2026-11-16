@@ -1341,7 +1341,8 @@ class EventWiseQC(SeededTestCase):
         h = p.events.get(name="Haldi")
         self.assertEqual((h.status, p.events.count()), (FilmEvent.TL_REVIEW, 2))
         p.refresh_from_db()
-        self.assertEqual(p.status, Project.IN_PROGRESS)              # the editor carries on
+        self.assertEqual((p.status, p.whole_review), (Project.TL_REVIEW, False))   # status follows the events
+        self.assertTrue(p.can_submit)                                # the whole film can still be sent later
         r = ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Haldi"}, follow=True)
         self.assertContains(r, "already waiting")
         # TL of the pod approves Haldi and Sangeet
@@ -1349,6 +1350,8 @@ class EventWiseQC(SeededTestCase):
         self.assertContains(tl.get("/pod/"), "Approve Haldi")
         for e in p.events.all():
             tl.post(f"/pod/event/{e.pk}/", {"decision": "pass", "comments": ""})
+        p.refresh_from_db()
+        self.assertEqual(p.status, Project.QC)                       # events in QC -> film In QC
         # QC: one entry for the film, events inside
         qc = self.login("qc")
         page = qc.get(f"/qc/?p={p.pk}")
@@ -1360,6 +1363,9 @@ class EventWiseQC(SeededTestCase):
         qc.post(f"/qc/event/{s.pk}/", {"decision": "fail", "comments": "00:12 colour jump", "issue": ["2"]})
         h.refresh_from_db(); s.refresh_from_db()
         self.assertEqual((h.status, s.status), (FilmEvent.PASSED, FilmEvent.REVISIONS))
+        p.refresh_from_db()
+        self.assertEqual(p.status, Project.REVISIONS)                # nothing waiting, one sent back
+        self.assertNotIn(p.pk, [x.pk for x in qc.get("/qc/").context["queue"]])
         self.assertTrue(Review.objects.filter(event=s, passed=False, kind="qc").exists())
         jobs = ed.get("/my-jobs/")
         self.assertContains(jobs, "Sangeet: QC sent it back")
@@ -1368,6 +1374,10 @@ class EventWiseQC(SeededTestCase):
         ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Sangeet"})
         s.refresh_from_db()
         self.assertEqual(s.status, FilmEvent.TL_REVIEW)
+        # whole film sent while an event waits: it's a whole-film review too
+        ed.post(f"/my-jobs/{p.pk}/submit/", {"cut_link": "https://frame.io/full"})
+        p.refresh_from_db()
+        self.assertEqual((p.status, p.whole_review), (Project.TL_REVIEW, True))
 
 
 class QCEarnings(SeededTestCase):

@@ -2,7 +2,7 @@
 {% block title %}QC{% endblock %}
 {% block content %}
 {% include "_qc_contract_tabs.html" with tab="qc" %}
-{% if founder %}<details class="card qc-send"{% if not queue %} open{% endif %}><summary><b>+ Send a film for QC</b> <span class="small muted">for an editor who forgot to</span></summary>
+{% if founder %}<details class="card qc-send" data-live-region="qc-send"{% if not queue %} open{% endif %}><summary><b>+ Send a film for QC</b> <span class="small muted">for an editor who forgot to</span></summary>
   <form method="post" action="{% url 'qc_send' %}" class="actions" data-live-page>{% csrf_token %}
     <select name="project" class="input" required aria-label="Film" style="flex:2 1 260px"><option value="">Pick the film</option>{% for p in sendable %}<option value="{{ p.pk }}">{{ p }} · {{ p.editor.profile.name|default:"no editor" }} · {{ p.get_status_display }}</option>{% endfor %}</select>
     <input class="input" name="event" list="qc-event-names" placeholder="Event (optional), e.g. Haldi" aria-label="Event, leave empty for the whole film" style="flex:1 1 170px">
@@ -18,7 +18,7 @@
     {% for p in queue %}<a class="card tight" href="?p={{ p.pk }}" style="text-decoration:none;color:inherit;{% if sel.pk == p.pk %}border:2px solid var(--red){% endif %}">
       <b>{{ p }}</b><span class="small muted">{{ p.agency }} · {{ p.editor.profile.name }}</span>
       <span class="small" style="font-weight:600;{% if p.days_left is not None and p.days_left <= 1 %}color:var(--bad){% endif %}">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% endif %}</span>
-      <span class="small">{% if p.status == 'qc' %}<span class="tag qc">Whole film</span> {% endif %}{% if p.ev_waiting %}<span class="tag qc">{{ p.ev_waiting }} event{{ p.ev_waiting|pluralize }} waiting</span>{% endif %}</span></a>
+      <span class="small">{% if p.status == 'qc' and p.whole_review %}<span class="tag qc">Whole film</span> {% endif %}{% if p.ev_waiting %}<span class="tag qc">{{ p.ev_waiting }} event{{ p.ev_waiting|pluralize }} waiting</span>{% endif %}</span></a>
     {% empty %}<section class="card"><span class="muted">Queue is empty.</span></section>{% endfor %}
   </section>
   {% if sel %}

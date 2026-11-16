@@ -281,6 +281,31 @@ def editor_value(month):
 REVISION_STAGES = {TaskStage.REVISIONS, TaskStage.CLIENT}
 
 
+def sync_film_status(p):
+    """Keep a film's status in step with its events: any event in QC -> In QC; else any in TL
+    review -> TL review; nothing waiting any more -> back to Revisions (one was sent back) or
+    In progress. A whole film in review, or a film past QC, is left alone."""
+    from .models import FilmEvent
+    managed = (Project.NOT_STARTED, Project.IN_PROGRESS, Project.TL_REVISIONS, Project.REVISIONS,
+               Project.TL_REVIEW, Project.QC)
+    if p.status not in managed or p.whole_review:
+        return
+    states = set(p.events.values_list("status", flat=True))
+    if FilmEvent.QC in states:
+        new = Project.QC
+    elif FilmEvent.TL_REVIEW in states:
+        new = Project.TL_REVIEW
+    elif p.status in (Project.QC, Project.TL_REVIEW):
+        new = Project.REVISIONS if FilmEvent.REVISIONS in states else Project.IN_PROGRESS
+    else:
+        return
+    if new != p.status:
+        p.status = new
+        p._by_events = True
+        p.save(update_fields=["status"])
+        p._by_events = False
+
+
 def has_worked_on(p, user_id, since=None):
     """Has this person logged any time on the film (since a date)?"""
     if not user_id:

@@ -371,6 +371,8 @@ class Project(models.Model):
                                        help_text="The date promised to the agency. Founders only; never shown to editors.")
     status = models.CharField(max_length=12, choices=STATUSES, default=NOT_STARTED)
     invoice_amount = models.PositiveIntegerField(default=0, help_text="In the agency's currency")
+    whole_review = models.BooleanField(default=False, editable=False,
+                                       help_text="The whole film (not only events) is waiting for TL review / QC")
     qc_closed_on = models.DateField("Closed from QC on", null=True, blank=True,
                                     help_text="QC finished with this film; counts in that month's QC earnings")
     qc_closed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="qc_closed")
@@ -428,10 +430,24 @@ class Project(models.Model):
         obj = super().from_db(db, field_names, values)
         if "editor_id" in obj.__dict__:
             obj._editor_was = obj.editor_id                     # to spot a hand-over on save
+        if "status" in obj.__dict__:
+            obj._status_was = obj.status
         return obj
 
     def save(self, *args, **kwargs):
         from django.utils import timezone as tz
+        # TL review / In QC because the whole film was sent, or only because events were (see sync_film_status)
+        if "status" in self.__dict__:
+            whole = self.whole_review
+            if self.status in (self.QC, self.TL_REVIEW):
+                if not getattr(self, "_by_events", False) and getattr(self, "_status_was", None) != self.status:
+                    whole = True
+            else:
+                whole = False
+            if whole != self.whole_review:
+                self.whole_review = whole
+                if kwargs.get("update_fields") is not None:
+                    kwargs["update_fields"] = list(set(kwargs["update_fields"]) | {"whole_review"})
         # Every film belongs to a couple record (same agency + same couple name = same couple)
         if self.agency_id and self.couple and (not self.client_id or self.client.agency_id != self.agency_id
                                                or self.client.key != couple_key(self.couple)):
@@ -457,6 +473,8 @@ class Project(models.Model):
             self.handed_over = editor_changed(self, was, getattr(self, "_handover_on", None),
                                               getattr(self, "_handover_force", False))
         self._editor_was = self.editor_id
+        if "status" in self.__dict__:
+            self._status_was = self.status
         if self.status == self.CLOSED and self.pk:      # a client revision just went back out
             self.client_revisions.filter(completed_on__isnull=True).update(completed_on=tz.localdate())
         self.unplan_future()
@@ -477,7 +495,8 @@ class Project(models.Model):
 
     @property
     def can_submit(self):
-        return self.status in self.WORKABLE
+        # also while only some events are in review: the whole film can still be sent
+        return self.status in self.WORKABLE or (self.status in (self.QC, self.TL_REVIEW) and not self.whole_review)
 
     @property
     def delivered_late(self):

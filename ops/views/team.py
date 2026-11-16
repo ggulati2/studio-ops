@@ -246,9 +246,7 @@ def job_event_submit(request, pk):
         e.cut_link = link or e.cut_link
         e.sent_on = timezone.now()
         e.save()
-        if p.status == Project.NOT_STARTED:
-            p.status = Project.IN_PROGRESS
-            p.save(update_fields=["status"])
+        S.sync_film_status(p)
         messages.success(request, f"{p.couple} · {name} sent for {'QC' if e.status == FilmEvent.QC else 'TL review'}. "
                                   "Carry on with the next event.")
     return redirect("my_jobs")
@@ -269,6 +267,7 @@ def _event_review(request, e, kind):
     else:
         e.status = FilmEvent.PASSED if passed else FilmEvent.REVISIONS
     e.save(update_fields=["status", "cut_link", "updated"])
+    S.sync_film_status(e.project)
     return passed
 
 
@@ -299,7 +298,7 @@ def qc_event_review(request, pk):
 def job_submit(request, pk):
     """Editor says the cut is ready → goes to their TL (or straight to QC if they are a TL)."""
     p = get_object_or_404(Project, pk=pk, editor=request.user)
-    if request.method == "POST" and p.status in Project.WORKABLE:
+    if request.method == "POST" and p.can_submit:
         raw = request.POST.get("cut_link", "").strip()
         link = S.safe_web_link(raw)
         if raw and not link:
@@ -308,6 +307,7 @@ def job_submit(request, pk):
         if link:
             p.cut_link = link
         p.status = Project.QC if request.role == TL else Project.TL_REVIEW
+        p._status_was = None            # the whole film is sent now (even if events had it in review)
         p.save(update_fields=["cut_link", "status"])
         messages.success(request, "Sent for " + ("QC." if p.status == Project.QC else "TL review."))
     return redirect("my_jobs")
@@ -420,7 +420,7 @@ def pod(request):
     today_ = timezone.localdate()
     logs = {l.user_id: l for l in DayLog.objects.filter(user__in=members, date=today_).prefetch_related("tasks__project")}
     jobs = Project.objects.filter(editor__in=members).exclude(status=Project.CLOSED).select_related("editor__profile", "agency")
-    waiting = jobs.filter(status=Project.TL_REVIEW)
+    waiting = jobs.filter(status=Project.TL_REVIEW, whole_review=True)
     ev_waiting = defaultdict(list)
     for e in FilmEvent.objects.filter(project__in=jobs, status=FilmEvent.TL_REVIEW).select_related("project__agency",
                                                                                                   "project__editor__profile"):
@@ -451,7 +451,7 @@ def _review(request, p, kind):
 
 @requires("pod.review")
 def tl_review(request, pk):
-    p = get_object_or_404(Project, pk=pk, status=Project.TL_REVIEW)
+    p = get_object_or_404(Project, pk=pk, status=Project.TL_REVIEW, whole_review=True)
     if not can_review_in_pod(request.user, p):
         from ..audit import record
         record(request, "access.denied", f"project {p.pk}", "TL review outside own pod")
@@ -465,7 +465,7 @@ def tl_review(request, pk):
 @requires("qc.review")
 def qc_queue(request):
     from django.db.models import Count, Prefetch
-    queue = (Project.objects.filter(Q(status=Project.QC) | Q(events__status=FilmEvent.QC)).distinct()
+    queue = (Project.objects.filter(Q(status=Project.QC, whole_review=True) | Q(events__status=FilmEvent.QC)).distinct()
              .select_related("agency", "editor__profile", "drive")
              .annotate(ev_waiting=Count("events", filter=Q(events__status=FilmEvent.QC), distinct=True))
              .order_by("deadline"))
@@ -495,9 +495,10 @@ def qc_queue(request):
     return render(request, "team/qc.html", {
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
-        "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC),
+        "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
-        "sendable": list(Project.objects.filter(status__in=Project.WORKABLE + (Project.TL_REVIEW,)).select_related("editor__profile", "agency")
+        "sendable": list(Project.objects.filter(Q(status__in=Project.WORKABLE) | Q(status=Project.TL_REVIEW)
+                                               | Q(status=Project.QC, whole_review=False)).select_related("editor__profile", "agency")
                          .order_by("couple", "deliverable")) if founder else [],
         "event_names": FilmEvent.NAMES,
         "qc_people": list(get_user_model().objects.filter(Q(profile__role=QC_ROLE) | Q(pk=request.user.pk), is_active=True)
@@ -550,7 +551,7 @@ def qc_board(days=120):
 
 @requires("qc.review")
 def qc_review(request, pk):
-    p = get_object_or_404(Project, pk=pk, status=Project.QC)
+    p = get_object_or_404(Project, pk=pk, status=Project.QC, whole_review=True)
     if request.method == "POST":
         passed = _review(request, p, Review.QC)
         messages.success(request, f"{p}: " + ("passed, ready to deliver." if passed else f"sent back to {p.editor.profile.name if p.editor else 'the editor'}."))
