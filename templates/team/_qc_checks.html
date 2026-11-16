@@ -1,5 +1,3 @@
-{# checklist + comments + pass / fail (whole film or one event) #}
-<fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px"><legend style="font-weight:600;margin-bottom:8px">QC checklist: tick anything that's an issue</legend>
-  {% for i, item in checklist %}<label class="inline" style="padding:8px 10px;border:1px solid var(--line2);border-radius:8px"><input type="checkbox" name="issue" value="{{ i }}" class="check"> {{ item }}</label>{% endfor %}</fieldset>
+{# comments + pass / fail (whole film or one event) #}
 <label>Comments for the editor<textarea class="input" name="comments" rows="3" placeholder="One per line with a timecode, e.g. 00:12 Groom's name spelled 'Cris'"></textarea></label>
 <div class="actions" style="justify-content:flex-end"><button class="btn danger" name="decision" value="fail">Fail – send back to {{ sel.editor.profile.name|default:"editor" }}</button><button class="btn good" name="decision" value="pass">Pass{% if what %} {{ what }}{% else %} – ready to deliver{% endif %}</button></div>

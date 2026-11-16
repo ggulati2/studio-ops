@@ -243,12 +243,12 @@
   }
   /* the drive viewer on editors' pages closes when clicking elsewhere or pressing Escape */
   doc.addEventListener("click", function (e) {
-    Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open]"), function (d) {
+    Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open], details.qc-edit[open]"), function (d) {
       if (!d.contains(e.target)) d.removeAttribute("open");
     });
   });
   doc.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open]"), function (d) { d.removeAttribute("open"); });
+    if (e.key === "Escape") Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open], details.qc-edit[open]"), function (d) { d.removeAttribute("open"); });
   });
 
   window.StudioSuggest = { init: init };

@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}My earnings{% endblock %}
+{% block content %}
+<div class="head"><div><h1>My earnings</h1><p>Films you closed from QC. Each closed film counts in the month you closed it; a founder sets what each film pays.</p></div>
+  <div class="actions"><nav class="seg" aria-label="View"><a href="?m={{ month|date:'Y-m' }}" class="{% if view == 'month' %}on{% endif %}">Month</a><a href="?v=all" class="{% if view == 'all' %}on{% endif %}">Overall</a></nav>
+  {% if view == 'month' %}<a class="btn" href="?m={{ prev|date:'Y-m' }}" aria-label="Previous month">←</a>{% if not is_current %}<a class="btn" href="?">This month</a>{% endif %}<a class="btn" href="?m={{ next|date:'Y-m' }}" aria-label="Next month">→</a>{% endif %}</div></div>
+<div data-live-region="earn" class="col-stack">
+{% if view == 'month' %}
+<div class="grid">
+  <div class="kpi"><span>Earned · {{ month|date:"F Y" }}</span><b>₹{{ total|money }}</b><small>{{ films|length }} film{{ films|length|pluralize }} closed{% if pending %} · {{ pending }} waiting for a fee{% endif %}</small></div>
+</div>
+<section class="card"><h2>Closed from QC · {{ month|date:"F Y" }}</h2>
+  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Editor</th><th>Your QC rounds</th><th>Closed on</th><th class="right">Earning</th><th></th></tr></thead><tbody>
+  {% for p in films %}<tr><td><b>{{ p }}</b><div class="small muted">{{ p.agency }}</div></td><td>{{ p.editor.profile.name|default:"–" }}</td><td>{{ p.my_rounds }}</td><td class="nowrap">{{ p.qc_closed_on|date:"j M" }}</td>
+    <td class="right nowrap">{% if p.qc_fee %}<b>₹{{ p.qc_fee|money }}</b>{% else %}<span class="muted small">fee not set yet</span>{% endif %}</td>
+    <td>{% if is_current %}<form method="post" action="{% url 'qc_close' p.pk %}" data-live-page>{% csrf_token %}<input type="hidden" name="op" value="reopen"><button class="linkish small">Undo</button></form>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="6" class="muted">Nothing closed from QC in {{ month|date:"F" }}.</td></tr>{% endfor %}
+  </tbody>{% if films %}<tfoot><tr><td colspan="4"><b>Total</b></td><td class="right"><b>₹{{ total|money }}</b></td><td></td></tr></tfoot>{% endif %}</table></div>
+</section>
+<section class="card"><h2>Checked by you, not closed yet · {{ to_close|length }}</h2>
+  <p class="small muted" style="margin:0">Close a film once QC is done with it (every event and the whole film). It then counts in this month's earnings.</p>
+  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Editor</th><th>Your QC rounds</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for p in to_close %}<tr><td><b>{{ p }}</b><div class="small muted">{{ p.agency }}</div></td><td>{{ p.editor.profile.name|default:"–" }}</td><td>{{ p.my_rounds }}</td>
+    <td><span class="tag {{ p.status|status_class }}">{{ p.get_status_display }}</span>{% if p.events_left %}<div class="small muted">Events not passed: {{ p.events_left|join:", " }}</div>{% endif %}</td>
+    <td><form method="post" action="{% url 'qc_close' p.pk %}" data-live-page>{% csrf_token %}<button class="btn sm primary">Close from QC</button></form></td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">Nothing waiting to be closed.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% else %}
+<div class="grid">
+  <div class="kpi"><span>Earned overall</span><b>₹{{ total|money }}</b><small>{{ films_n }} film{{ films_n|pluralize }} closed from QC{% if pending %} · {{ pending }} waiting for a fee{% endif %}</small></div>
+</div>
+<section class="card"><h2>Month by month</h2>
+  <div class="scroll"><table class="stack"><thead><tr><th>Month</th><th>Films closed</th><th class="right">Earned</th></tr></thead><tbody>
+  {% for r in months %}<tr><td><a href="?m={{ r.month|date:'Y-m' }}">{{ r.month|date:"F Y" }}</a></td><td>{{ r.films }}{% if r.pending %} <span class="small muted">· {{ r.pending }} without a fee</span>{% endif %}</td><td class="right"><b>₹{{ r.total|money }}</b></td></tr>
+  {% empty %}<tr><td colspan="3" class="muted">No films closed from QC yet.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

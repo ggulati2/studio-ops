@@ -1368,3 +1368,43 @@ class EventWiseQC(SeededTestCase):
         ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Sangeet"})
         s.refresh_from_db()
         self.assertEqual(s.status, FilmEvent.TL_REVIEW)
+
+
+class QCEarnings(SeededTestCase):
+    """QC closes films; a founder sets each film's QC fee; QC sees month and overall earnings."""
+
+    def test_close_fee_earnings_and_founder_edits(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import Review
+        qcu = get_user_model().objects.get(username="qc")
+        p = Project.objects.create(couple="QC Pay", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                   start_date=timezone.localdate(), status=Project.QC)
+        qc = self.login("qc")
+        self.assertNotContains(qc.get("/qc/"), "QC checklist")
+        self.assertNotContains(qc.get("/qc/"), 'href="/leaderboard/"')
+        r = qc.post(f"/qc/{p.pk}/close/", follow=True)
+        self.assertContains(r, "checked in QC yet")
+        qc.post(f"/qc/{p.pk}/", {"decision": "pass", "comments": ""})
+        qc.post(f"/qc/{p.pk}/close/")
+        p.refresh_from_db()
+        self.assertEqual((p.qc_closed_on, p.qc_closed_by), (timezone.localdate(), qcu))
+        page = qc.get("/qc/earnings/")
+        self.assertContains(page, "fee not set yet")
+        self.assertEqual(qc.post(f"/qc/{p.pk}/fee/", {"fee": "500"}).status_code, 403)   # only founders set fees
+        ag = self.login("ag")
+        d = ag.post(f"/qc/{p.pk}/fee/", {"fee": "750"}, **FETCH).json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(qc.get("/qc/earnings/").context["total"], 750)
+        self.assertEqual(qc.get("/qc/earnings/?v=all").context["total"], 750)
+        self.assertContains(ag.get("/qc/"), "Ritika (QC): 1 film")
+        # founder edits and deletes the QC entry, then removes the film from the list
+        rev = Review.objects.get(project=p, kind="qc")
+        ag.post(f"/qc/{p.pk}/entry/", {"op": "review_save", "review": rev.pk, "passed": "0", "comments": "fixed note"})
+        rev.refresh_from_db()
+        self.assertEqual((rev.passed, rev.comments), (False, "fixed note"))
+        ag.post(f"/qc/{p.pk}/entry/", {"op": "closed", "qc_closed_on": "", "qc_closed_by": ""})
+        p.refresh_from_db()
+        self.assertIsNone(p.qc_closed_on)
+        ag.post(f"/qc/{p.pk}/entry/", {"op": "remove"})
+        self.assertFalse(p.reviews.filter(kind="qc").exists())
+        self.assertEqual(qc.post(f"/qc/{p.pk}/entry/", {"op": "remove"}).status_code, 403)

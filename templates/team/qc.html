@@ -46,14 +46,16 @@
   {% endif %}
 </div>
 
-<section class="card" id="status" aria-labelledby="qcs">
+<section class="card" id="status" aria-labelledby="qcs" data-live-region="board">
+  {% if founder %}<div class="qc-sum"><b>QC earnings · {{ month|date:"F" }}</b>{% for r in qc_summary %}<span class="tag info">{{ r.u.profile.name }}: {{ r.films }} film{{ r.films|pluralize }} · ₹{{ r.total|money }}{% if r.pending %} · {{ r.pending }} without a fee{% endif %}</span>{% empty %}<span class="small muted">No films closed from QC yet this month.</span>{% endfor %}</div>{% endif %}
   <div class="title"><div><h2 id="qcs">Where every film stands</h2><span class="small muted">Films that reached QC in the last 4 months. Newest result first.</span></div></div>
   <div class="seg" aria-label="Filter by status">
     <a href="?s=#status" class="{% if not show %}on{% endif %}">All <span class="muted">{{ counts.all }}</span></a>
     {% for k, lbl, cls in states %}<a href="?s={{ k }}#status" class="{% if show == k %}on{% endif %}">{{ lbl }} <span class="muted">{{ counts|get:k }}</span></a>{% endfor %}
     <a href="?s=failed#status" class="{% if show == 'failed' %}on{% endif %}">Failed at least once <span class="muted">{{ counts.failed }}</span></a>
+    <a href="?s=closed#status" class="{% if show == 'closed' %}on{% endif %}">Closed from QC <span class="muted">{{ counts.closed }}</span></a>
   </div>
-  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Editor</th><th>Status</th><th>QC rounds</th><th>Latest QC</th><th>Film status</th></tr></thead><tbody>
+  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Editor</th><th>Status</th><th>QC rounds</th><th>Latest QC</th><th>Film status</th><th>Closed from QC</th>{% if founder %}<th class="right">QC fee</th><th></th>{% endif %}</tr></thead><tbody>
   {% for b in board %}<tr>
     <td><b>{{ b.p }}</b><div class="small muted">{{ b.p.agency }}</div></td>
     <td>{{ b.p.editor.profile.name|default:"—" }}</td>
@@ -64,7 +66,13 @@
       <div class="small muted">{{ b.last.reviewer.profile.name|default:"—" }} · {{ b.last.created|date:"j M, g:i A" }}</div>
       {% if not b.last.passed and b.last.issues %}<div class="small">{{ b.last.issues|join:", " }}</div>{% endif %}{% else %}<span class="muted">Not checked yet</span>{% endif %}</td>
     <td><span class="tag {{ b.p.status|status_class }}">{{ b.p.get_status_display }}</span></td>
-  </tr>{% empty %}<tr><td colspan="6" class="muted">No films {% if show %}with this status{% else %}have reached QC yet{% endif %}.</td></tr>{% endfor %}
+    <td class="nowrap">{% if b.p.qc_closed_on %}<span class="tag ok">✓ {{ b.p.qc_closed_on|date:"j M" }}</span><div class="small muted">{{ b.p.qc_closed_by.profile.name|default:"" }}</div>
+        {% if b.p.qc_closed_by_id == request.user.pk or founder %}<form method="post" action="{% url 'qc_close' b.p.pk %}" data-live-page>{% csrf_token %}<input type="hidden" name="op" value="reopen"><button class="linkish small">Undo</button></form>{% endif %}
+      {% elif b.rounds %}<form method="post" action="{% url 'qc_close' b.p.pk %}" data-live-page>{% csrf_token %}<button class="btn sm" title="QC is done with this film: it counts in this month's QC earnings">Close from QC</button></form>{% else %}<span class="muted small">–</span>{% endif %}</td>
+    {% if founder %}<td class="right nowrap"><form method="post" action="{% url 'qc_fee' b.p.pk %}" data-live class="cell-edit extra-amt">{% csrf_token %}
+        <span class="amt-wrap"><span class="amt-cur" aria-hidden="true">₹</span><input class="cell-input num" name="fee" inputmode="numeric" pattern="[0-9,]*" value="{% if b.p.qc_fee %}{{ b.p.qc_fee }}{% endif %}" placeholder="0" data-save-on-leave aria-label="QC fee for {{ b.p }}"></span></form></td>
+      <td>{% include "team/_qc_entry_edit.html" with p=b.p %}</td>{% endif %}
+  </tr>{% empty %}<tr><td colspan="9" class="muted">No films {% if show %}with this status{% else %}have reached QC yet{% endif %}.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
 {% endblock %}

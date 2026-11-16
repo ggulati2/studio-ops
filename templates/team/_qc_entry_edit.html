@@ -1,0 +1,21 @@
+{# founders: correct or remove a film's QC entries #}
+<details class="qc-edit"><summary class="btn sm" aria-label="Edit QC entries of {{ p }}">Edit</summary>
+  <div class="qc-edit-pop">
+    <b>{{ p }}</b>
+    {% for r in p.qc_reviews %}
+    <form method="post" action="{% url 'qc_entry' p.pk %}" class="qc-edit-row" data-live-page>{% csrf_token %}<input type="hidden" name="review" value="{{ r.pk }}">
+      <div class="small muted">{{ r.created|date:"j M, g:i A" }} · {{ r.reviewer.profile.name|default:"—" }}{% if r.event_id %} · {{ r.event.name }}{% endif %}</div>
+      <select name="passed" class="input"><option value="1"{% if r.passed %} selected{% endif %}>Passed</option><option value="0"{% if not r.passed %} selected{% endif %}>Failed</option></select>
+      <textarea name="comments" class="input" rows="2" placeholder="Comments">{{ r.comments }}</textarea>
+      <div class="actions"><button class="btn sm" name="op" value="review_save">Save</button><button class="btn sm danger" name="op" value="review_delete">Delete entry</button></div>
+    </form>{% empty %}<span class="small muted">No QC entries.</span>{% endfor %}
+    <form method="post" action="{% url 'qc_entry' p.pk %}" class="qc-edit-row" data-live-page>{% csrf_token %}
+      <div class="small"><b>Closed from QC</b></div>
+      <div class="actions"><input type="date" name="qc_closed_on" class="input" value="{{ p.qc_closed_on|date:'Y-m-d' }}" aria-label="Closed on">
+        <select name="qc_closed_by" class="input" aria-label="Closed by"><option value="">—</option>{% for u in qc_people %}<option value="{{ u.pk }}"{% if u.pk == p.qc_closed_by_id %} selected{% endif %}>{{ u.profile.name }}</option>{% endfor %}</select>
+        <button class="btn sm" name="op" value="closed">Save</button></div>
+      <span class="small muted">Clear the date to mark it not closed.</span>
+    </form>
+    <form method="post" action="{% url 'qc_entry' p.pk %}" data-live-page>{% csrf_token %}<button class="btn sm danger" name="op" value="remove">Remove this film from the QC list</button></form>
+  </div>
+</details>

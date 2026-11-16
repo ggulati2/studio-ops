@@ -22,7 +22,7 @@ class PagesOpen(SeededTestCase):
             "pratik": ["/", "/today/", "/today/?date=2026-11-01", "/my-month/", "/my-jobs/", "/my-extra/", "/leaderboard/",
                        "/my-payslips/"],
             "shabnam": ["/today/", "/leaderboard/"],
-            "qc": ["/", "/qc/", f"/qc/?p={qc_p}", "/leaderboard/"],
+            "qc": ["/", "/qc/", f"/qc/?p={qc_p}", "/qc/earnings/", "/qc/earnings/?v=all"],
             "drives": ["/", "/drives/", "/drives/send-back/", f"/drives/{dr}/"],
         }
         for user, urls in pages.items():
@@ -37,7 +37,7 @@ class PagesOpen(SeededTestCase):
             "pratik": ["/dashboard/", "/invoices/", "/payroll/", "/team/", "/pod/", "/qc/", "/drives/", "/agencies/",
                        f"/invoices/{inv}/", "/reports/print/", "/settings/audit/", "/settings/"],
             "nikhil": ["/dashboard/", "/invoices/", "/payroll/", "/team/", "/drives/", "/settings/", "/settings/audit/"],
-            "qc": ["/dashboard/", "/invoices/", "/payroll/", "/today/", "/drives/", "/my-payslips/"],
+            "qc": ["/dashboard/", "/invoices/", "/payroll/", "/today/", "/drives/", "/my-payslips/", "/leaderboard/"],
             "drives": ["/dashboard/", "/invoices/", "/payroll/", "/projects/", "/today/", "/qc/", "/team/", "/leaderboard/"],
         }
         for user, urls in blocked.items():

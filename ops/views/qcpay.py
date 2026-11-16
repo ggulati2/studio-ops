@@ -1,0 +1,178 @@
+"""QC earnings: QC closes a film once they're done with it; a founder sets what each
+closed film pays (it differs by agency and film); the QC person sees it month by month.
+Founders can also correct or remove QC entries."""
+from collections import defaultdict
+from datetime import date
+
+from django.contrib import messages
+from django.db.models import Count, Q, Sum
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+
+from .. import services as S
+from ..audit import record
+from ..models import FilmEvent, Project, Review
+from ..rbac import has_perm, requires
+from ..services import add_months, month_end, month_start
+
+__all__ = ["qc_close", "qc_earnings", "qc_fee", "qc_entry"]
+
+
+def _back(request):
+    return S.safe_next(request, request.POST.get("next") or request.META.get("HTTP_REFERER"), reverse("qc_queue"))
+
+
+def _fetch(request):
+    return request.headers.get("X-Requested-With") == "fetch"
+
+
+@requires("qc.review")
+def qc_close(request, pk):
+    """Close a film from QC (QC is done with it) or open it again."""
+    p = get_object_or_404(Project, pk=pk)
+    back = _back(request)
+    if request.method != "POST":
+        return redirect(back)
+    if request.POST.get("op") == "reopen":
+        if p.qc_closed_on and (p.qc_closed_by_id == request.user.pk or has_perm(request.user, "payroll.manage")):
+            record(request, "qc.reopen", str(p), f"was closed {p.qc_closed_on:%d %b}")
+            p.qc_closed_on, p.qc_closed_by = None, None
+            p.save(update_fields=["qc_closed_on", "qc_closed_by"])
+            messages.success(request, f"{p} is open in QC again.")
+    elif not p.reviews.filter(kind=Review.QC).exists():
+        messages.error(request, f"{p} hasn't been checked in QC yet, so it can't be closed from QC.")
+    elif p.qc_closed_on:
+        messages.info(request, f"{p} was already closed from QC on {p.qc_closed_on:%d %b}.")
+    else:
+        p.qc_closed_on, p.qc_closed_by = timezone.localdate(), request.user
+        p.save(update_fields=["qc_closed_on", "qc_closed_by"])
+        record(request, "qc.close", str(p), "closed from QC")
+        messages.success(request, f"{p} closed from QC. It counts in {p.qc_closed_on:%B}'s earnings"
+                                  + ("." if p.qc_fee else " once a founder sets its fee."))
+    return redirect(back)
+
+
+@requires("payroll.manage")
+def qc_fee(request, pk):
+    """A founder sets what a film pays the QC person."""
+    p = get_object_or_404(Project, pk=pk)
+    back = _back(request)
+    if request.method != "POST":
+        return redirect(back)
+    raw = (request.POST.get("fee") or "").replace(",", "").replace("₹", "").strip()
+    if raw and (not raw.isdigit() or int(raw) > 1_000_000):
+        say = [("error", "Enter the QC fee in whole rupees, e.g. 500.")]
+    else:
+        old, p.qc_fee = p.qc_fee, int(raw or 0)
+        if old != p.qc_fee:
+            p.save(update_fields=["qc_fee"])
+            record(request, "qc.fee", str(p), f"₹{old:,} -> ₹{p.qc_fee:,}")
+        say = [("success", f"{p}: QC fee ₹{p.qc_fee:,}.")]
+    if _fetch(request):
+        return JsonResponse({"ok": not any(l == "error" for l, _ in say),
+                             "messages": [{"level": l, "text": t} for l, t in say]})
+    for l, t in say:
+        getattr(messages, l)(request, t)
+    return redirect(back)
+
+
+@requires("payroll.manage")
+def qc_entry(request, pk):
+    """Founders correct the QC record of a film: change a review's result or notes, delete a
+    review, change who closed it and when, or take the film off the QC list altogether."""
+    p = get_object_or_404(Project, pk=pk)
+    back = _back(request)
+    if request.method != "POST":
+        return redirect(back)
+    P, op = request.POST, request.POST.get("op")
+    if op in ("review_save", "review_delete"):
+        r = get_object_or_404(Review, pk=P.get("review"), project=p)
+        if op == "review_delete":
+            r.delete()
+            record(request, "qc.review_delete", str(p), f"{'passed' if r.passed else 'failed'} {r.created:%d %b}")
+            messages.success(request, f"{p}: that QC entry is deleted.")
+        else:
+            r.passed = P.get("passed") == "1"
+            r.comments = P.get("comments", "")[:4000]
+            r.save(update_fields=["passed", "comments"])
+            record(request, "qc.review_edit", str(p), "passed" if r.passed else "failed")
+            messages.success(request, f"{p}: QC entry saved.")
+    elif op == "closed":
+        on = None
+        if P.get("qc_closed_on"):
+            try:
+                on = date.fromisoformat(P["qc_closed_on"])
+            except ValueError:
+                on = False
+        by = P.get("qc_closed_by", "")
+        if on is False:
+            messages.error(request, "That date isn't valid.")
+        else:
+            p.qc_closed_on = on or None
+            p.qc_closed_by_id = int(by) if by.isdigit() and on else None
+            p.save(update_fields=["qc_closed_on", "qc_closed_by"])
+            record(request, "qc.closed_edit", str(p), f"{on or 'not closed'}")
+            messages.success(request, f"{p}: " + (f"closed from QC on {on:%d %b}." if on else "not closed from QC."))
+    elif op == "remove":
+        n = p.reviews.filter(kind=Review.QC).count()
+        p.reviews.filter(kind=Review.QC).delete()
+        p.qc_closed_on, p.qc_closed_by = None, None
+        p.save(update_fields=["qc_closed_on", "qc_closed_by"])
+        if p.status == Project.QC:
+            messages.info(request, f"{p} is still waiting for QC, so it stays in the queue.")
+        record(request, "qc.remove", str(p), f"{n} QC entr{'y' if n == 1 else 'ies'} removed")
+        messages.success(request, f"{p}: removed from the QC list ({n} entr{'y' if n == 1 else 'ies'}).")
+    return redirect(back)
+
+
+@requires("qc.earnings")
+def qc_earnings(request):
+    """The QC person's films closed from QC: this month (or any month) and overall."""
+    u, today = request.user, timezone.localdate()
+    try:
+        month = date.fromisoformat((request.GET.get("m") or "") + "-01")
+    except ValueError:
+        month = month_start(today)
+    view = "all" if request.GET.get("v") == "all" else "month"
+    mine = Project.objects.filter(qc_closed_by=u).select_related("agency", "editor__profile")
+    rounds = dict(Review.objects.filter(reviewer=u, kind=Review.QC).values("project_id")
+                  .annotate(n=Count("id")).values_list("project_id", "n"))
+    ctx = {"view": view, "month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
+           "is_current": month == month_start(today)}
+    if view == "month":
+        films = list(mine.filter(qc_closed_on__range=(month, month_end(month))).order_by("-qc_closed_on"))
+        for p in films:
+            p.my_rounds = rounds.get(p.pk, 0)
+        ctx.update(films=films, total=sum(p.qc_fee for p in films), pending=sum(1 for p in films if not p.qc_fee))
+        # checked by me, not closed yet: one click to close
+        open_ids = (Review.objects.filter(reviewer=u, kind=Review.QC).values_list("project_id", flat=True))
+        ctx["to_close"] = list(Project.objects.filter(pk__in=open_ids, qc_closed_on__isnull=True)
+                               .select_related("agency", "editor__profile").prefetch_related("events").order_by("-id")[:60])
+        for p in ctx["to_close"]:
+            p.my_rounds = rounds.get(p.pk, 0)
+            p.events_left = [e.name for e in p.events.all() if e.status != FilmEvent.PASSED]
+    else:
+        months = defaultdict(lambda: {"films": 0, "total": 0, "pending": 0})
+        for p in Project.objects.filter(qc_closed_by=u).only("qc_closed_on", "qc_fee"):
+            m = months[month_start(p.qc_closed_on)]
+            m["films"] += 1
+            m["total"] += p.qc_fee
+            m["pending"] += 0 if p.qc_fee else 1
+        rows = [{"month": k, **v} for k, v in sorted(months.items(), reverse=True)]
+        ctx.update(months=rows, total=sum(r["total"] for r in rows), films_n=sum(r["films"] for r in rows),
+                   pending=sum(r["pending"] for r in rows))
+    return render(request, "team/qc_earnings.html", ctx)
+
+
+def qc_month_summary(month):
+    """For founders on the QC page: per QC person, films closed this month and what they earn."""
+    out = defaultdict(lambda: {"films": 0, "total": 0, "pending": 0})
+    for p in (Project.objects.filter(qc_closed_on__range=(month, month_end(month)), qc_closed_by__isnull=False)
+              .select_related("qc_closed_by__profile")):
+        r = out[p.qc_closed_by]
+        r["films"] += 1
+        r["total"] += p.qc_fee
+        r["pending"] += 0 if p.qc_fee else 1
+    return [{"u": u, **v} for u, v in out.items()]

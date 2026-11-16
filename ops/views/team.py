@@ -484,12 +484,21 @@ def qc_queue(request):
         first_time = round(ok / len(projs) * 100)
     board, counts = qc_board()
     show = request.GET.get("s", "")
-    if show:
+    if show == "closed":
+        board = [b for b in board if b["p"].qc_closed_on]
+    elif show:
         board = [b for b in board if b["state"] == show or (show == "failed" and b["fails"])]
+    founder = has_perm(request.user, "payroll.manage")
+    from .qcpay import qc_month_summary
+    from ..rbac import QC as QC_ROLE
+    month = month_start(timezone.localdate())
     return render(request, "team/qc.html", {
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
         "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC),
+        "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
+        "qc_people": list(get_user_model().objects.filter(Q(profile__role=QC_ROLE) | Q(pk=request.user.pk), is_active=True)
+                          .select_related("profile")) if founder else [],
         "board": board, "counts": counts, "show": show, "states": QC_STATES,
         "first_time": first_time})
 
@@ -506,8 +515,8 @@ def qc_board(days=120):
     since = timezone.now() - timedelta(days=days)
     qs = (Project.objects.filter(Q(status=Project.QC) | Q(events__status=FilmEvent.QC)
                                  | Q(reviews__kind=Review.QC, reviews__created__gte=since)).distinct()
-          .select_related("agency", "editor__profile").prefetch_related("events")
-          .prefetch_related(Prefetch("reviews", queryset=Review.objects.filter(kind=Review.QC).select_related("reviewer__profile"),
+          .select_related("agency", "editor__profile", "qc_closed_by__profile").prefetch_related("events")
+          .prefetch_related(Prefetch("reviews", queryset=Review.objects.filter(kind=Review.QC).select_related("reviewer__profile", "event"),
                                      to_attr="qc_reviews")))
     label = {k: (lbl, cls) for k, lbl, cls in QC_STATES}
     rows = []
@@ -531,6 +540,7 @@ def qc_board(days=120):
     rows.sort(key=lambda b: (order[b["state"]], -(b["when"].timestamp() if b["when"] else 0)))
     counts = {k: sum(1 for b in rows if b["state"] == k) for k, _, _ in QC_STATES}
     counts["failed"] = sum(1 for b in rows if b["fails"])
+    counts["closed"] = sum(1 for b in rows if b["p"].qc_closed_on)
     counts["all"] = len(rows)
     return rows, counts
 

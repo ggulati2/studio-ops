@@ -371,6 +371,11 @@ class Project(models.Model):
                                        help_text="The date promised to the agency. Founders only; never shown to editors.")
     status = models.CharField(max_length=12, choices=STATUSES, default=NOT_STARTED)
     invoice_amount = models.PositiveIntegerField(default=0, help_text="In the agency's currency")
+    qc_closed_on = models.DateField("Closed from QC on", null=True, blank=True,
+                                    help_text="QC finished with this film; counts in that month's QC earnings")
+    qc_closed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="qc_closed")
+    qc_fee = models.PositiveIntegerField("QC fee (₹)", default=0, help_text="What the QC person earns for this film. "
+                                                                          "Set by a founder; can differ by agency and film.")
     revision_charge = models.PositiveIntegerField("Paid revision charge", default=0,
                                                   help_text="Only if the agency pays extra for changes. Counted as value, "
                                                             "shared by the revision hours logged.")

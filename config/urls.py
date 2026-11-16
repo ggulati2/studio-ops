@@ -86,6 +86,10 @@ urlpatterns = [
     path("leaderboard/", v.leaderboard, name="leaderboard"),
     path("congrats/", v.congrats, name="congrats"),
     path("qc/", v.qc_queue, name="qc_queue"),
+    path("qc/earnings/", v.qc_earnings, name="qc_earnings"),
+    path("qc/<int:pk>/close/", v.qc_close, name="qc_close"),
+    path("qc/<int:pk>/fee/", v.qc_fee, name="qc_fee"),
+    path("qc/<int:pk>/entry/", v.qc_entry, name="qc_entry"),
     path("qc/<int:pk>/", v.qc_review, name="qc_review"),
     # raw data back-office for founders (Django admin)
     path("settings/audit/", v.audit_log, name="audit_log"),

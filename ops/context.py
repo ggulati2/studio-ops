@@ -13,6 +13,7 @@ MENU = [
     ("My leave", "my_leave", "work.log_own", "plane"),
     ("My jobs", "my_jobs", "work.log_own", "film"),
     ("QC dashboard", "qc_queue", "qc.review", "check"),
+    ("My earnings", "qc_earnings", "qc.earnings", "wallet"),
     ("Projects", "projects", "projects.manage", "film"),
     ("Planner", "planner", "planner.manage", "layout"),
     ("Delays", "delays", "projects.manage", "alert"),
@@ -34,7 +35,7 @@ MENU = [
     ("Settings", "settings", "settings.manage", "settings"),
 ]
 # Founders reach these from inside other screens; keep their menu focused.
-HIDE_FOR = {ADMIN: {"pod", "qc_queue", "drive_returns", "leaderboard"}}
+HIDE_FOR = {ADMIN: {"pod", "drive_returns", "leaderboard"}}
 ROLE_LABEL = {ADMIN: "Founder", TL: "Team lead", EDITOR: "Editor", INTERN: "Intern", QC: "Quality check", DRIVE: "Drive desk"}
 
 
@@ -106,7 +107,7 @@ def nav(request):
         "needs_two_step": r == ADMIN and not _has_two_step(request.user),
         "pending_delays": b["delays"] if r == ADMIN else 0,
         "pending_leave": b["leave"] if r == ADMIN else 0,
-        "my_trophies": b["trophies"].get(request.user.id, 0) if r in (TL, EDITOR, INTERN, QC) else None,
+        "my_trophies": b["trophies"].get(request.user.id, 0) if r in (TL, EDITOR, INTERN) else None,
         "celebrating": bool(award and award.user_id == request.user.id),
         "current_award": award,
     }

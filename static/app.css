@@ -1275,3 +1275,12 @@ html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--
 .ev-qc[open]>summary{border-bottom:1px solid var(--line2)}
 .ev-body{padding:12px;display:flex;flex-direction:column;gap:8px}
 .ev-mini>summary{cursor:pointer;margin-top:4px}
+/* QC: earnings summary, founders' edit popover */
+.qc-sum{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-bottom:6px}
+.qc-edit{position:relative}
+.qc-edit>summary{list-style:none;cursor:pointer}
+.qc-edit>summary::-webkit-details-marker{display:none}
+.qc-edit-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(380px,86vw);display:flex;flex-direction:column;gap:10px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.18);text-align:left}
+.qc-edit-row{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line2);padding-top:8px}
+/* the edit panel floats above the table (tables scroll and would clip it) */
+.qc-edit[open] .qc-edit-pop{position:fixed;right:max(16px,calc((100vw - 1400px)/2 + 24px));top:88px;max-height:calc(100vh - 120px);overflow:auto;width:min(420px,calc(100vw - 32px))}

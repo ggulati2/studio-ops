@@ -44,6 +44,7 @@ PERMISSIONS = {
     "extra.log_own": "Accept and log their own extra work",
     "payslips.view_own": "See their own payslips (or payments, if on contract)",
     "leaderboard.view": "See the leaderboard",
+    "qc.earnings": "See their own QC earnings (films closed from QC)",
 }
 
 _ADMIN_ONLY = {"dashboard.view", "projects.manage", "planner.manage", "deadlines.view", "delivered.view",
@@ -57,7 +58,7 @@ ROLE_PERMISSIONS = {
     TL: _OWN_WORK | {"pod.review"},
     EDITOR: set(_OWN_WORK),
     INTERN: {"work.log_own", "payslips.view_own", "leaderboard.view"},   # no paid extra work
-    QC: {"qc.review", "leaderboard.view"},
+    QC: {"qc.review", "qc.earnings"},
     DRIVE: {"drives.manage"},
 }
 
