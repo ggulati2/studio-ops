@@ -1247,3 +1247,13 @@ td[data-col="start"] .tag.bad{margin-left:6px}
 /* Films that changed hands */
 .handover-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .handed{display:block;margin-top:2px}
+/* Dashboard money: hidden until the eye is clicked (safe to share the screen) */
+html:not(.show-money) [data-secret] > b,html:not(.show-money) [data-secret] > small,
+html:not(.show-money) [data-secret-part] .muted,html:not(.show-money) [data-secret-part] .small,html:not(.show-money) [data-secret-part] .bar{filter:blur(9px);user-select:none;pointer-events:none}
+html:not(.show-money) [data-secret] .profit-tip{display:none!important}
+html:not(.show-money) [data-secret]{cursor:pointer}
+.money-eye .eye-open{display:none}
+html.show-money .money-eye .eye-open{display:inline}
+html.show-money .money-eye .eye-shut{display:none}
+html:not(.show-money) [data-secret] > b,html:not(.show-money) [data-secret] > small{color:var(--muted)!important}
+html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--line)}

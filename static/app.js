@@ -446,3 +446,23 @@
     if (host) place(host);
   });
 })();
+
+/* Dashboard money stays blurred until the eye is clicked (or a blurred card is clicked).
+   Hidden again on every visit, so the screen is safe to share by default. */
+(function () {
+  "use strict";
+  var doc = document, root = doc.documentElement;
+  function set(on) {
+    root.classList.toggle("show-money", on);
+    Array.prototype.forEach.call(doc.querySelectorAll("[data-money-eye]"), function (b) {
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      var l = b.querySelector(".eye-label");
+      if (l) l.textContent = on ? "Hide money" : "Show money";
+    });
+  }
+  doc.addEventListener("click", function (e) {
+    if (e.target.closest("[data-money-eye]")) { set(!root.classList.contains("show-money")); return; }
+    if (!root.classList.contains("show-money") && e.target.closest("[data-secret], [data-secret-part]")
+        && !e.target.closest("a")) set(true);
+  });
+})();

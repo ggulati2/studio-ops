@@ -1278,3 +1278,10 @@ class HandOver(SeededTestCase):
         self.assertContains(f.get(f"/projects/{p.pk}/"), "Hand over to")
         bad = f.post(f"/projects/{p.pk}/handover/", {"editor": self.jr.pk, "on": str(today - timedelta(days=9))}, follow=True)
         self.assertContains(bad, "after the film")
+
+
+class DashboardMoneyHidden(SeededTestCase):
+    def test_money_cards_marked_secret_with_an_eye(self):
+        r = self.login("ag").get("/dashboard/")
+        self.assertContains(r, "data-money-eye")
+        self.assertContains(r, "data-secret", count=5)       # 4 money cards + the agencies panel (data-secret-part)
