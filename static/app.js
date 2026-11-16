@@ -375,9 +375,14 @@
     if (np) {
       var rates = {};
       try { rates = JSON.parse(np.getAttribute("data-rates") || "{}"); } catch (err) {}
-      var agencySel = np.querySelector("#id_agency"), perFilm = np.querySelector("[data-per-film]");
-      var sourceSel = np.querySelector("#id_source"), linkRow = np.querySelector('[data-field="cloud_link"]');
+      // looked up each time: the form's insides are re-drawn after a save (live.js)
+      var agencySel, perFilm, sourceSel, linkRow;
+      function find() {
+        agencySel = np.querySelector("#id_agency"); perFilm = np.querySelector("[data-per-film]");
+        sourceSel = np.querySelector("#id_source"); linkRow = np.querySelector('[data-field="cloud_link"]');
+      }
       function syncFilms() {
+        find();
         var ticked = Array.prototype.map.call(np.querySelectorAll('input[name="deliverables"]:checked'), function (i) { return i.value; });
         var r = rates[agencySel && agencySel.value] || {}, any = false;
         Array.prototype.forEach.call(np.querySelectorAll("tr[data-film]"), function (tr) {
@@ -388,11 +393,12 @@
         });
         if (perFilm) perFilm.hidden = !any;
       }
-      function syncSource() { if (linkRow) linkRow.hidden = !(sourceSel && sourceSel.value === "cloud"); }
+      function syncSource() { find(); if (linkRow) linkRow.hidden = !(sourceSel && sourceSel.value === "cloud"); }
       np.addEventListener("change", function (e) {
-        if (e.target.name === "deliverables" || e.target === agencySel) syncFilms();
-        if (e.target === sourceSel) syncSource();
+        if (e.target.name === "deliverables" || e.target.id === "id_agency") syncFilms();
+        if (e.target.id === "id_source") syncSource();
       });
+      doc.addEventListener("studio:parts", function () { syncFilms(); syncSource(); });
       syncFilms(); syncSource();
     }
 

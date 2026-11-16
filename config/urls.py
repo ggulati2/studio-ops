@@ -57,6 +57,8 @@ urlpatterns = [
     # drives
     path("drives/", v.drives, name="drives"),
     path("drives/<int:pk>/", v.drive_edit, name="drive_edit"),
+    path("suggest/films/", v.suggest_films, name="suggest_films"),
+    path("suggest/footage/", v.suggest_footage, name="suggest_footage"),
     path("drives/<int:pk>/folders/", v.drive_folders_add, name="drive_folders_add"),
     path("drives/<int:pk>/delete/", v.drive_delete, name="drive_delete"),
     path("photos/<int:pk>/delete/", v.photo_delete, name="photo_delete"),

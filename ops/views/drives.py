@@ -26,10 +26,11 @@ def _save_photos(form, target):
 
 @requires("drives.manage")
 def drives(request):
+    from .suggest import films_summary
     """Drive register: filters and search redraw in place (live.js); the search also
     looks inside folder names, couples and films on each drive."""
     g = request.GET
-    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "folders", "returns")
+    qs = HardDrive.objects.select_related("agency").prefetch_related("photos", "folders", "returns", "projects")
     status, q = g.get("status", ""), g.get("q", "").strip()
     f = {"agency": g.get("agency", ""), "kind": g.get("kind", ""), "folders": g.get("folders", ""),
          "sort": g.get("sort", "")}
@@ -79,13 +80,18 @@ def drives(request):
     if request.method == "POST" and form.is_valid():
         d = form.save()
         _save_photos(form, d)
+        from .suggest import link_drive_films
+        linked = link_drive_films(request, d)
+        if linked:
+            messages.info(request, f"{linked} film(s) linked to {d.code}.")
         from .folders import add_folders
         made, _ = add_folders(request, d, form.cleaned_data.get("folder_list", ""))
         record(request, "drive.receive", d.code, f"{made} folder(s)")
+        live = request.headers.get("X-Live-Page")
         messages.success(request, f"{d.code} recorded. Write {d.code} on its label."
                          + (f" {made} folder(s) listed; they're waiting on Projects for a decision." if made
-                            else " You can paste its folders below."))
-        return redirect("drive_edit", d.pk)
+                            else " Open it from the list to paste its folders." if live else " You can paste its folders below."))
+        return redirect(request.get_full_path()) if live else redirect("drive_edit", d.pk)
     from django.db.models import Count
     by = dict(HardDrive.objects.order_by().values_list("status").annotate(n=Count("id")))
     chips = [("", "In studio", sum(n for k, n in by.items() if k != "sent"))] + \
@@ -94,6 +100,7 @@ def drives(request):
     for d in drives_list:
         fs = d.folders.all()
         d.n_folders = len(fs)
+        d.films_text = films_summary(d.projects.all())
         d.n_waiting = sum(1 for x in fs if x.status == DriveFolder.PENDING)
         rets = sorted(d.returns.all(), key=lambda r: (r.sent_on, r.pk))
         d.last_return = rets[-1] if rets else None
@@ -115,11 +122,13 @@ def drive_edit(request, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         _save_photos(form, d)
+        from .suggest import link_drive_films
+        link_drive_films(request, d)
         messages.success(request, f"{d.code} saved.")
-        return redirect("drives")
+        return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "drives")
     return render(request, "drives/edit.html", {"d": d, "form": form, "folders": d.folders.select_related("client"),
                                                 "can_delete": has_perm(request.user, "projects.manage"),
-                                                "jobs": d.projects.only("couple", "deliverable", "status")})
+                                                "jobs": d.projects.select_related("agency").order_by("couple", "deliverable")})
 
 
 @requires("drives.manage")

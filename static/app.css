@@ -1219,3 +1219,20 @@ td.starts{box-shadow:inset 3px 0 0 var(--ok)}
 .chips a.chip-bad.on{background:var(--bad);color:#fff;border-color:var(--bad)}
 .cell-input[data-missing]{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
 td[data-col="start"] .tag.bad{margin-left:6px}
+/* Drive <-> film suggestions (suggest.js) */
+.sg-host{position:relative}
+.sg-list{position:absolute;left:0;right:0;z-index:40;margin-top:4px;max-height:320px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);padding:4px}
+.sg-head{font-size:var(--t-xs,12px);font-weight:600;color:var(--muted);padding:8px 10px 4px;text-transform:none}
+.sg-item{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:var(--t-sm);display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.sg-item .small{flex-basis:100%}
+.sg-item.on,.sg-item:hover{background:var(--hover,rgba(0,0,0,.05))}
+.sg-item.is-picked{opacity:.55;cursor:default}
+.sg-all{color:var(--accent,var(--ink));font-weight:600}
+.sg-empty{padding:10px;font-size:var(--t-sm);color:var(--muted)}
+.sg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.sg-chip{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-sm);padding:3px 4px 3px 10px;border-radius:999px;background:var(--ink);color:var(--on-ink)}
+.sg-x{border:0;background:transparent;color:inherit;font-size:16px;line-height:1;cursor:pointer;padding:0 6px;border-radius:999px}
+.sg-x:hover{background:rgba(255,255,255,.2)}
+.sg-note{margin-top:6px;font-size:var(--t-sm);color:var(--ok,green);display:flex;gap:10px;align-items:center}
+.linkish{border:0;background:none;color:var(--muted);text-decoration:underline;cursor:pointer;font:inherit;padding:0}
+.sg-picker{margin-bottom:8px}

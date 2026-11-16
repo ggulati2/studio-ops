@@ -1109,3 +1109,68 @@ class StartDateRequired(SeededTestCase):
         self.assertIn(p, [j["p"] for j in r.context["jobs"]])
         self.assertGreaterEqual(f.get("/dashboard/").context["no_start"], 1)
         self.assertTrue(START_REQUIRED)
+
+
+class DriveProjectSync(SeededTestCase):
+    """Drives <-> films by couple name: pick films in a drive's Contents, and drives
+    suggested while adding a film."""
+
+    def setUp(self):
+        from ops.models import HardDrive
+        self.ag = Agency.objects.get(code="BRC")
+        self.f = self.login("ag")
+        self.t = Project.objects.create(couple="Kavya & Rohan", deliverable="Trailer", agency=self.ag,
+                                        start_date=timezone.localdate())
+        self.h = Project.objects.create(couple="Kavya & Rohan", deliverable="Highlight", agency=self.ag,
+                                        start_date=timezone.localdate())
+        self.HD = HardDrive
+
+    def test_film_suggestions_by_couple(self):
+        j = self.f.get("/suggest/films/?q=kavya rohan").json()["films"]
+        self.assertEqual({x["id"] for x in j}, {self.t.pk, self.h.pk})
+        self.assertEqual(self.f.get("/suggest/films/?q=k").json()["films"], [])
+        self.assertNotEqual(self.login("harsh").get("/suggest/films/?q=kavya").status_code, 200)
+
+    def test_receive_and_edit_link_films(self):
+        r = self.f.post("/drives/", {"code": "HDD-91", "kind": "HDD", "agency": self.ag.pk, "received_on": timezone.localdate(),
+                                     "received_via": "courier", "status": "in_use", "contents": "",
+                                     "films_link": f"{self.t.pk},{self.h.pk}"}, HTTP_X_LIVE_PAGE="1")
+        self.assertRedirects(r, "/drives/", fetch_redirect_response=False)       # stays on the register
+        d = self.HD.objects.get(code="HDD-91")
+        self.assertEqual(set(d.projects.values_list("pk", flat=True)), {self.t.pk, self.h.pk})
+        self.assertEqual(d.contents, "")
+        self.assertContains(self.f.get("/drives/"), "Kavya &amp; Rohan – Highlight, Trailer")
+        # edit: the Highlight is taken off the box -> unlinked; contents note kept
+        r = self.f.get(f"/drives/{d.pk}/")
+        self.assertContains(r, f"&quot;id&quot;: {self.h.pk}")                  # chips start with linked films
+        self.f.post(f"/drives/{d.pk}/", {"code": "HDD-91", "kind": "HDD", "agency": self.ag.pk, "received_on": timezone.localdate(),
+                                         "received_via": "courier", "status": "in_use", "contents": d.contents,
+                                         "films_link": str(self.t.pk)})
+        self.h.refresh_from_db()
+        self.assertIsNone(self.h.drive_id)
+        # no JS (no films_link sent): links untouched
+        self.f.post(f"/drives/{d.pk}/", {"code": "HDD-91", "kind": "HDD", "agency": self.ag.pk, "received_on": timezone.localdate(),
+                                         "received_via": "courier", "status": "in_use", "contents": "x"})
+        self.t.refresh_from_db()
+        self.assertEqual(self.t.drive_id, d.pk)
+
+    def test_footage_suggested_when_adding_a_film(self):
+        from ops.models import DriveFolder
+        d = self.HD.objects.create(code="HDD-92", agency=self.ag)
+        f = DriveFolder.objects.create(drive=d, path="E:/Kavya_Rohan_Wedding", name="Kavya_Rohan_Wedding",
+                                       couple_guess="Kavya & Rohan", films_guess="Teaser")
+        e = self.HD.objects.create(code="HDD-93", agency=self.ag)
+        self.t.drive = e
+        self.t.save()
+        self.HD.objects.create(code="HDD-94", agency=self.ag, contents="Kavya Rohan haldi", status="sent")   # gone back: not offered
+        j = self.f.get("/suggest/footage/?q=Kavya %26 Rohan").json()["drives"]
+        self.assertEqual([x["code"] for x in j], ["HDD-92", "HDD-93"])
+        self.assertEqual((j[0]["folder"], j[0]["films"]), (f.pk, ["Teaser"]))
+        # picking the folder's drive: the new film gets that footage and the folder is decided
+        r = self.f.post("/projects/new/", {"start_date": str(timezone.localdate()), "couple": "Kavya & Rohan",
+                                           "agency": self.ag.pk, "deliverables": ["Teaser"], "source": str(d.pk),
+                                           "folder": f.pk}, HTTP_X_LIVE_PAGE="1")
+        self.assertRedirects(r, "/projects/new/", fetch_redirect_response=False)
+        f.refresh_from_db()
+        self.assertEqual(f.status, DriveFolder.ACCEPTED)
+        self.assertEqual(Project.objects.get(couple="Kavya & Rohan", deliverable="Teaser").drive_id, d.pk)

@@ -97,6 +97,8 @@ class ProjectForm(StyledMixin, forms.ModelForm):
         self.fields["editor"].choices = editor_choices()
         self.fields["agency"].queryset = Agency.objects.filter(active=True)
         self.fields["source"].choices = source_choices()
+        from django.urls import reverse
+        self.fields["couple"].widget.attrs.update({"data-footage-suggest": reverse("suggest_footage"), "autocomplete": "off"})
         self.fields["start_date"].required = True
         self.fields["start_date"].error_messages["required"] = START_REQUIRED
         if self.instance.pk:
@@ -188,6 +190,8 @@ class NewProjectForm(StyledMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["editor"].choices = editor_choices()
         self.fields["source"].choices = source_choices()
+        from django.urls import reverse
+        self.fields["couple"].widget.attrs.update({"data-footage-suggest": reverse("suggest_footage"), "autocomplete": "off"})
         for f in self.fields.values():
             if isinstance(f.widget, forms.CheckboxSelectMultiple):
                 f.widget.attrs["class"] = "pills"
@@ -374,6 +378,25 @@ class DriveForm(StyledMixin, forms.ModelForm):
                   "data_gb", "received_on", "received_via", "tracking", "location", "damaged_on_arrival", "status", "notes"]
         widgets = {"received_on": DATE, "notes": forms.Textarea(attrs={"rows": 2})}
         help_texts = {"data_gb": "In GB, e.g. 106 for 106 GB (1 TB = 1000 GB)."}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        import json
+        from django.urls import reverse
+        from .views.suggest import film_label
+        if self.is_bound and "films_link" in self.data:      # re-shown after an error: keep what was picked
+            ids = [int(x) for x in self.data.get("films_link", "").split(",") if x.strip().isdigit()]
+            picked = Project.objects.filter(pk__in=ids)
+        else:
+            picked = self.instance.projects.all() if self.instance.pk else Project.objects.none()
+        c = self.fields["contents"]
+        c.label = "Contents"
+        c.help_text = ("Films: type a couple's name above and pick their films, they get linked to this drive. "
+                       "This box is a free note (e.g. raw footage, songs).")
+        c.widget.attrs.update({
+            "data-film-picker": reverse("suggest_films"), "placeholder": "Note (optional)",
+            "data-initial": json.dumps([{"id": p.pk, "label": film_label(p)}
+                                        for p in picked.select_related("agency").order_by("couple", "deliverable")])})
 
     def clean(self):
         return _check_drive_data(self, super().clean())

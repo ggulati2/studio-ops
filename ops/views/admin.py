@@ -482,6 +482,8 @@ def project_new(request):
                 apply_source(job, c["source"], c["cloud_link"])
                 job.save()
                 jobs.append(job)
+            from .suggest import accept_folder_for
+            accept_folder_for(request, request.POST.get("folder"), jobs)
             for job in sorted(jobs, key=lambda j: (j.deadline or date.max)):   # earliest deadline gets planned first
                 m, sh = S.auto_plan(job)
                 made, short = made + m, short + sh
@@ -490,7 +492,7 @@ def project_new(request):
         if short:
             messages.warning(request, f"{editor.profile.name}'s planner is full before the deadline: {short} more day(s) "
                                       "of work didn't fit. Check the Planner.")
-        return redirect("projects")
+        return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "projects")
     import json
     rates = {a.pk: {r.deliverable: r.amount for r in a.rates.all()} for a in Agency.objects.filter(active=True)}
     return render(request, "founder/project_new.html", {"form": form, "rates_json": json.dumps(rates)})
@@ -513,7 +515,7 @@ def project_edit(request, pk):
             if short:
                 messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
         messages.success(request, "Job saved.")
-        return redirect("projects")
+        return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "projects")
     return render(request, "founder/project_edit.html", {"form": form, "p": p, "hours": project_hours(p),
                                                        "reviews": p.reviews.select_related("reviewer")})
 

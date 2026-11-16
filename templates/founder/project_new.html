@@ -3,8 +3,8 @@
 {% block content %}
 <div class="head"><div><a href="{% url 'projects' %}" class="small">← Projects</a><h1>New project</h1>
 <p>Tick every film for this couple. Each one becomes its own job. Dates and amounts can differ per film.</p></div></div>
-<form method="post" class="card new-project" style="max-width:960px" data-new-project data-rates="{{ rates_json }}">
-  {% csrf_token %}
+<form method="post" class="card new-project" style="max-width:960px" data-new-project data-rates="{{ rates_json }}" data-live-page>
+  <div data-live-region="new-project" class="col-stack">{% csrf_token %}
   {% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
   <div class="fields">
   {% for f in form.main_fields %}
@@ -36,6 +36,7 @@
     </table></div>
   </section>
 
-  <div class="actions"><button class="btn primary">Create jobs</button><a class="btn" href="{% url 'projects' %}">Cancel</a></div>
+  <div class="actions"><button class="btn primary">Create jobs</button><a class="btn" href="{% url 'projects' %}">Done → Projects</a></div>
+  </div>
 </form>
 {% endblock %}

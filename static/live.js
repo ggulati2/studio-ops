@@ -42,8 +42,14 @@
   }
 
   /* Re-enhance a freshly inserted piece of page */
+  function syncAttrs(el, from) {
+    Array.prototype.slice.call(el.attributes).forEach(function (a) { if (!from.hasAttribute(a.name)) el.removeAttribute(a.name); });
+    Array.prototype.forEach.call(from.attributes, function (a) { el.setAttribute(a.name, a.value); });
+  }
+
   function enhance(node) {
     if (window.StudioDatePicker) window.StudioDatePicker.enhance(node);
+    if (window.StudioSuggest) window.StudioSuggest.init(node);
   }
 
   /* Put a new row's cells in the same order as the table's (possibly re-arranged) header */
@@ -147,6 +153,62 @@
     send(form, body).catch(function (err) {
       form.classList.remove("is-saving");
       toast(err.message || "Couldn't save.", { level: "error" });
+    });
+  });
+
+
+  /* ---------------------------------------------------------------- full forms, no reload
+     <form data-live-page> inside <… data-live-region="name">: the form is sent in the
+     background, the server answers with the same page (X-Live-Page), and only the regions
+     are re-drawn. Messages become toasts. Any problem: a normal submit. */
+  doc.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches("form[data-live-page]") || !window.fetch || !window.DOMParser) return;
+    if (form.dataset.sending) { e.preventDefault(); return; }
+    e.preventDefault();
+    var body = new FormData(form);
+    if (e.submitter && e.submitter.name) body.append(e.submitter.name, e.submitter.value);
+    form.dataset.sending = "1";
+    form.classList.add("is-saving");
+    var btns = form.querySelectorAll("button");
+    Array.prototype.forEach.call(btns, function (b) { b.disabled = true; });
+    fetch(form.getAttribute("action") || location.href, {
+      method: "POST", credentials: "same-origin", body: body,
+      headers: { "X-Live-Page": "1", "X-CSRFToken": csrfOf(form) }
+    }).then(function (r) {
+      if (!r.ok || r.url.indexOf("/login") >= 0) throw new Error("fallback");
+      return r.text();
+    }).then(function (html) {
+      var next = new DOMParser().parseFromString(html, "text/html");
+      var regions = doc.querySelectorAll("[data-live-region]");
+      if (!regions.length) throw new Error("fallback");
+      Array.prototype.forEach.call(next.querySelectorAll(".msgs .msg"), function (m) {
+        var level = ["error", "warning", "info", "success"].filter(function (l) { return m.classList.contains(l); })[0] || "info";
+        toast(m.textContent.trim(), { level: level });
+      });
+      var firstErr = null;
+      Array.prototype.forEach.call(regions, function (r) {
+        var n = next.querySelector('[data-live-region="' + r.getAttribute("data-live-region") + '"]');
+        if (!n) return;
+        syncAttrs(r, n);
+        r.innerHTML = n.innerHTML;
+        enhance(r);
+        r.classList.remove("live-in"); void r.offsetWidth; r.classList.add("live-in");
+        firstErr = firstErr || r.querySelector(".err, .msg.error");
+      });
+      if (window.StudioTables) window.StudioTables.init();
+      doc.dispatchEvent(new CustomEvent("studio:parts"));
+      if (window.StudioLive) window.StudioLive.reload();      // lists on the same page follow
+      if (firstErr) {
+        firstErr.scrollIntoView({ block: "center", behavior: "smooth" });
+        var f = firstErr.closest(".field");
+        var inp = f && f.querySelector("input, select, textarea");
+        if (inp) inp.focus({ preventScroll: true });
+      }
+    }).catch(function () {
+      form.removeAttribute("data-live-page");
+      delete form.dataset.sending;
+      HTMLFormElement.prototype.submit.call(form);
     });
   });
 
@@ -256,10 +318,6 @@
   doc.body.appendChild(bar);
   var dimTimer = null;
 
-  function syncAttrs(el, from) {
-    Array.prototype.slice.call(el.attributes).forEach(function (a) { if (!from.hasAttribute(a.name)) el.removeAttribute(a.name); });
-    Array.prototype.forEach.call(from.attributes, function (a) { el.setAttribute(a.name, a.value); });
-  }
 
   /* Keep the filter fields in step with a URL (chips, Back/Forward) */
   function syncForm(url) {

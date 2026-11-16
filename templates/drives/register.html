@@ -5,9 +5,9 @@
 <div class="head"><div><h1>Drive register</h1><p>Every drive in the studio: whose it is, what's on it, which project folders it holds and where it is now.</p></div>
   <div class="actions">{% if waiting %}<a class="btn" href="{% url 'projects' %}">{{ waiting }} folder{{ waiting|pluralize }} waiting on Projects →</a>{% endif %}</div></div>
 
-<details class="card receive-panel" id="receive"{% if form.errors %} open{% endif %}>
+<details class="card receive-panel" id="receive" data-live-region="receive"{% if form.errors %} open{% endif %}>
   <summary><span class="btn primary">+ Receive a drive</span><span class="small muted">Record a drive that just came in, with the project folders on it.</span></summary>
-  <form method="post" enctype="multipart/form-data" class="receive-form">{% csrf_token %}
+  <form method="post" enctype="multipart/form-data" class="receive-form" data-live-page>{% csrf_token %}
     {% if form.non_field_errors %}<div class="msg error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
     <div class="receive-cols">
       <div class="fields">{% for f in form.visible_fields %}{% if f.name != "folder_list" %}
@@ -60,7 +60,7 @@
         <td class="nowrap"><span class="ph-hover">{% with ph=d.photos.all.0 %}{% if ph %}<img class="ph-thumb" src="{% url 'image' ph.pk %}" alt="" loading="lazy">{% else %}<span class="ph-thumb none" aria-hidden="true">💾</span>{% endif %}{% endwith %}
             {% if d.photos.all %}<span class="ph-pop" role="tooltip">{% for ph in d.photos.all|slice:":3" %}<img src="{% url 'image' ph.pk %}" alt="Photo of {{ d.code }}" loading="lazy">{% endfor %}{% if d.photos.all|length > 3 %}<span class="small muted">+{{ d.photos.all|length|add:"-3" }} more on the drive page</span>{% endif %}</span>{% endif %}</span>
           <a class="mono" href="{% url 'drive_edit' d.pk %}"><b>{{ d.code }}</b></a> <span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span>
-          {% if d.contents %}<div class="small muted ellip">{{ d.contents }}</div>{% endif %}</td>
+          {% if d.films_text %}<div class="small ellip" title="{{ d.films_text }}">🎬 {{ d.films_text }}</div>{% endif %}{% if d.contents %}<div class="small muted ellip">{{ d.contents }}</div>{% endif %}</td>
         <td>{% if d.studio_owned %}Studio{% elif d.agency %}{{ d.agency.code|default:d.agency.name }}{% else %}–{% endif %}</td>
         <td><span class="tag {{ d.status|drive_class }}">{{ d.get_status_display }}</span>{% if d.damaged_on_arrival %} <span class="tag bad">arrived damaged</span>{% endif %}</td>
         <td class="right nowrap">{% if d.data_gb %}<b>{{ d.data_gb|hours }}</b> GB{% if d.used_pct is not None %}<div class="bar sm"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
@@ -83,7 +83,7 @@
       <div class="dc-body">
         <div class="dc-top"><b class="mono">{{ d.code }}</b><span class="small muted">{{ d.kind }}{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB{% endif %}</span></div>
         <b class="small">{% if d.studio_owned %}Studio drive{% else %}{{ d.agency|default:"No agency" }}{% endif %}</b>
-        {% if d.contents %}<span class="small">{{ d.contents }}</span>{% endif %}
+        {% if d.films_text %}<span class="small">🎬 {{ d.films_text }}</span>{% endif %}{% if d.contents %}<span class="small muted">{{ d.contents }}</span>{% endif %}
         {% if d.data_gb %}{% if d.used_pct is not None %}<div class="bar"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}<span class="small muted">{{ d.data_gb|hours }} GB data available{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB drive{% endif %}</span>{% endif %}
         <span class="small muted">{% if d.n_folders %}📁 {{ d.n_folders }} folder{{ d.n_folders|pluralize }} · {% endif %}Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
       </div></a>
