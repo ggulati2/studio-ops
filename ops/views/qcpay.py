@@ -17,7 +17,7 @@ from ..models import FilmEvent, Project, Review
 from ..rbac import has_perm, requires
 from ..services import add_months, month_end, month_start
 
-__all__ = ["qc_close", "qc_earnings", "qc_fee", "qc_entry"]
+__all__ = ["qc_close", "qc_earnings", "qc_fee", "qc_entry", "qc_send"]
 
 
 def _back(request):
@@ -176,3 +176,45 @@ def qc_month_summary(month):
         r["total"] += p.qc_fee
         r["pending"] += 0 if p.qc_fee else 1
     return [{"u": u, **v} for u, v in out.items()]
+
+
+@requires("projects.manage")
+def qc_send(request):
+    """A founder sends a film (or one of its events) for QC on the editor's behalf, when they
+    forgot to. It goes straight to QC."""
+    back = reverse("qc_queue")
+    if request.method != "POST":
+        return redirect(back)
+    P = request.POST
+    raw = P.get("project", "")
+    p = Project.objects.filter(pk=raw, status__in=Project.WORKABLE + (Project.TL_REVIEW,)).first() if raw.isdigit() else None
+    link_raw = P.get("cut_link", "").strip()
+    link = S.safe_web_link(link_raw)
+    name = " ".join(P.get("event", "").split())[:40].strip()
+    name = name[:1].upper() + name[1:]
+    if not p:
+        messages.error(request, "Pick the film to send for QC.")
+        return redirect(back)
+    if link_raw and not link:
+        messages.error(request, "That review link isn't a web address. Paste the full link starting with https://")
+        return redirect(back)
+    if name:
+        e = p.events.filter(name__iexact=name).first() or FilmEvent(project=p, name=name)
+        if e.pk and e.status == FilmEvent.QC:
+            messages.info(request, f"{p} · {e.name} is already waiting for QC.")
+            return redirect(f"{back}?p={p.pk}")
+        e.status, e.sent_on = FilmEvent.QC, timezone.now()
+        e.cut_link = link or e.cut_link
+        e.save()
+        if p.status == Project.NOT_STARTED:
+            p.status = Project.IN_PROGRESS
+            p.save(update_fields=["status"])
+        what = f"{p.couple} · {e.name}"
+    else:
+        p.status = Project.QC
+        p.cut_link = link or p.cut_link
+        p.save(update_fields=["status", "cut_link"])
+        what = str(p)
+    record(request, "qc.send", str(p), f"sent for QC by a founder{' · ' + name if name else ''}")
+    messages.success(request, f"{what} sent for QC for {p.editor.profile.name if p.editor_id else 'the editor'}.")
+    return redirect(f"{back}?p={p.pk}")

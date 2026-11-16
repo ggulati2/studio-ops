@@ -1424,3 +1424,24 @@ class QCContractMerged(SeededTestCase):
         q = self.login("qc").get("/qc/")
         self.assertIn("QC dashboard", [i[0] for i in q.context["nav_items"]])
         self.assertNotContains(q, 'aria-label="QC and contract editors"')
+
+
+class FounderSendsForQC(SeededTestCase):
+    def test_founder_sends_whole_film_or_event(self):
+        from ops.models import FilmEvent
+        p = Project.objects.create(couple="Forgot To Send", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                   editor=None, start_date=timezone.localdate(),
+                                   status=Project.IN_PROGRESS)
+        f = self.login("ag")
+        page = f.get("/qc/")
+        self.assertContains(page, "Send a film for QC")
+        self.assertNotContains(page, 'placeholder="Film link"')
+        f.post("/qc/send/", {"project": p.pk, "event": "sangeet", "cut_link": "https://frame.io/s"})
+        e = p.events.get(name="Sangeet")
+        self.assertEqual((e.status, e.cut_link), (FilmEvent.QC, "https://frame.io/s"))
+        f.post("/qc/send/", {"project": p.pk, "event": "", "cut_link": "https://frame.io/full"})
+        p.refresh_from_db()
+        self.assertEqual((p.status, p.cut_link), (Project.QC, "https://frame.io/full"))
+        self.assertEqual(self.login("qc").post("/qc/send/", {"project": p.pk}).status_code, 403)
+        bad = f.post("/qc/send/", {"project": p.pk, "cut_link": "not a link"}, follow=True)
+        self.assertContains(bad, "Pick the film")              # already in QC: not offered any more

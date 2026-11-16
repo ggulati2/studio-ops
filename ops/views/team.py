@@ -497,6 +497,9 @@ def qc_queue(request):
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
         "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
+        "sendable": list(Project.objects.filter(status__in=Project.WORKABLE + (Project.TL_REVIEW,)).select_related("editor__profile", "agency")
+                         .order_by("couple", "deliverable")) if founder else [],
+        "event_names": FilmEvent.NAMES,
         "qc_people": list(get_user_model().objects.filter(Q(profile__role=QC_ROLE) | Q(pk=request.user.pk), is_active=True)
                           .select_related("profile")) if founder else [],
         "board": board, "counts": counts, "show": show, "states": QC_STATES,
