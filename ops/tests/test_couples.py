@@ -1322,3 +1322,49 @@ class DashboardMoneyHidden(SeededTestCase):
         r = self.login("ag").get("/dashboard/")
         self.assertContains(r, "data-money-eye")
         self.assertContains(r, "data-secret", count=5)       # 4 money cards + the agencies panel (data-secret-part)
+
+
+class EventWiseQC(SeededTestCase):
+    """A full film sent for review one event at a time: Haldi in QC while Sangeet is being edited."""
+
+    def test_event_goes_tl_then_qc_and_film_is_one_qc_entry(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import FilmEvent, Review
+        U = get_user_model()
+        pratik = U.objects.get(username="pratik")
+        p = Project.objects.create(couple="Event Wise", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                   editor=pratik, start_date=timezone.localdate(), status=Project.IN_PROGRESS)
+        ed = self.login("pratik")
+        self.assertContains(ed.get("/my-jobs/"), "Send event for TL review")
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "haldi", "cut_link": "https://frame.io/haldi"})
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Sangeet", "cut_link": "https://frame.io/sangeet"})
+        h = p.events.get(name="Haldi")
+        self.assertEqual((h.status, p.events.count()), (FilmEvent.TL_REVIEW, 2))
+        p.refresh_from_db()
+        self.assertEqual(p.status, Project.IN_PROGRESS)              # the editor carries on
+        r = ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Haldi"}, follow=True)
+        self.assertContains(r, "already waiting")
+        # TL of the pod approves Haldi and Sangeet
+        tl = self.login("nikhil")
+        self.assertContains(tl.get("/pod/"), "Approve Haldi")
+        for e in p.events.all():
+            tl.post(f"/pod/event/{e.pk}/", {"decision": "pass", "comments": ""})
+        # QC: one entry for the film, events inside
+        qc = self.login("qc")
+        page = qc.get(f"/qc/?p={p.pk}")
+        self.assertEqual([x.pk for x in page.context["queue"]].count(p.pk), 1)
+        self.assertEqual(len(page.context["events"]), 2)
+        self.assertContains(page, "2 events waiting")
+        qc.post(f"/qc/event/{h.pk}/", {"decision": "pass", "comments": ""})
+        s = p.events.get(name="Sangeet")
+        qc.post(f"/qc/event/{s.pk}/", {"decision": "fail", "comments": "00:12 colour jump", "issue": ["2"]})
+        h.refresh_from_db(); s.refresh_from_db()
+        self.assertEqual((h.status, s.status), (FilmEvent.PASSED, FilmEvent.REVISIONS))
+        self.assertTrue(Review.objects.filter(event=s, passed=False, kind="qc").exists())
+        jobs = ed.get("/my-jobs/")
+        self.assertContains(jobs, "Sangeet: QC sent it back")
+        self.assertContains(jobs, "00:12 colour jump")
+        # resend Sangeet after fixing
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Sangeet"})
+        s.refresh_from_db()
+        self.assertEqual(s.status, FilmEvent.TL_REVIEW)

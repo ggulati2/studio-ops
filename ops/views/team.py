@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from ..rbac import ADMIN, EDITOR, QC, TL, can_review_in_pod, has_perm, requires
 from ..forms import CloseJobForm, DayForm, ExtraEntryForm, QuickDayForm, ReviewForm, TaskFormSet
-from ..models import (QC_CHECKLIST, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
+from ..models import (QC_CHECKLIST, FilmEvent, Congrats, DayLog, EmployeeOfMonth, ExtraEntry, Holiday, Payslip, PlanEntry,
                       Project, Review, StudioSettings, TaskEntry, TaskStage)
 from .. import services as S
 from ..services import (add_months, attendance, celebrated_award, day_kind, extra_hours, extra_pay, holidays_between,
@@ -23,7 +23,7 @@ from ..services import (add_months, attendance, celebrated_award, day_kind, extr
                         trophy_counts)
 
 User = get_user_model()
-__all__ = ["today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
+__all__ = ["job_event_submit", "tl_event_review", "qc_event_review", "today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
            "leaderboard", "congrats", "pod", "tl_review", "qc_queue", "qc_review", "my_payslips", "payslip_view"]
 
 
@@ -202,11 +202,97 @@ def my_day_quick(request, day):
 @requires("work.log_own")
 def my_jobs(request):
     jobs = []
-    for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive__agency").prefetch_related("drive__photos"):
-        last = p.reviews.first()
-        jobs.append({"p": p, "hours": project_hours(p), "last": last, "delay": p.delays.first()})
+    for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive__agency").prefetch_related("drive__photos", "events__reviews"):
+        last = p.reviews.filter(event__isnull=True).first()
+        events = list(p.events.all())
+        for e in events:
+            e.last = next(iter(e.reviews.all()), None)      # newest first
+        jobs.append({"p": p, "hours": project_hours(p), "last": last, "delay": p.delays.first(), "events": events,
+                     "by_event": events or p.deliverable in EVENT_FILMS})
     done = Project.objects.filter(editor=request.user, status=Project.CLOSED).order_by("-closed_on")[:10]
-    return render(request, "team/jobs.html", {"jobs": jobs, "done": done})
+    return render(request, "team/jobs.html", {"jobs": jobs, "done": done, "event_names": FilmEvent.NAMES})
+
+
+# films long enough to be sent for review one event at a time
+EVENT_FILMS = ("Full Film", "Traditional Film", "Event Video")
+
+
+@requires("work.log_own")
+def job_event_submit(request, pk):
+    """Send one event of a film (Haldi, Sangeet…) for review while the editor works on the next.
+    Goes to the TL first (straight to QC for a TL), like the whole film."""
+    p = get_object_or_404(Project, pk=pk, editor=request.user)
+    if request.method != "POST":
+        return redirect("my_jobs")
+    name = " ".join(request.POST.get("event", "").split())[:40].strip()
+    name = name[:1].upper() + name[1:]
+    raw = request.POST.get("cut_link", "").strip()
+    link = S.safe_web_link(raw)
+    if not p.is_open or p.status == Project.SENT_AGENCY:
+        messages.error(request, f"{p} isn't open for review.")
+    elif not name:
+        messages.error(request, "Pick which event you're sending (e.g. Haldi).")
+    elif raw and not link:
+        messages.error(request, "That review link isn't a web address. Paste the full link starting with https://")
+    else:
+        e = p.events.filter(name__iexact=name).first() or FilmEvent(project=p, name=name)
+        if e.pk and e.status in (FilmEvent.TL_REVIEW, FilmEvent.QC):
+            messages.info(request, f"{name} is already waiting for review.")
+            return redirect("my_jobs")
+        if e.pk and e.status == FilmEvent.PASSED:
+            messages.info(request, f"{name} already passed QC.")
+            return redirect("my_jobs")
+        e.status = FilmEvent.QC if request.role == TL else FilmEvent.TL_REVIEW
+        e.cut_link = link or e.cut_link
+        e.sent_on = timezone.now()
+        e.save()
+        if p.status == Project.NOT_STARTED:
+            p.status = Project.IN_PROGRESS
+            p.save(update_fields=["status"])
+        messages.success(request, f"{p.couple} · {name} sent for {'QC' if e.status == FilmEvent.QC else 'TL review'}. "
+                                  "Carry on with the next event.")
+    return redirect("my_jobs")
+
+
+def _event_review(request, e, kind):
+    form = ReviewForm(request.POST)
+    if not form.is_valid():
+        return None
+    passed = request.POST.get("decision") == "pass"
+    issues = [QC_CHECKLIST[int(i)] for i in request.POST.getlist("issue") if i.isdigit() and int(i) < len(QC_CHECKLIST)]
+    Review.objects.create(project=e.project, event=e, kind=kind, passed=passed, issues=issues,
+                          comments=form.cleaned_data["comments"], reviewer=request.user)
+    if form.cleaned_data.get("cut_link"):
+        e.cut_link = form.cleaned_data["cut_link"]
+    if kind == Review.TL:
+        e.status = FilmEvent.QC if passed else FilmEvent.REVISIONS
+    else:
+        e.status = FilmEvent.PASSED if passed else FilmEvent.REVISIONS
+    e.save(update_fields=["status", "cut_link", "updated"])
+    return passed
+
+
+@requires("pod.review")
+def tl_event_review(request, pk):
+    e = get_object_or_404(FilmEvent.objects.select_related("project"), pk=pk, status=FilmEvent.TL_REVIEW)
+    if not can_review_in_pod(request.user, e.project):
+        raise PermissionDenied
+    if request.method == "POST":
+        passed = _event_review(request, e, Review.TL)
+        if passed is not None:
+            messages.success(request, f"{e}: " + ("sent to QC." if passed else "sent back with notes."))
+    return redirect("pod")
+
+
+@requires("qc.review")
+def qc_event_review(request, pk):
+    e = get_object_or_404(FilmEvent.objects.select_related("project__editor__profile"), pk=pk, status=FilmEvent.QC)
+    if request.method == "POST":
+        passed = _event_review(request, e, Review.QC)
+        if passed is not None:
+            who = e.project.editor.profile.name if e.project.editor_id else "the editor"
+            messages.success(request, f"{e}: " + ("passed." if passed else f"sent back to {who}."))
+    return redirect(f"{reverse('qc_queue')}?p={e.project_id}")
 
 
 @requires("work.log_own")
@@ -335,12 +421,18 @@ def pod(request):
     logs = {l.user_id: l for l in DayLog.objects.filter(user__in=members, date=today_).prefetch_related("tasks__project")}
     jobs = Project.objects.filter(editor__in=members).exclude(status=Project.CLOSED).select_related("editor__profile", "agency")
     waiting = jobs.filter(status=Project.TL_REVIEW)
+    ev_waiting = defaultdict(list)
+    for e in FilmEvent.objects.filter(project__in=jobs, status=FilmEvent.TL_REVIEW).select_related("project__agency",
+                                                                                                  "project__editor__profile"):
+        ev_waiting[e.project].append(e)
     return render(request, "team/pod.html", {"pod": my_pod, "members": [{"u": u, "log": logs.get(u.id)} for u in members],
-                                             "jobs": jobs, "waiting": waiting, "form": ReviewForm()})
+                                             "jobs": jobs, "waiting": waiting, "form": ReviewForm(),
+                                             "ev_waiting": [{"p": p, "events": es} for p, es in ev_waiting.items()]})
 
 
 def _review(request, p, kind):
     form = ReviewForm(request.POST)
+    # (whole film; one event at a time goes through _event_review)
     if not form.is_valid():
         return False
     passed = request.POST.get("decision") == "pass"
@@ -372,8 +464,18 @@ def tl_review(request, pk):
 
 @requires("qc.review")
 def qc_queue(request):
-    queue = Project.objects.filter(status=Project.QC).select_related("agency", "editor__profile", "drive").order_by("deadline")
+    from django.db.models import Count, Prefetch
+    queue = (Project.objects.filter(Q(status=Project.QC) | Q(events__status=FilmEvent.QC)).distinct()
+             .select_related("agency", "editor__profile", "drive")
+             .annotate(ev_waiting=Count("events", filter=Q(events__status=FilmEvent.QC), distinct=True))
+             .order_by("deadline"))
     sel = queue.filter(pk=request.GET.get("p")).first() or queue.first()
+    events = []
+    if sel:
+        events = list(sel.events.prefetch_related(Prefetch("reviews", queryset=Review.objects.select_related("reviewer__profile"))))
+        open_one = next((e for e in events if e.status == FilmEvent.QC), None)
+        for e in events:
+            e.is_open = e is open_one
     passed_m = Review.objects.filter(kind="qc", created__date__gte=month_start(timezone.localdate()))
     first_time = None
     if passed_m.exists():
@@ -386,7 +488,8 @@ def qc_queue(request):
         board = [b for b in board if b["state"] == show or (show == "failed" and b["fails"])]
     return render(request, "team/qc.html", {
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
-        "history": sel.reviews.select_related("reviewer__profile") if sel else [],
+        "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
+        "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC),
         "board": board, "counts": counts, "show": show, "states": QC_STATES,
         "first_time": first_time})
 
@@ -401,8 +504,9 @@ def qc_board(days=120):
     re-check after a fail, sent back to the editor, passed, or delivered."""
     from django.db.models import Prefetch, Q
     since = timezone.now() - timedelta(days=days)
-    qs = (Project.objects.filter(Q(status=Project.QC) | Q(reviews__kind=Review.QC, reviews__created__gte=since)).distinct()
-          .select_related("agency", "editor__profile")
+    qs = (Project.objects.filter(Q(status=Project.QC) | Q(events__status=FilmEvent.QC)
+                                 | Q(reviews__kind=Review.QC, reviews__created__gte=since)).distinct()
+          .select_related("agency", "editor__profile").prefetch_related("events")
           .prefetch_related(Prefetch("reviews", queryset=Review.objects.filter(kind=Review.QC).select_related("reviewer__profile"),
                                      to_attr="qc_reviews")))
     label = {k: (lbl, cls) for k, lbl, cls in QC_STATES}
@@ -411,7 +515,8 @@ def qc_board(days=120):
         revs = p.qc_reviews          # newest first
         last = revs[0] if revs else None
         fails = sum(1 for r in revs if not r.passed)
-        if p.status == Project.QC:
+        evs = list(p.events.all())
+        if p.status == Project.QC or any(e.status == FilmEvent.QC for e in evs):
             state = "recheck" if fails else "waiting"
         elif last and not last.passed:
             state = "sent_back"
@@ -419,7 +524,7 @@ def qc_board(days=120):
             state = "delivered"
         else:
             state = "passed"
-        rows.append({"p": p, "state": state, "label": label[state][0], "cls": label[state][1], "last": last,
+        rows.append({"p": p, "events": evs, "state": state, "label": label[state][0], "cls": label[state][1], "last": last,
                      "rounds": len(revs), "fails": fails, "first_time": bool(revs) and fails == 0 and last.passed,
                      "when": last.created if last else None})
     order = {k: i for i, (k, _, _) in enumerate(QC_STATES)}

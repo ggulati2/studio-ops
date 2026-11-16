@@ -2,13 +2,22 @@
 {% block title %}My pod{% endblock %}
 {% block content %}
 <div class="head"><div><h1>{{ pod|default:"My pod" }}</h1><p>{% for m in members %}{{ m.u.profile.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</p></div></div>
-<section class="card"><h2>Waiting for your review · {{ waiting|length }}</h2>
+<section class="card" data-live-region="pod-wait"><h2>Waiting for your review · {{ waiting|length|add:ev_waiting|length }}</h2>
   {% for p in waiting %}
   <form method="post" action="{% url 'tl_review' p.pk %}" class="card tight">{% csrf_token %}
     <div class="title"><div><b>{{ p }}</b><div class="small muted">{{ p.editor.profile.name }} · {{ p.agency }}{% if p.deadline %} · due {{ p.deadline|date:"j M" }}{% endif %}</div></div>{% if p.cut_link %}<a href="{{ p.cut_link }}" target="_blank" rel="noopener">Open cut ↗</a>{% endif %}</div>
     <textarea class="input" name="comments" rows="2" placeholder="Notes for the editor, one per line with a timecode, e.g. 01:05 audio dips"></textarea>
     <div class="actions"><button class="btn" name="decision" value="fail">Send back with notes</button><button class="btn good" name="decision" value="pass">Approve → QC</button></div>
-  </form>{% empty %}<span class="small muted">Nothing waiting.</span>{% endfor %}
+  </form>{% empty %}{% if not ev_waiting %}<span class="small muted">Nothing waiting.</span>{% endif %}{% endfor %}
+  {% for g in ev_waiting %}<div class="card tight">
+    <div class="title"><div><b>{{ g.p }}</b><div class="small muted">{{ g.p.editor.profile.name }} · {{ g.p.agency }}{% if g.p.deadline %} · due {{ g.p.deadline|date:"j M" }}{% endif %} · events sent one by one</div></div></div>
+    {% for e in g.events %}<details class="ev-qc"{% if forloop.first %} open{% endif %}><summary><b>{{ e.name }}</b> <span class="tag {{ e.tag }}">{{ e.get_status_display }}</span></summary>
+      <form method="post" action="{% url 'tl_event_review' e.pk %}" class="col-stack ev-body" data-live-page>{% csrf_token %}
+        {% if e.cut_link %}<a href="{{ e.cut_link }}" target="_blank" rel="noopener">Open {{ e.name }} ↗</a>{% endif %}
+        <textarea class="input" name="comments" rows="2" placeholder="Notes for the editor, one per line with a timecode"></textarea>
+        <div class="actions"><button class="btn" name="decision" value="fail">Send back with notes</button><button class="btn good" name="decision" value="pass">Approve {{ e.name }} → QC</button></div>
+      </form></details>{% endfor %}
+  </div>{% endfor %}
 </section>
 <div class="row">
   <section class="card aside"><h2>Today</h2>

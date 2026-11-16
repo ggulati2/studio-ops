@@ -1266,3 +1266,12 @@ html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--
 .editor-row label{display:block;font-size:var(--t-sm);margin-bottom:4px}
 .editor-row.is-empty [data-editor-row] ,.editor-row.is-empty div:not(.er-who){opacity:.55}
 @media (max-width:640px){.editor-row{grid-template-columns:1fr 1fr}.editor-row .er-who{grid-column:1/-1}}
+/* Films sent for review one event at a time */
+.ev-strip{display:flex;flex-wrap:wrap;gap:6px}
+.ev-box{display:flex;flex-direction:column;gap:8px;border:1px dashed var(--line);border-radius:10px;padding:10px 12px}
+.ev-qc{border:1px solid var(--line2);border-radius:10px;padding:0}
+.ev-qc+.ev-qc{margin-top:8px}
+.ev-qc>summary{cursor:pointer;padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ev-qc[open]>summary{border-bottom:1px solid var(--line2)}
+.ev-body{padding:12px;display:flex;flex-direction:column;gap:8px}
+.ev-mini>summary{cursor:pointer;margin-top:4px}

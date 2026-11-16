@@ -719,9 +719,36 @@ QC_CHECKLIST = [
 ]
 
 
+class FilmEvent(models.Model):
+    """One event of a long film (Haldi, Sangeet, Wedding, Reception…) sent for review on its own,
+    so the editor can carry on with the next event while it's checked. No dates are tracked."""
+    NAMES = ["Haldi", "Mehendi", "Sangeet", "Engagement", "Cocktail", "Wedding", "Reception"]
+    TL_REVIEW, QC, REVISIONS, PASSED = "tl_review", "qc", "revisions", "passed"
+    STATUS = [(TL_REVIEW, "TL review"), (QC, "In QC"), (REVISIONS, "Sent back"), (PASSED, "QC passed")]
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="events")
+    name = models.CharField(max_length=40)
+    status = models.CharField(max_length=12, choices=STATUS, default=QC)
+    cut_link = models.URLField(max_length=500, blank=True)
+    sent_on = models.DateTimeField(null=True, blank=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["project", "id"]
+        constraints = [models.UniqueConstraint(fields=["project", "name"], name="one_event_name_per_film")]
+
+    def __str__(self):
+        return f"{self.project} · {self.name}"
+
+    @property
+    def tag(self):
+        return {self.TL_REVIEW: "qc", self.QC: "qc", self.REVISIONS: "bad", self.PASSED: "ok"}[self.status]
+
+
 class Review(models.Model):
     TL, QC = "tl", "qc"
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="reviews")
+    event = models.ForeignKey(FilmEvent, null=True, blank=True, on_delete=models.CASCADE, related_name="reviews",
+                              help_text="Set when one event of the film was reviewed, not the whole film")
     kind = models.CharField(max_length=2, choices=[(TL, "TL review"), (QC, "QC")])
     passed = models.BooleanField()
     issues = models.JSONField(default=list, blank=True, help_text="Checklist items marked as issues")
