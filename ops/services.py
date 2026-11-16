@@ -281,6 +281,68 @@ def editor_value(month):
 REVISION_STAGES = {TaskStage.REVISIONS, TaskStage.CLIENT}
 
 
+def has_worked_on(p, user_id, since=None):
+    """Has this person logged any time on the film (since a date)?"""
+    if not user_id:
+        return False
+    t = TaskEntry.objects.filter(project=p, daylog__user_id=user_id)
+    x = ExtraEntry.objects.filter(project=p, user_id=user_id)
+    if since:
+        t, x = t.filter(daylog__date__gte=since), x.filter(date__gte=since)
+    return t.exists() or x.exists()
+
+
+def editor_changed(p, old_id, on=None, force=False):
+    """A film's editor changed. If the previous editor had already worked on it, it's a
+    hand-over: they keep the days up to the day before `on` (default today), the new
+    editor has it from `on`. Otherwise it's a plain replacement. Returns "handover" or None."""
+    from .models import EditorSpell
+    on = on or timezone.localdate()
+    new_id = p.editor_id
+    spells = list(p.spells.order_by("id"))
+    cur = spells[-1] if spells and spells[-1].end is None else None
+    handover = False
+    if not spells:
+        if old_id and (force or has_worked_on(p, old_id)):
+            EditorSpell.objects.create(project=p, user_id=old_id, start=None, end=on - timedelta(days=1))
+            handover = True
+        else:
+            return None                       # one editor throughout, as before
+    elif cur and cur.user_id == old_id:
+        if (force or has_worked_on(p, old_id, cur.start)) and not (cur.start and cur.start >= on):
+            cur.end = on - timedelta(days=1)
+            cur.save(update_fields=["end"])
+            handover = True
+        else:
+            cur.delete()                      # they never started: just replaced
+            spells.pop()
+    if new_id:
+        prev = p.spells.order_by("-id").first()
+        if prev and prev.user_id == new_id and prev.end and prev.end >= on - timedelta(days=1):
+            prev.end = None                   # handed straight back (e.g. undo): one spell again
+            prev.save(update_fields=["end"])
+        else:
+            EditorSpell.objects.create(project=p, user_id=new_id, start=on)
+    if p.spells.count() == 1 and p.spells.filter(user_id=new_id, end__isnull=True).exists():
+        p.spells.all().delete()               # back to a single editor throughout
+        return None
+    return "handover" if handover else None
+
+
+def editor_on(p, day, spells=None):
+    """Who had the film on that day."""
+    for s in (p.spells.all() if spells is None else spells):
+        if (s.start is None or s.start <= day) and (s.end is None or day <= s.end):
+            return s.user_id
+    return p.editor_id
+
+
+def editor_history(p):
+    """[{user, start, end, current}] for a film that changed hands, else []."""
+    return [{"user": s.user, "start": s.start or p.start_date, "end": s.end, "current": s.end is None}
+            for s in p.spells.select_related("user__profile").order_by("id")]
+
+
 def film_span(p, first_logged=None, today=None):
     """(start, end) of a film's own editing, for spreading its value over working days.
     Start = start date, else the first day anyone logged it. End = first sent to the agency,
@@ -311,9 +373,10 @@ def _editor_value_detail(a, b):
     today = timezone.localdate()
     weekdays = StudioSettings.get().weekdays
     # films whose editing may touch [a, b]
-    films = {p.id: p for p in Project.objects.select_related("agency").filter(editor__isnull=False)
+    films = {p.id: p for p in Project.objects.select_related("agency").prefetch_related("spells")
+             .filter(Q(editor__isnull=False) | Q(spells__isnull=False))
              .filter(Q(start_date__lte=b) | Q(start_date__isnull=True))
-             .filter(Q(first_delivered_on__gte=a) | Q(first_delivered_on__isnull=True))}
+             .filter(Q(first_delivered_on__gte=a) | Q(first_delivered_on__isnull=True)).distinct()}
     no_start = [pid for pid, p in films.items() if not p.start_date]
     first_log = dict(TaskEntry.objects.filter(project_id__in=no_start).values("project_id")
                      .annotate(d=Min("daylog__date")).values_list("project_id", "d")) if no_start else {}
@@ -344,10 +407,17 @@ def _editor_value_detail(a, b):
         if not mine:
             continue
         per_day = p.invoice_amount / len(days) if p.agency.currency == "INR" else 0
-        r = row(p.editor_id, p)
-        r["days"] += len(mine)
-        r["v"] += per_day * len(mine)
-        out[p.editor_id]["days"] += len(mine)
+        spells = list(p.spells.all())
+        by = defaultdict(int)          # a film that changed hands: each editor gets their own days
+        for d in mine:
+            uid = editor_on(p, d, spells)
+            if uid:
+                by[uid] += 1
+        for uid, n in by.items():
+            r = row(uid, p)
+            r["days"] += n
+            r["v"] += per_day * n
+            out[uid]["days"] += n
 
     # hours logged in [a, b], split into film work and revisions
     def is_rev(stage, day, p):

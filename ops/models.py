@@ -418,6 +418,13 @@ class Project(models.Model):
         code = self.agency.code if self.agency_id and self.agency.code else ""
         return f"{self.couple} – {self.deliverable}" + (f" – {code}" if code else "")
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        obj = super().from_db(db, field_names, values)
+        if "editor_id" in obj.__dict__:
+            obj._editor_was = obj.editor_id                     # to spot a hand-over on save
+        return obj
+
     def save(self, *args, **kwargs):
         from django.utils import timezone as tz
         # Every film belongs to a couple record (same agency + same couple name = same couple)
@@ -439,6 +446,12 @@ class Project(models.Model):
                 kwargs["update_fields"] = list(set(kwargs["update_fields"]) | {"closed_on", "first_delivered_on",
                                                                                 "deadline_at_delivery"})
         super().save(*args, **kwargs)
+        was = getattr(self, "_editor_was", None)
+        if was != self.editor_id and "editor_id" in self.__dict__ and hasattr(self, "_editor_was"):
+            from .services import editor_changed
+            self.handed_over = editor_changed(self, was, getattr(self, "_handover_on", None),
+                                              getattr(self, "_handover_force", False))
+        self._editor_was = self.editor_id
         if self.status == self.CLOSED and self.pk:      # a client revision just went back out
             self.client_revisions.filter(completed_on__isnull=True).update(completed_on=tz.localdate())
         self.unplan_future()
@@ -519,6 +532,22 @@ class Project(models.Model):
             return "Due soon"
         return "On track"
 
+
+
+class EditorSpell(models.Model):
+    """Who edited a film when, once it changed hands (a junior starts, a senior takes over).
+    A film that never changed hands has no spells: its editor had it throughout."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="spells")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="editor_spells")
+    start = models.DateField(null=True, blank=True, help_text="Blank = from the film's start")
+    end = models.DateField(null=True, blank=True, help_text="Blank = still editing it")
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["project", "id"]
+
+    def __str__(self):
+        return f"{self.user} on {self.project} {self.start or '…'}–{self.end or 'now'}"
 
 class TaskStage(models.TextChoices):
     SYNC = "Ingest & Sync"

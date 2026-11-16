@@ -1211,3 +1211,70 @@ class PlannerClientRevision(SeededTestCase):
         self.assertEqual(r.context["delivered"][0], cr)          # needing changes now: first
         self.assertContains(r, f'data-v="r:{cr.pk}"')
         self.assertContains(r, "client revision")
+
+
+class HandOver(SeededTestCase):
+    """A junior starts a film, a senior takes it over: each keeps the days they had it."""
+
+    def setUp(self):
+        from datetime import date
+        from django.contrib.auth import get_user_model
+        U = get_user_model()
+        self.jr, self.sr = U.objects.get(username="soham"), U.objects.get(username="pratik")
+        self.D = date
+        self.ag = Agency.objects.get(code="BRC")
+
+    def film(self, **kw):
+        return Project.objects.create(couple="Hand Over", deliverable="Trailer", agency=self.ag, invoice_amount=18000,
+                                      editor=self.jr, **kw)
+
+    def test_value_split_between_editors(self):
+        D = self.D
+        p = self.film(start_date=D(2030, 11, 27), deadline=D(2030, 12, 5))
+        p = Project.objects.get(pk=p.pk)
+        p._handover_on, p._handover_force = D(2030, 12, 1), True
+        p.editor = self.sr
+        p.save()
+        self.assertEqual(S.editor_on(p, D(2030, 11, 28)), self.jr.pk)
+        self.assertEqual(S.editor_on(p, D(2030, 12, 2)), self.sr.pk)
+        v = S.editor_value_detail(D(2030, 11, 1), D(2030, 12, 31))
+        jr = next(f for f in v[self.jr.pk]["films"] if f["p"].pk == p.pk)
+        sr = next(f for f in v[self.sr.pk]["films"] if f["p"].pk == p.pk)
+        nov = len(S.leave_working_days(self.jr, D(2030, 11, 27), D(2030, 11, 30)))
+        self.assertEqual(jr["days"], nov)
+        self.assertAlmostEqual(jr["v"] + sr["v"], 18000, delta=1)
+
+    def test_inline_change_after_work_is_a_handover_before_work_a_swap(self):
+        from datetime import time
+        from ops.models import DayLog, TaskEntry
+        today = timezone.localdate()
+        f = self.login("ag")
+        swap = self.film(start_date=today)
+        d = f.post(f"/projects/{swap.pk}/status/", {"editor": self.sr.pk}, **FETCH).json()
+        self.assertFalse(swap.spells.exists())
+        self.assertNotIn("handed over", d["messages"][0]["text"])
+        p = self.film(start_date=today - timedelta(days=5))
+        log, _ = DayLog.objects.get_or_create(user=self.jr, date=today - timedelta(days=2),
+                                              defaults={"day_type": DayLog.OFFICE, "time_in": time(10), "time_out": time(19)})
+        TaskEntry.objects.create(daylog=log, project=p, stage="Edit", hours=6)
+        d = f.post(f"/projects/{p.pk}/status/", {"editor": self.sr.pk}, **FETCH).json()
+        self.assertIn("handed over", d["messages"][0]["text"])
+        self.assertEqual([(h["user"], h["end"]) for h in S.editor_history(p)],
+                         [(self.jr, today - timedelta(days=1)), (self.sr, None)])
+        self.assertContains(f.get("/projects/?view=list&q=Hand+Over"), "↪ after Soham")
+        # undo (back to the junior): one editor again
+        f.post(f"/projects/{p.pk}/status/", {"editor": self.jr.pk}, **FETCH)
+        self.assertEqual(S.editor_history(p), [])
+
+    def test_handover_form_with_a_date(self):
+        today = timezone.localdate()
+        p = self.film(start_date=today - timedelta(days=4), deadline=today + timedelta(days=10))
+        f = self.login("ag")
+        r = f.post(f"/projects/{p.pk}/handover/", {"editor": self.sr.pk, "on": str(today - timedelta(days=1))})
+        self.assertRedirects(r, f"/projects/{p.pk}/", fetch_redirect_response=False)
+        p.refresh_from_db()
+        self.assertEqual(p.editor, self.sr)
+        self.assertEqual(S.editor_on(p, today - timedelta(days=2)), self.jr.pk)
+        self.assertContains(f.get(f"/projects/{p.pk}/"), "Hand over to")
+        bad = f.post(f"/projects/{p.pk}/handover/", {"editor": self.jr.pk, "on": str(today - timedelta(days=9))}, follow=True)
+        self.assertContains(bad, "after the film")
