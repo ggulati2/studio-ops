@@ -8,6 +8,7 @@ Every change is saved in the background (fetch) and only the changed cells are
 re-drawn, so the page never reloads. Plain form posts still work (redirect back)."""
 from collections import defaultdict
 from datetime import date, timedelta
+from django.db.models import Q
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -63,10 +64,12 @@ def _options():
     open_projects = list(Project.objects.exclude(status__in=(Project.CLOSED, Project.ON_HOLD))
                          .select_related("agency", "editor__profile").defer("brief", "agency__billing_address", "agency__notes")
                          .order_by("deadline", "couple"))
-    delivered = list(Project.objects.filter(status__in=(Project.CLOSED, Project.SENT_AGENCY),
-                                            first_delivered_on__gte=timezone.localdate() - timedelta(days=120))
-                     .select_related("agency").defer("brief", "agency__billing_address", "agency__notes")
-                     .order_by("-first_delivered_on"))
+    # films that can get revisions: back with the client's changes (first), or sent / delivered lately
+    delivered = sorted(Project.objects.filter(
+        Q(status=Project.CLIENT_REV)
+        | Q(status__in=(Project.CLOSED, Project.SENT_AGENCY), first_delivered_on__gte=timezone.localdate() - timedelta(days=120)))
+        .select_related("agency").defer("brief", "agency__billing_address", "agency__notes"),
+        key=lambda p: (p.status != Project.CLIENT_REV, -(p.first_delivered_on or date.max).toordinal()))
     return open_projects, delivered
 
 

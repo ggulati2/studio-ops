@@ -2,7 +2,7 @@
   <select name="value" data-autosubmit aria-label="{% if slot == 2 %}Also{% else %}Plan{% endif %} for {{ c.u.profile.name }} on {{ row.d|date:'j M' }}">
     <option value="">{% if slot == 2 %}— remove —{% elif c.kind == 'half' %}HALF DAY{% elif c.kind == 'wfh' %}WFH{% else %}—{% endif %}</option>
     <optgroup label="Films in progress">{% for p in open_projects %}<option value="p:{{ p.pk }}" {% if e.project_id == p.pk and not e.is_revision %}selected{% endif %}>{{ p }}</option>{% endfor %}</optgroup>
-    <optgroup label="Revisions on a delivered film">{% for p in delivered %}<option value="r:{{ p.pk }}" {% if e.is_revision and e.project_id == p.pk %}selected{% endif %}>Revisions: {{ p }}</option>{% endfor %}</optgroup>
+    <optgroup label="Revisions · client revision or delivered">{% for p in delivered %}<option value="r:{{ p.pk }}" {% if e.is_revision and e.project_id == p.pk %}selected{% endif %}>Revisions: {{ p }}</option>{% endfor %}</optgroup>
     <optgroup label="Other">
       <option value="Back-up" {% if e.label == 'Back-up' %}selected{% endif %}>Back-up</option>
       <option value="SAME DAY" {% if e.label == 'SAME DAY' %}selected{% endif %}>Same day edit</option>

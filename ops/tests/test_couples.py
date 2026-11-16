@@ -1200,3 +1200,14 @@ class EditorsSeeTheirDrive(SeededTestCase):
         self.assertEqual(c.get(f"/img/{img.pk}/").status_code, 200)
         self.assertEqual(c.get(f"/img/{img2.pk}/").status_code, 403)
         self.assertNotEqual(c.get(f"/drives/{d.pk}/").status_code, 200)       # can't open or edit the drive
+
+
+class PlannerClientRevision(SeededTestCase):
+    def test_client_revision_films_offered_for_revisions(self):
+        ag = Agency.objects.get(code="BRC")
+        cr = Project.objects.create(couple="Back Again", deliverable="Trailer", agency=ag, status=Project.CLIENT_REV,
+                                    start_date=timezone.localdate())
+        r = self.login("ag").get("/planner/")
+        self.assertEqual(r.context["delivered"][0], cr)          # needing changes now: first
+        self.assertContains(r, f'data-v="r:{cr.pk}"')
+        self.assertContains(r, "client revision")
