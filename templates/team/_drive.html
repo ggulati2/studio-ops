@@ -1,0 +1,9 @@
+{% load ops_extras %}<details class="drive-view">
+  <summary class="drive-pill" aria-label="Footage on drive {{ drv.code }}: show the drive">💾 Footage on <b class="mono">{{ drv.code }}</b>{% if drv.location %}<span class="muted"> · kept at {{ drv.location }}</span>{% endif %}{% with n=drv.photos.all|length %}{% if n %}<span class="muted"> · 📷 {{ n }}</span>{% endif %}{% endwith %}</summary>
+  <div class="drive-pop">
+    <div><b class="mono">{{ drv.code }}</b> <span class="small muted">{{ drv.kind }}{% if drv.brand_model %} · {{ drv.brand_model }}{% endif %}{% if drv.capacity_tb %} · {{ drv.capacity_tb|hours }} TB{% endif %}</span></div>
+    <div class="small">{% if drv.studio_owned %}Studio drive{% elif drv.agency %}{{ drv.agency }}'s drive{% endif %}{% if drv.location %} · kept at <b>{{ drv.location }}</b>{% endif %} · <span class="tag {{ drv.status|drive_class }}">{{ drv.get_status_display }}</span></div>
+    {% if drv.contents %}<div class="small muted">{{ drv.contents }}</div>{% endif %}
+    <div class="drive-pop-photos">{% for ph in drv.photos.all %}<a href="{% url 'image' ph.pk %}" target="_blank" rel="noopener"><img src="{% url 'image' ph.pk %}" alt="Photo {{ forloop.counter }} of drive {{ drv.code }}" loading="lazy"></a>{% empty %}<span class="small muted">No photos of this drive yet. Ask the drive desk.</span>{% endfor %}</div>
+  </div>
+</details>

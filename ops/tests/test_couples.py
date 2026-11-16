@@ -1174,3 +1174,29 @@ class DriveProjectSync(SeededTestCase):
         f.refresh_from_db()
         self.assertEqual(f.status, DriveFolder.ACCEPTED)
         self.assertEqual(Project.objects.get(couple="Kavya & Rohan", deliverable="Teaser").drive_id, d.pk)
+
+
+class EditorsSeeTheirDrive(SeededTestCase):
+    """Editors see which drive their film is on, with its photos (view only)."""
+
+    def test_editor_sees_drive_and_photos_of_their_film_only(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import HardDrive, StoredImage
+        harsh = get_user_model().objects.get(username="harsh")
+        ag = Agency.objects.get(code="BRC")
+        d = HardDrive.objects.create(code="HDD-55", agency=ag, location="Shelf B")
+        other = HardDrive.objects.create(code="HDD-56", agency=ag)
+        img = StoredImage.objects.create(data=b"\xff\xd8\xff", content_type="image/jpeg")
+        img2 = StoredImage.objects.create(data=b"\xff\xd8\xff", content_type="image/jpeg")
+        d.photos.add(img)
+        other.photos.add(img2)
+        Project.objects.create(couple="Drive View", deliverable="Teaser", agency=ag, editor=harsh, drive=d,
+                               start_date=timezone.localdate())
+        c = self.login("harsh")
+        r = c.get("/my-jobs/")
+        self.assertContains(r, "HDD-55")
+        self.assertContains(r, "Shelf B")
+        self.assertContains(r, f"/img/{img.pk}/")
+        self.assertEqual(c.get(f"/img/{img.pk}/").status_code, 200)
+        self.assertEqual(c.get(f"/img/{img2.pk}/").status_code, 403)
+        self.assertNotEqual(c.get(f"/drives/{d.pk}/").status_code, 200)       # can't open or edit the drive

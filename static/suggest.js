@@ -241,6 +241,16 @@
       i.setAttribute("data-sg", "1"); footageSuggest(i);
     });
   }
+  /* the drive viewer on editors' pages closes when clicking elsewhere or pressing Escape */
+  doc.addEventListener("click", function (e) {
+    Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open]"), function (d) {
+      if (!d.contains(e.target)) d.removeAttribute("open");
+    });
+  });
+  doc.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") Array.prototype.forEach.call(doc.querySelectorAll("details.drive-view[open]"), function (d) { d.removeAttribute("open"); });
+  });
+
   window.StudioSuggest = { init: init };
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", function () { init(); }); else init();
 })();

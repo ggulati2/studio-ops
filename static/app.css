@@ -1236,3 +1236,11 @@ td[data-col="start"] .tag.bad{margin-left:6px}
 .sg-note{margin-top:6px;font-size:var(--t-sm);color:var(--ok,green);display:flex;gap:10px;align-items:center}
 .linkish{border:0;background:none;color:var(--muted);text-decoration:underline;cursor:pointer;font:inherit;padding:0}
 .sg-picker{margin-bottom:8px}
+/* Editors: which drive a film's footage is on (view only) */
+.drive-view{position:relative;display:inline-block;margin-top:6px}
+.drive-pill{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:var(--t-sm);padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card)}
+.drive-pill::-webkit-details-marker{display:none}
+.drive-pill:hover,.drive-view[open] .drive-pill{border-color:var(--field-hover)}
+.drive-pop{position:absolute;left:0;top:calc(100% + 6px);z-index:35;width:min(460px,86vw);display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.18)}
+.drive-pop-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:4px}
+.drive-pop-photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;display:block}

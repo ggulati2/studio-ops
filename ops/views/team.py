@@ -42,7 +42,8 @@ def _day_setup(user, d):
         task_entries__daylog=log) if log.pk else Project.objects.filter(editor=user).exclude(status=Project.CLOSED)
     workable = workable.distinct().select_related("agency")
     initial = [{"project": t.project, "stage": t.stage, "hours": t.hours} for t in log.tasks.all()] if log.pk else []
-    plans = list(PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive"))
+    plans = list(PlanEntry.objects.filter(user=user, date=d).select_related("project", "project__drive__agency")
+                 .prefetch_related("project__drive__photos"))
     # Revisions planned on a delivered film must be pickable in the job list too
     revision_ids = [e.project_id for e in plans if e.is_revision]
     if revision_ids:
@@ -201,7 +202,7 @@ def my_day_quick(request, day):
 @requires("work.log_own")
 def my_jobs(request):
     jobs = []
-    for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive"):
+    for p in Project.objects.filter(editor=request.user).exclude(status=Project.CLOSED).select_related("agency", "drive__agency").prefetch_related("drive__photos"):
         last = p.reviews.first()
         jobs.append({"p": p, "hours": project_hours(p), "last": last, "delay": p.delays.first()})
     done = Project.objects.filter(editor=request.user, status=Project.CLOSED).order_by("-closed_on")[:10]

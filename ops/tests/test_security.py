@@ -151,7 +151,7 @@ class Uploads(SeededTestCase):
 
     def test_photo_access_follows_role(self):
         drive_photo = store_image(jpeg(100, 100))
-        HardDrive.objects.first().photos.add(drive_photo)
+        HardDrive.objects.create(code="HDD-PH").photos.add(drive_photo)      # no one's film is on it
         self.assertEqual(self.login("drives").get(f"/img/{drive_photo.pk}/").status_code, 200)
         self.assertEqual(self.login("pratik").get(f"/img/{drive_photo.pk}/").status_code, 403)
         eotm = EmployeeOfMonth.objects.first()

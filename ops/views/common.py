@@ -29,12 +29,31 @@ def no_access(request, exception=None):
     return render(request, "no_access.html", status=403)
 
 
+def _sees_drive_photo(user, img):
+    """Editors (and reviewers) may look at the photos of a drive that holds a film they work on,
+    so they can find it. Send-back photos stay with the drive desk."""
+    from ..models import PlanEntry, Project
+    if role_of(user) is None:
+        return False
+    drives = list(img.drives.values_list("id", flat=True))
+    if not drives:
+        return False
+    if has_perm(user, "qc.review"):
+        return True
+    films = Project.objects.filter(drive_id__in=drives)
+    pod = getattr(getattr(user, "profile", None), "pod_id", None)
+    if has_perm(user, "pod.review") and pod and films.filter(editor__profile__pod_id=pod).exists():
+        return True        # a team lead reviews their pod's films
+    return (films.filter(editor=user).exists()
+            or PlanEntry.objects.filter(project__drive_id__in=drives, user=user).exists())
+
+
 @login_required
 def image(request, pk):
     """Photos are private. Drive photos: drive desk and founders. Trailblazer of the Month photos: everyone signed in."""
     img = get_object_or_404(StoredImage, pk=pk)          # the bytes aren't loaded yet (deferred)
     is_drive_photo = img.drives.exists() or img.drivereturn_set.exists()
-    if is_drive_photo and not has_perm(request.user, "drives.manage"):
+    if is_drive_photo and not has_perm(request.user, "drives.manage") and not _sees_drive_photo(request.user, img):
         raise PermissionDenied
     if not is_drive_photo and role_of(request.user) is None:
         raise PermissionDenied
