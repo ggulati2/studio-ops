@@ -26,7 +26,7 @@ from ..services import (add_months, attendance, available_days, benchmarks, cele
                         week_start)
 
 User = get_user_model()
-__all__ = ["extra_amount", "extra_film_pay", "backup", "dashboard", "projects", "project_new", "project_edit", "project_handover", "project_status", "project_assign", "deadlines",
+__all__ = ["extra_amount", "extra_film_pay", "backup", "dashboard", "projects", "project_new", "project_edit", "project_status", "project_assign", "deadlines",
            "delivered", "reports", "report_print", "team_view", "person_edit", "person_pod", "extra_admin", "eotm",
            "agencies", "agency_edit", "settings_view", "holiday_delete", "audit_log", "access_matrix"]
 
@@ -485,11 +485,16 @@ def project_new(request):
                 jobs.append(job)
             from .suggest import accept_folder_for
             accept_folder_for(request, request.POST.get("folder"), jobs)
+            rows = form.editor_rows()
+            if len([r for r in rows if r[0]]) > 1 or rows[0][1] or rows[0][2]:
+                for job in jobs:
+                    S.set_editors(job, rows)
             for job in sorted(jobs, key=lambda j: (j.deadline or date.max)):   # earliest deadline gets planned first
                 m, sh = S.auto_plan(job)
                 made, short = made + m, short + sh
+        names = " and ".join(User.objects.get(pk=r[0]).profile.name for r in form.editor_rows() if r[0])
         messages.success(request, f"Created {len(jobs)} job(s) for {c['couple']}."
-                         + (f" Planned {made} day(s) for {editor.profile.name} in the Planner." if made else ""))
+                         + (f" Planned {made} day(s) for {names} in the Planner." if made else ""))
         if short:
             messages.warning(request, f"{editor.profile.name}'s planner is full before the deadline: {short} more day(s) "
                                       "of work didn't fit. Check the Planner.")
@@ -508,53 +513,25 @@ def project_edit(request, pk):
         obj = form.save(commit=False)
         if obj.status == Project.CLOSED and not obj.closed_on:
             obj.closed_on = timezone.localdate()
+        obj._editor_was = obj.editor_id          # editors and their dates are set just below
+        spells_before = list(p.spells.values_list("user_id", "start", "end").order_by("id"))
         obj.save()
-        if getattr(obj, "handed_over", None):
-            messages.info(request, f"Handed over to {obj.editor.profile.name} from today. "
-                                   "The previous editor keeps the days they worked on it.")
-        if (before["editor_id"], before["deadline"], before["start_date"]) != (obj.editor_id, obj.deadline, obj.start_date):
+        S.set_editors(obj, form.editor_rows())
+        spells_after = list(obj.spells.values_list("user_id", "start", "end").order_by("id"))
+        if (before["editor_id"], before["deadline"], before["start_date"]) != (obj.editor_id, obj.deadline, obj.start_date) \
+                or spells_before != spells_after:
             made, short = S.auto_plan(obj, trim=before["editor_id"] == obj.editor_id)
             if made:
-                messages.info(request, f"Planner updated: {made} day(s) planned for {obj.editor.profile.name}.")
+                who = " and ".join(sorted({s.user.profile.name for s in obj.spells.select_related("user__profile")})) \
+                    or obj.editor.profile.name
+                messages.info(request, f"Planner updated: {made} day(s) planned for {who}.")
             if short:
                 messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
         messages.success(request, "Job saved.")
         return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "projects")
     return render(request, "founder/project_edit.html", {"form": form, "p": p, "hours": project_hours(p),
                                                        "reviews": p.reviews.select_related("reviewer"),
-                                                       "history": S.editor_history(p), "editors": team(),
-                                                       "today": timezone.localdate()})
-
-
-@requires("projects.manage")
-def project_handover(request, pk):
-    """Hand a film over to another editor from a date: the one before keeps their days."""
-    p = get_object_or_404(Project.objects.select_related("editor__profile"), pk=pk)
-    back = reverse("project_edit", args=[p.pk])
-    if request.method != "POST":
-        return redirect(back)
-    raw, on = request.POST.get("editor", ""), _iso(request.POST.get("on"))
-    new = team().filter(pk=raw).first() if raw.isdigit() else None
-    today = timezone.localdate()
-    if not new:
-        messages.error(request, "Pick who takes the film over.")
-    elif new.pk == p.editor_id:
-        messages.info(request, f"{new.profile.name} already has this film.")
-    elif not on or on > today + timedelta(days=90) or (p.start_date and on <= p.start_date):
-        messages.error(request, "Pick the day the new editor starts: after the film's start date"
-                                + (f" ({p.start_date:%d %b})" if p.start_date else "") + ".")
-    else:
-        old = p.editor.profile.name if p.editor_id else "Unassigned"
-        p._handover_on, p._handover_force = on, True      # asked for: a hand-over even if nothing was logged
-        p.editor = new
-        p.save(update_fields=["editor"])
-        record(request, "project.handover", str(p), f"{old} -> {new.profile.name} from {on:%d %b %Y}")
-        made, short = S.auto_plan(p, start=max(on, today))
-        messages.success(request, f"{p}: handed over from {old} to {new.profile.name} from {on:%a %d %b}. "
-                                  f"{old} keeps the days before." + (f" {made} day(s) planned for {new.profile.name}." if made else ""))
-        if short:
-            messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
-    return redirect(back)
+                                                       "history": S.editor_history(p)})
 
 
 def queue_groups(queue):

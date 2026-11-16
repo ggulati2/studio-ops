@@ -1,0 +1,5 @@
+<div class="editor-row{% if n == 2 and not e.value and not e.errors %} is-empty{% endif %}" data-editor-row="{{ n }}">
+  <div class="er-who"><label for="{{ e.id_for_label }}">Editor {{ n }}{% if n == 2 %} <span class="muted">(optional)</span>{% endif %}</label>{{ e }}{% if e.errors %}<p class="err">{{ e.errors|join:" " }}</p>{% endif %}</div>
+  <div><label for="{{ a.id_for_label }}">From</label>{{ a }}{% if a.errors %}<p class="err">{{ a.errors|join:" " }}</p>{% endif %}</div>
+  <div><label for="{{ b.id_for_label }}">Until</label>{{ b }}{% if b.errors %}<p class="err">{{ b.errors|join:" " }}</p>{% endif %}</div>
+</div>

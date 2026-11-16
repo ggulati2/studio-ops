@@ -77,7 +77,62 @@ def editor_choices():
     return [("", "— Unassigned —")] + [(u.id, f"{u.profile.name} · {u.profile.pod or u.profile.get_role_display()}") for u in team()]
 
 
-class ProjectForm(StyledMixin, forms.ModelForm):
+class EditorsMixin:
+    """Editor 1 and an optional Editor 2, each with their dates (a junior starts, a senior
+    takes over, or both work on it). Blank dates = the film's start / end."""
+    EDITOR_FIELDS = ["editor", "editor_from", "editor_to", "editor2", "editor2_from", "editor2_to"]
+
+    def add_editor_fields(self, instance=None):
+        f = self.fields
+        f["editor"].label = "Editor 1"
+        f["editor_from"] = forms.DateField(label="Editor 1 from", required=False, widget=DATE)
+        f["editor_to"] = forms.DateField(label="Editor 1 until", required=False, widget=DATE)
+        f["editor2"] = forms.TypedChoiceField(label="Editor 2", required=False, coerce=int, empty_value=None,
+                                              choices=[("", "— No second editor —")] + [c for c in editor_choices() if c[0] != ""])
+        f["editor2_from"] = forms.DateField(label="Editor 2 from", required=False, widget=DATE)
+        f["editor2_to"] = forms.DateField(label="Editor 2 until", required=False, widget=DATE)
+        for n in ("editor_from", "editor2_from"):
+            f[n].widget.attrs["placeholder"] = "Film's start"
+        for n in ("editor_to", "editor2_to"):
+            f[n].widget.attrs["placeholder"] = "Until it's done"
+        for n in ("editor_from", "editor_to", "editor2_from", "editor2_to", "editor2"):
+            f[n].widget.attrs.setdefault("class", "input")
+        f["editor2"].widget.attrs["data-editor2"] = "1"
+        order = [n for n in self.fields if n not in self.EDITOR_FIELDS[1:]]
+        i = order.index("editor") + 1
+        self.order_fields(order[:i] + self.EDITOR_FIELDS[1:] + order[i:])
+        if instance is not None and instance.pk:
+            spells = list(instance.spells.order_by("id"))[-2:]
+            if spells:
+                self.initial.update({"editor": spells[0].user_id, "editor_from": spells[0].start, "editor_to": spells[0].end})
+                if len(spells) > 1:
+                    self.initial.update({"editor2": spells[1].user_id, "editor2_from": spells[1].start,
+                                         "editor2_to": spells[1].end})
+
+    def clean_editors(self, data):
+        e1, e2 = data.get("editor"), data.get("editor2")
+        e1 = getattr(e1, "pk", e1)
+        for who, a, b in (("editor", "editor_from", "editor_to"), ("editor2", "editor2_from", "editor2_to")):
+            if data.get(a) and data.get(b) and data[a] > data[b]:
+                self.add_error(b, "This is before the 'from' date.")
+        if e2 and not e1:
+            self.add_error("editor", "Pick Editor 1 first (Editor 2 is the second person on the film).")
+        elif e2 and e2 == e1:
+            self.add_error("editor2", "Editor 2 is the same person as Editor 1.")
+        if not e2 and (data.get("editor2_from") or data.get("editor2_to")):
+            self.add_error("editor2", "Pick Editor 2, or clear their dates.")
+        return data
+
+    def editor_rows(self):
+        c = self.cleaned_data
+        e1 = c.get("editor")
+        rows = [(getattr(e1, "pk", e1), c.get("editor_from"), c.get("editor_to"))]
+        if c.get("editor2"):
+            rows.append((c["editor2"], c.get("editor2_from"), c.get("editor2_to")))
+        return rows
+
+
+class ProjectForm(EditorsMixin, StyledMixin, forms.ModelForm):
     editor = forms.TypedChoiceField(required=False, coerce=int, empty_value=None)
 
     class Meta:
@@ -112,9 +167,10 @@ class ProjectForm(StyledMixin, forms.ModelForm):
         self.order_fields(order)
         if self.instance.pk and self.instance.editor_id:
             self.initial["editor"] = self.instance.editor_id
+        self.add_editor_fields(self.instance)
 
     def clean(self):
-        data = super().clean()
+        data = self.clean_editors(super().clean())
         ed, ad, sd = data.get("deadline"), data.get("agency_deadline"), data.get("start_date")
         if sd and ed and sd > ed:
             self.add_error("start_date", f"The start date ({sd:%-d %b}) is after the editor's deadline ({ed:%-d %b}).")
@@ -160,7 +216,7 @@ def film_key(deliverable):
     return Project.DELIVERABLES.index(deliverable)
 
 
-class NewProjectForm(StyledMixin, forms.Form):
+class NewProjectForm(EditorsMixin, StyledMixin, forms.Form):
     """Creates one job per ticked film for the same couple. Each film can have its own
     editor's deadline, agency's deadline and invoice amount (blank = the defaults)."""
     couple = forms.CharField(label="Couple / project name", max_length=120)
@@ -204,8 +260,10 @@ class NewProjectForm(StyledMixin, forms.Form):
                                                              widget=forms.NumberInput(attrs={"inputmode": "numeric"}))
             for n in ("deadline", "agency_deadline", "amount"):
                 self.fields[f"f{k}_{n}"].widget.attrs["class"] = "input"
+        self.add_editor_fields()
 
-    MAIN = ["couple", "agency", "deliverables", "editor", "start_date", "deadline", "agency_deadline", "invoice_amount",
+    MAIN = ["couple", "agency", "deliverables", "editor", "editor_from", "editor_to", "editor2", "editor2_from",
+            "editor2_to", "start_date", "deadline", "agency_deadline", "invoice_amount",
             "source", "cloud_link", "is_extra", "extra_basis", "extra_rate", "brief"]
 
     def main_fields(self):
@@ -229,7 +287,7 @@ class NewProjectForm(StyledMixin, forms.Form):
         return out
 
     def clean(self):
-        data = super().clean()
+        data = self.clean_editors(super().clean())
         if data.get("source") == CLOUD and not data.get("cloud_link"):
             pass  # a link is helpful but optional (it may have come by WhatsApp)
         if "deliverables" in data:

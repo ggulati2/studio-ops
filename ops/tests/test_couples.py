@@ -1261,23 +1261,60 @@ class HandOver(SeededTestCase):
         self.assertIn("handed over", d["messages"][0]["text"])
         self.assertEqual([(h["user"], h["end"]) for h in S.editor_history(p)],
                          [(self.jr, today - timedelta(days=1)), (self.sr, None)])
-        self.assertContains(f.get("/projects/?view=list&q=Hand+Over"), "↪ after Soham")
+        self.assertContains(f.get("/projects/?view=list&q=Hand+Over"), "👥 Soham")
         # undo (back to the junior): one editor again
         f.post(f"/projects/{p.pk}/status/", {"editor": self.jr.pk}, **FETCH)
         self.assertEqual(S.editor_history(p), [])
 
-    def test_handover_form_with_a_date(self):
+    def edit_data(self, f, p, **over):
+        form = f.get(f"/projects/{p.pk}/").context["form"]
+        data = {}
+        for name, field in form.fields.items():
+            v = form[name].value()
+            if v is None or v is False:
+                continue
+            data[name] = v.isoformat() if hasattr(v, "isoformat") else v
+        data.update(over)
+        return {k: v for k, v in data.items() if v is not None}
+
+    def test_two_editors_with_dates_on_the_film_form(self):
         today = timezone.localdate()
         p = self.film(start_date=today - timedelta(days=4), deadline=today + timedelta(days=10))
         f = self.login("ag")
-        r = f.post(f"/projects/{p.pk}/handover/", {"editor": self.sr.pk, "on": str(today - timedelta(days=1))})
-        self.assertRedirects(r, f"/projects/{p.pk}/", fetch_redirect_response=False)
+        r = f.post(f"/projects/{p.pk}/", self.edit_data(
+            f, p, editor=self.jr.pk, editor_from=str(today - timedelta(days=4)), editor_to=str(today - timedelta(days=1)),
+            editor2=self.sr.pk, editor2_from=str(today), editor2_to=""))
+        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
         p.refresh_from_db()
-        self.assertEqual(p.editor, self.sr)
+        self.assertEqual(p.editor, self.sr)                                  # has it today
         self.assertEqual(S.editor_on(p, today - timedelta(days=2)), self.jr.pk)
-        self.assertContains(f.get(f"/projects/{p.pk}/"), "Hand over to")
-        bad = f.post(f"/projects/{p.pk}/handover/", {"editor": self.jr.pk, "on": str(today - timedelta(days=9))}, follow=True)
-        self.assertContains(bad, "after the film")
+        page = f.get(f"/projects/{p.pk}/")
+        self.assertEqual(page.context["form"].initial["editor2"], self.sr.pk)
+        self.assertContains(f.get("/projects/?view=list&q=Hand+Over"), "👥 Soham")
+        # the Planner has the senior from today, not the junior
+        from ops.models import PlanEntry
+        self.assertFalse(PlanEntry.objects.filter(project=p, user=self.jr, date__gte=today).exists())
+        # both on the same days: shared
+        f.post(f"/projects/{p.pk}/", self.edit_data(f, p, editor=self.jr.pk, editor_from="", editor_to="",
+                                                     editor2=self.sr.pk, editor2_from="", editor2_to=""))
+        self.assertEqual(set(S.editors_on(p, today)), {self.jr.pk, self.sr.pk})
+        # back to one editor
+        f.post(f"/projects/{p.pk}/", self.edit_data(f, p, editor=self.jr.pk, editor_from="", editor_to="",
+                                                     editor2="", editor2_from="", editor2_to=""))
+        self.assertFalse(p.spells.exists())
+        bad = f.post(f"/projects/{p.pk}/", self.edit_data(f, p, editor=self.jr.pk, editor2=self.jr.pk))
+        self.assertContains(bad, "same person")
+
+    def test_new_project_with_two_editors(self):
+        today = timezone.localdate()
+        f = self.login("ag")
+        f.post("/projects/new/", {"couple": "Two Eds", "agency": self.ag.pk, "deliverables": ["Teaser"],
+                                  "start_date": str(today), "deadline": str(today + timedelta(days=8)),
+                                  "editor": self.jr.pk, "editor_to": str(today + timedelta(days=2)),
+                                  "editor2": self.sr.pk, "editor2_from": str(today + timedelta(days=3))})
+        p = Project.objects.get(couple="Two Eds")
+        self.assertEqual(p.editor, self.jr)
+        self.assertEqual(S.editor_on(p, today + timedelta(days=5)), self.sr.pk)
 
 
 class DashboardMoneyHidden(SeededTestCase):

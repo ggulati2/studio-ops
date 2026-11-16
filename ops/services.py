@@ -329,12 +329,47 @@ def editor_changed(p, old_id, on=None, force=False):
     return "handover" if handover else None
 
 
+def editors_on(p, day, spells=None):
+    """Who had the film on that day (two editors can overlap)."""
+    who = [s.user_id for s in (p.spells.all() if spells is None else spells)
+           if (s.start is None or s.start <= day) and (s.end is None or day <= s.end)]
+    return who or ([p.editor_id] if p.editor_id else [])
+
+
 def editor_on(p, day, spells=None):
-    """Who had the film on that day."""
-    for s in (p.spells.all() if spells is None else spells):
-        if (s.start is None or s.start <= day) and (s.end is None or day <= s.end):
-            return s.user_id
-    return p.editor_id
+    who = editors_on(p, day, spells)
+    return who[0] if who else None
+
+
+def current_editor(rows, today=None):
+    """Of [(user_id, from, until)], who has the film now: the one whose dates hold today,
+    else the next to start, else the last one."""
+    today = today or timezone.localdate()
+    rows = [r for r in rows if r[0]]
+    if not rows:
+        return None
+    now = [r for r in rows if (r[1] is None or r[1] <= today) and (r[2] is None or today <= r[2])]
+    if now:
+        return max(now, key=lambda r: r[1] or date.min)[0]
+    ahead = [r for r in rows if r[1] and r[1] > today]
+    if ahead:
+        return min(ahead, key=lambda r: r[1])[0]
+    return max(rows, key=lambda r: r[2] or date.max)[0]
+
+
+def set_editors(p, rows):
+    """Set a film's editors from [(user_id, from, until)] (dates may be blank = film's start / end).
+    One editor with no dates = one editor throughout (no spells)."""
+    from .models import EditorSpell
+    rows = [r for r in rows if r[0]]
+    p.spells.all().delete()
+    if len(rows) > 1 or (rows and (rows[0][1] or rows[0][2])):
+        EditorSpell.objects.bulk_create([EditorSpell(project=p, user_id=u, start=a, end=b) for u, a, b in rows])
+    new = current_editor(rows)
+    if new != p.editor_id:
+        p.editor_id = new
+        p._editor_was = new                 # set here: not a hand-over
+        p.save(update_fields=["editor"])
 
 
 def editor_history(p):
@@ -408,16 +443,16 @@ def _editor_value_detail(a, b):
             continue
         per_day = p.invoice_amount / len(days) if p.agency.currency == "INR" else 0
         spells = list(p.spells.all())
-        by = defaultdict(int)          # a film that changed hands: each editor gets their own days
+        by = defaultdict(float)        # two editors: each gets their own days (shared days split)
         for d in mine:
-            uid = editor_on(p, d, spells)
-            if uid:
-                by[uid] += 1
+            who = editors_on(p, d, spells)
+            for uid in who:
+                by[uid] += 1 / len(who)
         for uid, n in by.items():
             r = row(uid, p)
-            r["days"] += n
+            r["days"] += round(n, 1)
             r["v"] += per_day * n
-            out[uid]["days"] += n
+            out[uid]["days"] += round(n, 1)
 
     # hours logged in [a, b], split into film work and revisions
     def is_rev(stage, day, p):
@@ -622,10 +657,14 @@ def auto_plan(project, start=None, trim=False):
     today = timezone.localdate()
     if not project.pk:
         return 0, 0
+    spell_users = set(project.spells.values_list("user_id", flat=True))
     (PlanEntry.objects.filter(project=project, date__gte=today).exclude(label="Revisions")
-     .exclude(user_id=project.editor_id).delete())          # days left on someone else after a reassignment
+     .exclude(user_id__in={project.editor_id} | spell_users).delete())   # days left on someone else after a reassignment
     if project.is_extra or not (project.editor_id and project.deadline and project.is_open):
         return 0, 0
+    spells = list(project.spells.all())
+    if spells:
+        return _plan_spells(project, spells)
     start = max(start or today, project.start_date or project.received_on or today, today)
     if trim:    # start or deadline moved: days planned outside the new window go
         (PlanEntry.objects.filter(project=project, user_id=project.editor_id, date__gte=today).exclude(label="Revisions")
@@ -655,6 +694,43 @@ def auto_plan(project, start=None, trim=False):
     return made, max(need - have - made, 0)
 
 
+def _plan_spells(project, spells):
+    """A film with set editors and dates: each editor is planned on their own working days
+    (from today, up to the deadline). Days planned outside someone's dates go."""
+    from .models import PlanEntry
+    today = timezone.localdate()
+    end_all = project.deadline
+    made = short = 0
+    covered = set()
+    for s in spells:
+        a = max(s.start or project.start_date or today, today)
+        b = min(s.end or end_all, end_all)
+        if a > b:
+            continue
+        logs = {l.date: l for l in DayLog.objects.filter(user_id=s.user_id, date__range=(a, b))}
+        hols = holidays_between(a, b)
+        cells = defaultdict(dict)
+        for e in PlanEntry.objects.filter(user_id=s.user_id, date__range=(a, b)):
+            cells[e.date][e.slot] = e
+        d = a
+        while d <= b:
+            if is_workday_for(s.user, d, logs, hols):
+                covered.add((s.user_id, d))
+                c = cells.get(d, {})
+                if not any(e.project_id == project.pk for e in c.values()):
+                    slot = 1 if 1 not in c else 2 if 2 not in c else None
+                    if slot:
+                        PlanEntry.objects.create(user_id=s.user_id, date=d, slot=slot, project=project)
+                        made += 1
+                    else:
+                        short += 1
+            d += timedelta(days=1)
+    for e in PlanEntry.objects.filter(project=project, date__gte=today).exclude(label="Revisions"):
+        if (e.user_id, e.date) not in covered:
+            e.delete()
+    return made, short
+
+
 def drive_options():
     """Drives to pick from in the Projects footage column (once per request): the ones in the studio."""
     from . import perf
@@ -676,7 +752,13 @@ def plan_mismatches(limit=40):
           .exclude(project__editor_id=F("user_id"))
           .select_related("project__agency", "project__editor__profile", "user__profile").order_by("date"))
     out = {}
+    from .models import EditorSpell
+    spells = defaultdict(list)
+    for s in EditorSpell.objects.filter(project_id__in={e.project_id for e in qs[:500]}):
+        spells[s.project_id].append(s)
     for e in qs[:500]:
+        if e.user_id in editors_on(e.project, e.date, spells.get(e.project_id, [])) and spells.get(e.project_id):
+            continue
         g = out.setdefault((e.project_id, e.user_id), {"project": e.project, "user": e.user, "days": 0, "first": e.date})
         g["days"] += 1
     return list(out.values())[:limit]
@@ -694,8 +776,12 @@ def plan_others(projects):
     for e in (PlanEntry.objects.filter(project_id__in=ids, date__gte=today).exclude(label="Revisions")
               .select_related("user__profile")):
         names[e.project_id].add((e.user_id, e.user.profile.name))
+    from .models import EditorSpell
+    set_eds = defaultdict(set)
+    for pid, uid in EditorSpell.objects.filter(project_id__in=ids).values_list("project_id", "user_id"):
+        set_eds[pid].add(uid)
     for p in projects:
-        p.plan_others = sorted(n for uid, n in names.get(p.pk, ()) if uid != p.editor_id and p.is_open
+        p.plan_others = sorted(n for uid, n in names.get(p.pk, ()) if uid != p.editor_id and uid not in set_eds[p.pk] and p.is_open
                                and p.status != Project.SENT_AGENCY)
     return projects
 

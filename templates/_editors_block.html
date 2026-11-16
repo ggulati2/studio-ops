@@ -1,0 +1,6 @@
+{# Editor 1 and Editor 2 with their dates, as one clear block (forms with EditorsMixin) #}
+<fieldset class="field editors-block" data-field="editors" style="grid-column:1/-1">
+  <legend>Editors <span class="help">One editor: leave the dates blank. Two editors (a junior starts, a senior takes over, or both on it): pick Editor 2 and set who has it when. Each gets the film's value for their own days.</span></legend>
+  {% with e=form.editor a=form.editor_from b=form.editor_to %}{% include "_editor_row.html" with n=1 %}{% endwith %}
+  {% with e=form.editor2 a=form.editor2_from b=form.editor2_to %}{% include "_editor_row.html" with n=2 %}{% endwith %}
+</fieldset>

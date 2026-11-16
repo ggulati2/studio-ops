@@ -1257,3 +1257,12 @@ html.show-money .money-eye .eye-open{display:inline}
 html.show-money .money-eye .eye-shut{display:none}
 html:not(.show-money) [data-secret] > b,html:not(.show-money) [data-secret] > small{color:var(--muted)!important}
 html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--line)}
+.handed .hd{opacity:.75}.handed.add2{opacity:0;transition:opacity .15s}tr:hover .handed.add2,.handed.add2:focus{opacity:1}
+/* Editors block: Editor 1 / Editor 2 with their dates */
+.editors-block{border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+.editors-block legend{font-weight:600;padding:0 6px;font-size:var(--t-sm)}
+.editors-block legend .help{display:block;font-weight:400;margin-top:2px}
+.editor-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.editor-row label{display:block;font-size:var(--t-sm);margin-bottom:4px}
+.editor-row.is-empty [data-editor-row] ,.editor-row.is-empty div:not(.er-who){opacity:.55}
+@media (max-width:640px){.editor-row{grid-template-columns:1fr 1fr}.editor-row .er-who{grid-column:1/-1}}
