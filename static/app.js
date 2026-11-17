@@ -456,8 +456,8 @@
     root.classList.toggle("show-money", on);
     Array.prototype.forEach.call(doc.querySelectorAll("[data-money-eye]"), function (b) {
       b.setAttribute("aria-pressed", on ? "true" : "false");
-      var l = b.querySelector(".eye-label");
-      if (l) l.textContent = on ? "Hide money" : "Show money";
+      b.setAttribute("aria-label", on ? "Hide money" : "Show money");
+      b.title = on ? "Hide revenue, profit and invoice amounts" : "Show revenue, profit and invoice amounts";
     });
   }
   doc.addEventListener("click", function (e) {

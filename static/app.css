@@ -1247,15 +1247,14 @@ td[data-col="start"] .tag.bad{margin-left:6px}
 /* Films that changed hands */
 .handover-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .handed{display:block;margin-top:2px}
-/* Dashboard money: hidden until the eye is clicked (safe to share the screen) */
+/* Dashboard money: left empty until the eye is clicked (safe to share the screen) */
 html:not(.show-money) [data-secret] > b,html:not(.show-money) [data-secret] > small,
-html:not(.show-money) [data-secret-part] .muted,html:not(.show-money) [data-secret-part] .small,html:not(.show-money) [data-secret-part] .bar{filter:blur(9px);user-select:none;pointer-events:none}
+html:not(.show-money) [data-secret-part] .muted,html:not(.show-money) [data-secret-part] .small,html:not(.show-money) [data-secret-part] .bar{visibility:hidden;user-select:none}
 html:not(.show-money) [data-secret] .profit-tip{display:none!important}
 html:not(.show-money) [data-secret]{cursor:pointer}
 .money-eye .eye-open{display:none}
 html.show-money .money-eye .eye-open{display:inline}
 html.show-money .money-eye .eye-shut{display:none}
-html:not(.show-money) [data-secret] > b,html:not(.show-money) [data-secret] > small{color:var(--muted)!important}
 html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--line)}
 .handed .hd{opacity:.75}.handed.add2{opacity:0;transition:opacity .15s}tr:hover .handed.add2,.handed.add2:focus{opacity:1}
 /* Editors block: Editor 1 / Editor 2 with their dates */
@@ -1288,3 +1287,5 @@ html:not(.show-money) .profit-kpi.neg{background:var(--card);border-color:var(--
 nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 .qc-send{margin-bottom:16px;display:flex;flex-direction:column;gap:10px}
 .qc-send>summary{cursor:pointer}
+.money-eye.icon-only{padding:0;width:40px;justify-content:center}
+.money-eye.icon-only .ico{width:18px;height:18px}
