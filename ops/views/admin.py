@@ -781,7 +781,7 @@ def _value_vs_cost(request, month):
     for u in team():
         if not u.profile.does_editing:
             continue
-        d = detail.get(u.id, {"value": 0, "days": 0, "hours": 0, "rhours": 0, "films": []})
+        d = detail.get(u.id, {"value": 0, "days": 0, "hours": 0, "rhours": 0, "rdays": 0, "over": 0, "films": []})
         salary = sum(slips[u.id].get(mm, u.profile.monthly_salary) for mm in months)
         extra = sum(e.pay for e in entries.get(u.id, [])) + fixed.get(u.id, 0)
         cost = salary + extra
@@ -789,7 +789,8 @@ def _value_vs_cost(request, month):
             continue                      # nothing to compare (e.g. a contract editor with no work here)
         cards.append({"u": u, "value": d["value"], "films": d["films"], "salary": salary, "extra": extra, "cost": cost,
                       "multiple": round(d["value"] / cost, 1) if cost else None,
-                      "days": d["days"], "hours": d["hours"], "rhours": d["rhours"],
+                      "days": d["days"], "hours": d["hours"], "rhours": d["rhours"], "rdays": d["rdays"],
+                      "over": d["over"],
                       "rshare": round(100 * d["rhours"] / d["hours"]) if d["hours"] else 0})
     params = request.GET.copy()
     links = {}

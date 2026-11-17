@@ -1060,22 +1060,50 @@ class ValueVsCost(SeededTestCase):
         nov2, _ = self.film(D(2030, 11, 1), D(2030, 11, 30))
         self.assertLess(nov2["v"], nov["v"])
 
-    def test_revisions_add_no_value_unless_charged(self):
-        from datetime import time
+    def test_actual_days_worked_with_revisions(self):
+        """Soham's trailer: planned 27 Nov - 5 Dec, worked those days, then 2 revision days."""
+        from datetime import time, timedelta as td
         from ops.models import DayLog, TaskEntry, TaskStage
         D = self.D
+        plan = S.leave_working_days(self.u, D(2030, 11, 27), D(2030, 12, 5))
+
+        def work(day, stage=TaskStage.EDIT):
+            log = DayLog.objects.create(user=self.u, date=day, day_type=DayLog.OFFICE, time_in=time(10), time_out=time(19))
+            TaskEntry.objects.create(daylog=log, project=self.p, stage=stage, hours=8)
+
+        nov = [d for d in plan if d.month == 11]
+        for d in nov:
+            work(d)
+        # still running, 3 days logged: spread over at least the planned days
+        v = S.editor_value_detail(D(2030, 11, 1), D(2030, 11, 30))[self.u.pk]["films"][0]
+        self.assertEqual(v["v"], round(18000 * len(nov) / len(plan)))
+        for d in plan[len(nov):]:
+            work(d)
         self.p.first_delivered_on = D(2030, 12, 5)
         self.p.save()
-        before, _ = self.film(D(2030, 12, 1), D(2030, 12, 31))
-        log = DayLog.objects.create(user=self.u, date=D(2030, 12, 10), day_type=DayLog.OFFICE, time_in=time(10), time_out=time(19))
-        TaskEntry.objects.create(daylog=log, project=self.p, stage=TaskStage.EDIT, hours=6)   # after sending = revision
-        after, d = self.film(D(2030, 12, 1), D(2030, 12, 31))
-        self.assertEqual((after["rh"], after["v"]), (6.0, before["v"]))
-        self.assertEqual(d["rhours"], 6.0)
+        extra = [D(2030, 12, 9), D(2030, 12, 10)]
+        for d in extra:
+            work(d, TaskStage.REVISIONS)
+        total = len(plan) + 2
+        nov_v = S.editor_value_detail(D(2030, 11, 1), D(2030, 11, 30))[self.u.pk]["films"][0]
+        dec = S.editor_value_detail(D(2030, 12, 1), D(2030, 12, 31))[self.u.pk]
+        dec_v = dec["films"][0]
+        self.assertEqual(nov_v["v"], round(18000 * len(nov) / total))          # overrun lowers the per-day value
+        self.assertAlmostEqual(nov_v["v"] + dec_v["v"], 18000, delta=1)
+        self.assertEqual((dec_v["rd"], dec_v["worked"], dec_v["plan"], dec_v["over"]), (2.0, total, len(plan), 2.0))
+        self.assertEqual(dec["over"], 2.0)
+        # half a day on this film counts as half a day
+        log = DayLog.objects.get(user=self.u, date=extra[1])
+        other = Project.objects.create(couple="Other", deliverable="Reels", agency=self.p.agency, editor=self.u)
+        TaskEntry.objects.create(daylog=log, project=other, stage=TaskStage.EDIT, hours=8)
+        dec2 = S.editor_value_detail(D(2030, 12, 1), D(2030, 12, 31))[self.u.pk]
+        f = next(x for x in dec2["films"] if x["p"].pk == self.p.pk)
+        self.assertEqual(f["rd"], 1.5)
+        # a paid revision charge adds to the film's value
         self.p.revision_charge = 3000
         self.p.save()
-        paid, _ = self.film(D(2030, 12, 1), D(2030, 12, 31))
-        self.assertEqual(paid["v"], before["v"] + 3000)
+        both = S.editor_value_detail(D(2030, 11, 1), D(2030, 12, 31))[self.u.pk]
+        self.assertAlmostEqual(next(x for x in both["films"] if x["p"].pk == self.p.pk)["v"], 21000, delta=1)
 
     def test_team_page_periods_and_cost(self):
         f = self.login("ag")

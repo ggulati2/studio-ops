@@ -419,111 +419,173 @@ def editor_value_detail(a, b):
     return memo(("value", a, b), lambda: _editor_value_detail(a, b))
 
 
-def _editor_value_detail(a, b):
-    """Per editor over [a, b]: value of work and the films behind it.
+def _working_days(a, b, weekdays, hols):
+    n, d = 0, a
+    while d <= b:
+        if d.weekday() in weekdays and not (d in hols and hols[d].kind == Holiday.FULL):
+            n += 1
+        d += timedelta(days=1)
+    return n
 
-    New films: a film's INR invoice is spread evenly over the working days from its start
-    date to the day it was first sent to the agency (the editor's deadline until then);
-    the days in [a, b] go to the film's editor.
-    Revisions (hours logged as Revisions / Client Changes, or on a film after it was first
-    sent) add no value - the invoice already pays for the film - unless the film has a
-    revision charge, which is shared by those revision hours.
-    {user_id: {"value", "days", "hours", "rhours", "films": [{"p", "days", "v", "h", "rh"}]}}"""
+
+def _editor_value_detail(a, b):
+    """Per editor over [a, b]: value of work and the films behind it, from the days actually worked.
+
+    A film's INR invoice (+ any paid revision charge) is spread over the days actually logged
+    on it by anyone - revision days included - and each logged day goes to whoever logged it.
+    Part days count in proportion (4 h of an 8 h day on this film = half a day); extra-work
+    hours count as hours / productive hours per day. Until a film is sent, it is spread over
+    at least its planned days (start date -> editor's deadline), so a running film isn't
+    overvalued; it settles once it's done. A film nobody has logged yet falls back to its
+    planned days (start -> sent / deadline), credited to its editor(s).
+    {user_id: {"value", "days", "hours", "rhours", "rdays", "over", "films": [
+        {"p", "days", "v", "h", "rh", "rd", "plan", "worked", "over", "planned_only"}]}}"""
     from django.db.models import Min, Q
     today = timezone.localdate()
-    weekdays = StudioSettings.get().weekdays
-    # films whose editing may touch [a, b]
-    films = {p.id: p for p in Project.objects.select_related("agency").prefetch_related("spells")
+    st = StudioSettings.get()
+    weekdays, hpd = st.weekdays, float(st.hours_per_day or 8) or 8.0
+    done_states = (Project.QC_PASSED, Project.SENT_AGENCY, Project.CLOSED)
+
+    def is_rev(stage, day, p):
+        return stage in REVISION_STAGES or bool(p.first_delivered_on and day > p.first_delivered_on)
+
+    def log_rows(logs):
+        """(user, project, day, stage, hours, day fraction) for each film task of each day log"""
+        for log in logs:
+            sh = split_hours(log)
+            tot = sum(sh.values())
+            for t in log.tasks.all():
+                h = sh.get(t.id, 0)
+                if t.project_id and h:
+                    yield log.user_id, t.project_id, log.date, t.stage, h, (h / tot if tot else 0)
+
+    def extra_rows(qs):
+        for e in qs.only("user_id", "project_id", "date", "start", "end", "stage"):
+            if e.project_id and e.hours:
+                yield e.user_id, e.project_id, e.date, e.stage, e.hours, min(1.0, e.hours / hpd)
+
+    # 1) what was logged in [a, b]
+    logged = list(log_rows(DayLog.objects.filter(date__range=(a, b), tasks__isnull=False).distinct()
+                           .prefetch_related("tasks")))
+    logged += list(extra_rows(ExtraEntry.objects.filter(date__range=(a, b))))
+    touched = {r[1] for r in logged}
+    films = Project.objects.select_related("agency").prefetch_related("spells").in_bulk(touched)
+
+    # 2) each touched film's days worked so far (all time, everyone)
+    worked = defaultdict(float)
+    if touched:
+        for _, pid, _, _, _, f in log_rows(DayLog.objects.filter(tasks__project_id__in=touched).distinct()
+                                           .prefetch_related("tasks")):
+            if pid in touched:
+                worked[pid] += f
+        for _, pid, _, _, _, f in extra_rows(ExtraEntry.objects.filter(project_id__in=touched)):
+            worked[pid] += f
+
+    plan_hols = holidays_between(min([p.start_date for p in films.values() if p.start_date] or [today]),
+                                 max([p.deadline for p in films.values() if p.deadline] or [today]))
+
+    def planned(p):
+        if p.start_date and p.deadline and p.deadline >= p.start_date:
+            return _working_days(p.start_date, p.deadline, weekdays, plan_hols) or 1
+        return None
+
+    out = defaultdict(lambda: {"value": 0.0, "days": 0.0, "hours": 0.0, "rhours": 0.0, "rdays": 0.0, "over": 0.0,
+                               "films": {}})
+
+    def row(uid, p):
+        r = out[uid]["films"].get(p.id)
+        if r is None:
+            plan, w = planned(p), worked.get(p.id, 0.0)
+            done = bool(p.first_delivered_on) or p.status in done_states
+            r = out[uid]["films"][p.id] = {
+                "p": p, "days": 0.0, "v": 0.0, "h": 0.0, "rh": 0.0, "rd": 0.0, "plan": plan,
+                "worked": round(w, 1), "done": done, "planned_only": False,
+                "over": round(w - plan, 1) if (done and plan and w - plan >= 0.5) else 0}
+        return r
+
+    per_day = {}
+    for pid, p in films.items():
+        pot = (p.invoice_amount + p.revision_charge) if p.agency.currency == "INR" else 0
+        plan, w = planned(p), worked.get(pid, 0.0)
+        done = bool(p.first_delivered_on) or p.status in done_states
+        den = (w or plan or 1) if done else max(w, plan or 0) or 1
+        per_day[pid] = pot / den
+
+    for uid, pid, day, stage, h, f in logged:
+        p = films.get(pid)
+        if not p:
+            continue
+        r = row(uid, p)
+        r["days"] += f
+        r["v"] += per_day[pid] * f
+        out[uid]["days"] += f
+        out[uid]["hours"] += h
+        if is_rev(stage, day, p):
+            r["rh"] += h
+            r["rd"] += f
+            out[uid]["rhours"] += h
+            out[uid]["rdays"] += f
+        else:
+            r["h"] += h
+
+    # 3) films nobody has logged yet: their planned days, credited to their editor(s)
+    cands = {p.id: p for p in Project.objects.select_related("agency").prefetch_related("spells")
              .filter(Q(editor__isnull=False) | Q(spells__isnull=False))
              .filter(Q(start_date__lte=b) | Q(start_date__isnull=True))
-             .filter(Q(first_delivered_on__gte=a) | Q(first_delivered_on__isnull=True)).distinct()}
-    no_start = [pid for pid, p in films.items() if not p.start_date]
+             .filter(Q(first_delivered_on__gte=a) | Q(first_delivered_on__isnull=True)).distinct()
+             .exclude(pk__in=touched)}
+    if cands:
+        has_logs = set(TaskEntry.objects.filter(project_id__in=cands).values_list("project_id", flat=True))
+        has_logs |= set(ExtraEntry.objects.filter(project_id__in=cands).values_list("project_id", flat=True))
+        for pid in has_logs:
+            cands.pop(pid, None)       # worked on, just not in [a, b]: nothing to add here
+    no_start = [pid for pid, p in cands.items() if not p.start_date]
     first_log = dict(TaskEntry.objects.filter(project_id__in=no_start).values("project_id")
                      .annotate(d=Min("daylog__date")).values_list("project_id", "d")) if no_start else {}
     spans = {}
-    for pid, p in films.items():
+    for pid, p in cands.items():
         sp = film_span(p, first_log.get(pid), today)
         if sp and sp[0] <= b and sp[1] >= a:
             spans[pid] = sp
-    workdays = set()
     if spans:
-        lo, hi = min(s[0] for s in spans.values()), max(s[1] for s in spans.values())
+        lo, hi = min(x[0] for x in spans.values()), max(x[1] for x in spans.values())
         hols = holidays_between(lo, hi)
-        d = lo
+        workdays, d = set(), lo
         while d <= hi:
             if d.weekday() in weekdays and not (d in hols and hols[d].kind == Holiday.FULL):
                 workdays.add(d)
             d += timedelta(days=1)
+        for pid, (s0, s1) in spans.items():
+            p = cands[pid]
+            days = [d for d in workdays if s0 <= d <= s1] or [s1]
+            mine = [d for d in days if a <= d <= b]
+            if not mine:
+                continue
+            pot = (p.invoice_amount + p.revision_charge) if p.agency.currency == "INR" else 0
+            pd = pot / len(days)
+            spells = list(p.spells.all())
+            by = defaultdict(float)
+            for d in mine:
+                who = editors_on(p, d, spells)
+                for uid in who:
+                    by[uid] += 1 / len(who)
+            for uid, n in by.items():
+                r = row(uid, p)
+                r["planned_only"] = True
+                r["days"] += n
+                r["v"] += pd * n
+                out[uid]["days"] += n
 
-    out = defaultdict(lambda: {"value": 0.0, "days": 0, "hours": 0.0, "rhours": 0.0, "films": {}})
-
-    def row(uid, p):
-        return out[uid]["films"].setdefault(p.id, {"p": p, "days": 0, "v": 0.0, "h": 0.0, "rh": 0.0})
-
-    for pid, (s0, s1) in spans.items():
-        p = films[pid]
-        days = [d for d in workdays if s0 <= d <= s1] or [s1]     # a film placed on an off day still counts once
-        mine = [d for d in days if a <= d <= b]
-        if not mine:
-            continue
-        per_day = p.invoice_amount / len(days) if p.agency.currency == "INR" else 0
-        spells = list(p.spells.all())
-        by = defaultdict(float)        # two editors: each gets their own days (shared days split)
-        for d in mine:
-            who = editors_on(p, d, spells)
-            for uid in who:
-                by[uid] += 1 / len(who)
-        for uid, n in by.items():
-            r = row(uid, p)
-            r["days"] += round(n, 1)
-            r["v"] += per_day * n
-            out[uid]["days"] += round(n, 1)
-
-    # hours logged in [a, b], split into film work and revisions
-    def is_rev(stage, day, p):
-        return stage in REVISION_STAGES or bool(p.first_delivered_on and day > p.first_delivered_on)
-
-    logged = []      # (uid, pid, day, stage, hours)
-    for log in DayLog.objects.filter(date__range=(a, b), tasks__isnull=False).distinct().prefetch_related("tasks"):
-        sh = split_hours(log)
-        for t in log.tasks.all():
-            logged.append((log.user_id, t.project_id, log.date, t.stage, sh.get(t.id, 0)))
-    for e in ExtraEntry.objects.filter(date__range=(a, b)).only("user_id", "project_id", "date", "start", "end", "stage"):
-        logged.append((e.user_id, e.project_id, e.date, e.stage, e.hours))
-    missing = {pid for _, pid, *_ in logged} - set(films)
-    if missing:
-        films.update(Project.objects.select_related("agency").in_bulk(missing))
-    charged = {pid: p for pid, p in films.items() if p.revision_charge and p.agency.currency == "INR"}
-    rev_total = {}
-    if charged:      # all revision hours ever logged on films with a charge, to share it
-        for pid, p in charged.items():
-            tot = 0.0
-            for log in DayLog.objects.filter(tasks__project_id=pid).distinct().prefetch_related("tasks"):
-                sh = split_hours(log)
-                tot += sum(sh.get(t.id, 0) for t in log.tasks.all() if t.project_id == pid and is_rev(t.stage, log.date, p))
-            tot += sum(e.hours for e in ExtraEntry.objects.filter(project_id=pid) if is_rev(e.stage, e.date, p))
-            rev_total[pid] = tot
-    for uid, pid, day, stage, h in logged:
-        p = films.get(pid)
-        if not p or not h:
-            continue
-        r = row(uid, p)
-        out[uid]["hours"] += h
-        if is_rev(stage, day, p):
-            r["rh"] += h
-            out[uid]["rhours"] += h
-            if pid in rev_total and rev_total[pid]:
-                share = p.revision_charge * h / rev_total[pid]
-                r["v"] += share
-        else:
-            r["h"] += h
-
-    for d in out.values():
+    for uid, d in out.items():
         fl = list(d["films"].values())
         for f in fl:
             f["v"] = int(round(f["v"]))
+            f["days"], f["rd"] = round(f["days"], 1), round(f["rd"], 1)
             f["h"], f["rh"] = round(f["h"], 1), round(f["rh"], 1)
+            if f["over"] and (f["p"].editor_id == uid or any(s.user_id == uid for s in f["p"].spells.all())):
+                d["over"] += f["over"]
         d["value"] = sum(f["v"] for f in fl)
+        d["days"], d["rdays"], d["over"] = round(d["days"], 1), round(d["rdays"], 1), round(d["over"], 1)
         d["hours"], d["rhours"] = round(d["hours"], 1), round(d["rhours"], 1)
         d["films"] = sorted(fl, key=lambda f: (-f["v"], -f["days"], -(f["h"] + f["rh"])))
     return out
