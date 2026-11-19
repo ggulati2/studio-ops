@@ -14,7 +14,7 @@
   <thead><tr><th>Film</th><th>Editor</th><th>Status</th><th>Extra hours</th><th class="right">Pay for this film</th><th>Paid</th></tr></thead>
   <tbody>{% for p in films %}{% include "founder/_extra_film.html" with back=request.get_full_path %}{% empty %}<tr><td colspan="6" class="muted">No extra-work films in {{ month|date:"F" }}.</td></tr>{% endfor %}</tbody>
   </table></div>
-  <p class="small muted" style="margin:0">A film's pay goes into the payroll of the month the film is delivered. Films paid by the hour keep paying monthly for the hours logged until you type an amount.</p></section>
+  <p class="small muted" style="margin:0">A film's pay goes into the payroll of the month the film is sent to the agency (it doesn't need to be marked Delivered). Films paid by the hour keep paying monthly for the hours logged until you type an amount.</p></section>
 <section class="card"><h2>Is extra work worth it?</h2><div class="scroll"><table style="min-width:640px">
   <thead><tr><th>Extra job</th><th>Editor</th><th class="right">We invoice</th><th class="right">Extra pay</th><th class="right">We keep</th></tr></thead>
   <tbody>{% for m in margins %}<tr><td>{{ m.p }}</td><td>{{ m.p.editor.profile.name|default:"–" }}</td><td class="right">{{ m.p.agency.symbol }}{{ m.p.invoice_amount|money }}</td><td class="right">₹{{ m.cost|money }}</td>

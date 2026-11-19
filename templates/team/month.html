@@ -6,6 +6,7 @@
   <div><h1>{{ month|date:"F Y" }}</h1><p>Click any day to open it. Days marked <b style="color:var(--bad)">Not logged</b> can be filled right here.</p></div>
   <div class="actions"><a class="btn" href="?m={{ prev|date:'Y-m' }}" aria-label="Previous month">←</a><a class="btn" href="?m={{ next|date:'Y-m' }}" aria-label="Next month">→</a></div>
 </div>
+{% include "team/_delivery_kpis.html" %}
 <div class="grid" data-month-kpis>
   {% include "team/_month_kpis.html" %}
 </div>
@@ -19,5 +20,6 @@
   {% for c in cells %}{% if c %}
   {% include "team/_month_cell.html" %}{% else %}<div class="day out"></div>{% endif %}{% endfor %}
 </div></div>
+{% include "team/_delivery_films.html" %}
 <dialog class="qd-dialog" data-quickday data-break="{{ studio.break_minutes }}" aria-label="Log a missed day"><div class="qd-body" data-qd-body></div></dialog>
 {% endblock %}

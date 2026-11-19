@@ -241,11 +241,29 @@ def _extras_between(a, b):
         entries, fixed = defaultdict(list), defaultdict(int)
         for e in ExtraEntry.objects.filter(date__range=(a, b)).select_related("project"):
             entries[e.user_id].append(e)
-        for p in Project.objects.filter(is_extra=True, extra_basis="fixed", status=Project.CLOSED,
-                                        closed_on__range=(a, b)).only("editor_id", "extra_rate"):
+        for p in extra_fixed_paid(a, b).only("editor_id", "extra_rate"):
             fixed[p.editor_id] += p.extra_rate
         return entries, fixed
     return memo(("extras", a, b), load)
+
+
+# Once a film is out (sent to the agency, delivered, or back with the client's changes) the
+# editor has earned a fixed extra-work amount: it counts in the month it was first sent.
+EXTRA_EARNED = (Project.SENT_AGENCY, Project.CLOSED, Project.CLIENT_REV)
+
+
+def extra_paid_on(p):
+    """The day a fixed extra-work film counts for pay (first sent to the agency), or None if not yet."""
+    if p.extra_basis != "fixed" or p.status not in EXTRA_EARNED:
+        return None
+    return p.first_delivered_on or p.closed_on
+
+
+def extra_fixed_paid(a, b):
+    """Fixed-price extra-work films whose pay falls in [a, b]: first sent to the agency in that range."""
+    from django.db.models.functions import Coalesce
+    return (Project.objects.filter(is_extra=True, extra_basis="fixed", status__in=EXTRA_EARNED)
+            .annotate(paid_on=Coalesce("first_delivered_on", "closed_on")).filter(paid_on__range=(a, b)))
 
 
 def extra_pay(user, month):
@@ -256,6 +274,54 @@ def extra_pay(user, month):
 def extra_hours(user, month):
     entries, _ = _extras_between(month_start(month), month_end(month))
     return round(sum(e.hours for e in entries.get(user.id, [])), 1)
+
+
+# ---------------------------------------------------------------- editor's own deliveries
+def editor_deliveries(user, month):
+    """An editor's films finished in a month (first sent to the agency, or delivered, in it) and
+    whether each was on time. Judged on the editor's deadline only, never the agency's: a film
+    is late if the editor logged work on it after their deadline, up to the day it was sent.
+    Client changes (and anything logged after sending) are revisions and never make it late.
+    Also lists their open films already past the editor's deadline."""
+    from django.db.models.functions import Coalesce
+    a, b = month_start(month), month_end(month)
+    films = list(Project.objects.filter(editor=user)
+                 .annotate(done_on=Coalesce("first_delivered_on", "closed_on")).filter(done_on__range=(a, b))
+                 .select_related("agency").only("id", "couple", "deliverable", "status", "deadline", "first_delivered_on",
+                                                "closed_on", "agency__code", "agency__name").order_by("done_on", "couple"))
+    by_id = {p.id: p for p in films}
+    worked = defaultdict(list)                 # film -> days worked after the editor's deadline
+    if films:
+        rows = list(TaskEntry.objects.filter(daylog__user=user, project_id__in=by_id).exclude(stage=TaskStage.CLIENT)
+                    .values_list("project_id", "daylog__date"))
+        rows += list(ExtraEntry.objects.filter(user=user, project_id__in=by_id).exclude(stage=TaskStage.CLIENT)
+                     .values_list("project_id", "date"))
+        for pid, d in rows:
+            p = by_id[pid]
+            if p.deadline and p.deadline < d <= p.done_on:
+                worked[pid].append(d)
+    out = []
+    for p in films:
+        after = sorted(set(worked.get(p.id, [])))
+        p.late_days = after
+        p.days_over = (after[-1] - p.deadline).days if after else 0
+        p.verdict = "nodate" if not p.deadline else ("late" if after else "on_time")
+        out.append(p)
+    late = [p for p in out if p.verdict == "late"]
+    on_time = [p for p in out if p.verdict == "on_time"]
+    judged = len(late) + len(on_time)
+    today = timezone.localdate()
+    overdue = []
+    if a <= today <= b:
+        overdue = list(Project.objects.filter(editor=user, deadline__lt=today)
+                       .exclude(status__in=(Project.CLOSED, Project.ON_HOLD, Project.SENT_AGENCY, Project.CLIENT_REV))
+                       .select_related("agency").only("id", "couple", "deliverable", "status", "deadline",
+                                                      "agency__code", "agency__name").order_by("deadline"))
+        for p in overdue:
+            p.days_over = (today - p.deadline).days
+    return {"month": a, "films": out, "done": len(out), "on_time": on_time, "late": late,
+            "no_date": [p for p in out if p.verdict == "nodate"], "overdue": overdue, "is_current": a <= today <= b,
+            "pct": round(len(on_time) / judged * 100) if judged else None}
 
 
 # ---------------------------------------------------------------- payroll

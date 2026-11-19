@@ -1,0 +1,10 @@
+{% load ops_extras %}{% with dv=deliveries %}<section class="delivery-kpis" aria-label="My deliveries · {{ dv.month|date:'F' }}">
+  <div class="title"><h2>My deliveries · {{ dv.month|date:"F" }}</h2>{% if link %}<a class="small" href="{% url 'my_month' %}?m={{ dv.month|date:'Y-m' }}#my-films">See the films →</a>{% endif %}</div>
+  <div class="grid">
+    <div class="kpi"><span>Films done</span><b>{{ dv.done }}</b><small>Sent to the agency in {{ dv.month|date:"F" }}</small></div>
+    <div class="kpi{% if dv.on_time %} ok{% endif %}"><span>Delivered on time</span><b>{{ dv.on_time|length }}</b><small>{% if dv.pct is not None %}{{ dv.pct }}% on time{% else %}No work after your deadline{% endif %}</small></div>
+    <div class="kpi{% if dv.late %} bad{% endif %}"><span>Delivered late</span><b>{{ dv.late|length }}</b><small>{% for p in dv.late|slice:":2" %}{{ p.couple }} · {{ p.deliverable }}{% if not forloop.last %}, {% endif %}{% empty %}Worked on after your deadline{% endfor %}{% if dv.late|length > 2 %} +{{ dv.late|length|add:"-2" }} more{% endif %}</small></div>
+    {% if dv.is_current %}<div class="kpi{% if dv.overdue %} warn{% endif %}"><span>Past your deadline now</span><b>{{ dv.overdue|length }}</b><small>{% for p in dv.overdue|slice:":1" %}{{ p.couple }} · {{ p.deliverable }}, {{ p.days_over }} day{{ p.days_over|pluralize }} over{% empty %}Open films all within date{% endfor %}</small></div>{% endif %}
+  </div>
+  <p class="small muted" style="margin:0">Late = you logged work on the film after your deadline, up to the day it was sent to the agency. Client changes don't count.</p>
+</section>{% endwith %}

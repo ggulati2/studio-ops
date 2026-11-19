@@ -19,7 +19,7 @@ FOUNDER_PAGES = {
     "/team/": 35, "/payroll/": 20, "/deadlines/": 16, "/delivered/": 16, "/reports/": 12, "/invoices/": 18,
     "/delays/": 16, "/qc/": 24, "/leave/": 16, "/contract-editors/": 18, "/agencies/": 16,
 }
-EDITOR_PAGES = {"/today/": 30, "/my-month/": 28, "/my-jobs/": 32, "/my-leave/": 14, "/leaderboard/": 22}
+EDITOR_PAGES = {"/today/": 30, "/my-month/": 32, "/my-jobs/": 32, "/my-leave/": 14, "/leaderboard/": 22}
 
 
 class QueryBudgets(SeededTestCase):

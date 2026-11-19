@@ -1307,3 +1307,9 @@ nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 .ac-verdict-fixed{color:var(--ok)}.ac-verdict-not_fixed{color:var(--bad)}.ac-verdict-check{color:var(--warn)}
 .helper-steps li{margin:6px 0}
 .autocheck [hidden],.ac-helper-missing[hidden],.ac-helper-old[hidden]{display:none!important}
+
+/* Editor's own deliveries (Today, My month) */
+.kpi.ok{border-color:var(--ok-line);background:linear-gradient(180deg,var(--ok-bg),var(--card))}.kpi.ok span{color:var(--ok)}
+.delivery-kpis{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.delivery-kpis .title{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.delivery-kpis .title h2{margin:0}

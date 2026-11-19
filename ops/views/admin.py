@@ -110,7 +110,7 @@ def fy_estimate(today=None):
     salaries = sum(run[m] if m in run else monthly for m in months)
     entries, fixed = S._extras_between(a, min(b, today))
     extra_paid = sum(e.pay for es in entries.values() for e in es) + sum(fixed.values())
-    extra_booked = sum(p.extra_rate for p in films if p.is_extra and p.extra_basis == "fixed" and p.status != Project.CLOSED)
+    extra_booked = sum(p.extra_rate for p in films if p.is_extra and p.extra_basis == "fixed" and not S.extra_paid_on(p))
     contract = sum(p.contractor_fee for p in films)
     overheads = st.monthly_overheads * len(months)
     costs = salaries + extra_paid + extra_booked + contract + overheads
@@ -934,7 +934,7 @@ def _film_row(p, a, b):
     p.x_hours_month = round(sum(e.hours for e in month_x), 2)
     p.x_hours_all = round(sum(e.hours for e in allx), 2)
     p.x_hourly_pay = sum(e.pay for e in month_x) if p.extra_basis == "hourly" else 0
-    p.x_paid_in = p.closed_on if (p.extra_basis == "fixed" and p.status == Project.CLOSED and p.closed_on) else None
+    p.x_paid_in = S.extra_paid_on(p)
     return p
 
 
@@ -942,7 +942,7 @@ def _extra_films(month):
     """Every film with extra work this month, plus open extra jobs and those delivered this month."""
     a, b = month_start(month), month_end(month)
     qs = (Project.objects.filter(Q(extra_entries__date__range=(a, b)) | Q(is_extra=True) & (
-        ~Q(status=Project.CLOSED) | Q(closed_on__range=(a, b))))
+        ~Q(status=Project.CLOSED) | Q(closed_on__range=(a, b)) | Q(first_delivered_on__range=(a, b))))
           .distinct().select_related("editor__profile", "agency")
           .defer("brief", "agency__billing_address", "agency__notes")
           .prefetch_related(models.Prefetch("extra_entries", queryset=ExtraEntry.objects.select_related("user__profile")))
@@ -973,8 +973,8 @@ def extra_film_pay(request, pk):
             p.save(update_fields=["extra_basis", "extra_rate", "is_extra"])
             record(request, "extra.pay", str(p), f"{old} -> ₹{new:,} fixed")
         who = p.editor.profile.name if p.editor_id else "the editor"
-        say = [("success", (f"{p}: ₹{new:,} for {who}, " + ("paid with this month's payroll (delivered)."
-                                                            if p.status == Project.CLOSED else "paid with the payroll of the month it's delivered."))
+        say = [("success", (f"{p}: ₹{new:,} for {who}, " + (f"paid with the {S.extra_paid_on(p):%B} payroll (sent to the agency)."
+                                                            if S.extra_paid_on(p) else "paid with the payroll of the month it's sent to the agency."))
                 if new else f"{p}: no pay set for this film.")]
     if request.headers.get("X-Requested-With") == "fetch":
         clear_memo()

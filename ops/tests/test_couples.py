@@ -937,8 +937,8 @@ class ExtraNoAcceptNeeded(SeededTestCase):
         r = self.login("pratik").get("/my-extra/")
         self.assertNotContains(r, "New extra job offered to you")
         self.assertContains(r, "No Accept")
-        self.assertContains(r, "₹1,200 for the film, paid when delivered")
-        self.assertContains(r, "Coming when delivered")
+        self.assertContains(r, "₹1,200 for the film, paid when sent to the agency")
+        self.assertContains(r, "Coming when sent to the agency")
         self.assertContains(r, "No Accept · Teaser: ₹1,200")
         self.assertContains(r, "Logged On")
 
@@ -1617,3 +1617,125 @@ class AutoCheckPortal(SeededTestCase):
         for f in ("manifest.json", "runner.js", "analyse.js", "fio.js", "bridge.js"):
             self.assertIn(f"RedWed-QC-Helper/{f}", names)
         self.assertNotEqual(self.login("pratik").get("/qc/helper/download/").status_code, 200)
+
+
+class ExtraPaidWhenSent(SeededTestCase):
+    """A fixed extra-work amount is earned once the film is sent to the agency; it doesn't
+    have to be marked Delivered, and it counts once, in the month it was first sent."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.u = get_user_model().objects.get(username="pratik")
+        self.p = Project.objects.create(couple="Sent Pay", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                        editor=self.u, is_extra=True, extra_basis="fixed", extra_rate=4000)
+
+    def pay(self, month):
+        from ops.perf import clear
+        from ops.services import extra_pay
+        clear()
+        return extra_pay(self.u, month)
+
+    def test_sent_to_agency_counts_in_my_earnings(self):
+        from ops.services import add_months
+        from ops.views.admin import apply_status
+        today = timezone.localdate()
+        month, last = today.replace(day=1), add_months(today.replace(day=1), -1)
+        before = self.pay(month)
+        r = self.login("pratik").get("/my-extra/")
+        self.assertContains(r, "Coming when sent to the agency")
+        self.assertContains(r, "Sent Pay · Teaser: ₹4,000")
+        apply_status(self.p, Project.SENT_AGENCY, sent_on=today)
+        self.assertEqual(self.pay(month), before + 4000)
+        r = self.login("pratik").get("/my-extra/")
+        self.assertNotContains(r, "Sent Pay · Teaser: ₹4,000")         # no longer "coming"
+        self.assertContains(r, f"₹4,000 for the film, in {today:%B} earnings")
+        # back with the client's changes, then delivered next month: still counted once, in the sent month
+        apply_status(self.p, Project.CLIENT_REV)
+        self.assertEqual(self.pay(month), before + 4000)
+        self.p.status = Project.CLOSED
+        self.p.closed_on = add_months(month, 1)
+        self.p.save()
+        self.assertEqual(self.pay(month), before + 4000)
+        # a film sent last month is paid in last month's earnings, not this month's
+        self.p.first_delivered_on = last
+        self.p.save()
+        self.assertEqual(self.pay(month), before)
+        self.assertGreaterEqual(self.pay(last), 4000)
+
+    def test_founder_extra_page_shows_payroll_month_once_sent(self):
+        from ops.views.admin import apply_status
+        apply_status(self.p, Project.SENT_AGENCY, sent_on=timezone.localdate())
+        r = self.login("ag").get("/extra-work/")
+        self.assertContains(r, f'data-extra-film="{self.p.pk}"')
+        self.assertContains(r, f"{timezone.localdate():%b} payroll")
+
+
+class EditorDeliveries(SeededTestCase):
+    """Editors see films done this month, on time and late. Late = they logged work on the
+    film after the editor's deadline (up to the day it was sent). The agency's deadline is ignored."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.contrib.auth import get_user_model
+        self.u = get_user_model().objects.get(username="pratik")
+        Project.objects.filter(editor=self.u).update(editor=None)          # start from a clean slate
+        self.ag = Agency.objects.get(code="BRC")
+        self.today = timezone.localdate()
+        self.d = lambda n: self.today - timedelta(days=n)
+
+    def film(self, name, deadline, sent, agency_deadline=None):
+        p = Project.objects.create(couple=name, deliverable="Teaser", agency=self.ag, editor=self.u, deadline=deadline,
+                                   agency_deadline=agency_deadline)
+        if sent:
+            p.status, p.first_delivered_on = Project.SENT_AGENCY, sent
+            p.save()
+        return p
+
+    def log(self, p, day, stage=None):
+        from ops.models import DayLog, TaskEntry, TaskStage
+        log, _ = DayLog.objects.get_or_create(user=self.u, date=day, defaults={"day_type": DayLog.OFFICE})
+        TaskEntry.objects.create(daylog=log, project=p, stage=stage or TaskStage.EDIT, hours=4)
+
+    def test_on_time_late_and_overdue(self):
+        from ops.models import TaskStage
+        from ops.services import editor_deliveries
+        if self.today.day < 4:
+            self.skipTest("needs a few days of the month behind us")
+        # worked only up to the deadline; agency's deadline long passed: still on time for the editor
+        a = self.film("Ontime", self.d(2), self.d(1), agency_deadline=self.d(3))
+        self.log(a, self.d(2))
+        # worked the day after the editor's deadline: late, even though the agency's deadline is later
+        b = self.film("Latefilm", self.d(3), self.d(1), agency_deadline=self.today)
+        self.log(b, self.d(3))
+        self.log(b, self.d(2))
+        # client changes after the deadline never make it late
+        c = self.film("Clientchg", self.d(3), self.d(1))
+        self.log(c, self.d(2), stage=TaskStage.CLIENT)
+        # work after sending (revisions) doesn't count either
+        e = self.film("Aftersend", self.d(3), self.d(3))
+        self.log(e, self.d(1))
+        # still open and past the deadline
+        self.film("Stillopen", self.d(1), None)
+        r = editor_deliveries(self.u, self.today)
+        self.assertEqual(r["done"], 4)
+        self.assertEqual({p.couple for p in r["late"]}, {"Latefilm"})
+        self.assertEqual({p.couple for p in r["on_time"]}, {"Ontime", "Clientchg", "Aftersend"})
+        self.assertEqual(r["late"][0].days_over, 1)
+        self.assertEqual(r["pct"], 75)
+        self.assertEqual([p.couple for p in r["overdue"]], ["Stillopen"])
+
+    def test_pages_show_the_boxes(self):
+        if self.today.day < 4:
+            self.skipTest("needs a few days of the month behind us")
+        b = self.film("Latefilm", self.d(3), self.d(1))
+        self.log(b, self.d(2))
+        c = self.login("pratik")
+        r = c.get("/today/")
+        self.assertContains(r, "My deliveries")
+        self.assertContains(r, "Delivered late")
+        self.assertContains(r, "Latefilm · Teaser")
+        r = c.get("/my-month/")
+        self.assertContains(r, "Films done in")
+        self.assertContains(r, "Late · 1 day")
+        # someone else's films never show
+        self.assertNotContains(self.login("nikhil").get("/my-month/"), "Latefilm")

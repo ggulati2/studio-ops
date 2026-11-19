@@ -95,7 +95,7 @@ def today(request):
            "split": split_hours(log) if log.pk else {}, "my_jobs": _my_projects(user)[:6],
            "att": attendance(user, month), "free_leaves": StudioSettings.get().free_leaves_per_month,
            "holiday": holidays_between(d, d).get(d), "award": celebrated_award(),
-           "future": d > timezone.localdate(),
+           "future": d > timezone.localdate(), "deliveries": S.editor_deliveries(user, timezone.localdate()),
            "leave_req": user.leave_requests.filter(status__in=("pending", "approved"), start__lte=d, end__gte=d).first()}
     if ctx["award"]:
         ctx["congratulated"] = Congrats.objects.filter(award=ctx["award"], user=user).exists()
@@ -127,7 +127,8 @@ def my_month(request):
     return render(request, "team/month.html", {"cells": cells, "month": month, "prev": add_months(month, -1),
                                                "next": add_months(month, 1), "att": attendance(user, month),
                                                "free_leaves": StudioSettings.get().free_leaves_per_month,
-                                               "extra_h": extra_hours(user, month), "missing": missing})
+                                               "extra_h": extra_hours(user, month), "missing": missing,
+                                               "deliveries": S.editor_deliveries(user, month)})
 
 
 def _month_cell(user, d, logs, plans, hols, due, today):
@@ -359,7 +360,9 @@ def my_extra(request):
     jobs = list(Project.objects.filter(Q(editor=user, is_extra=True) | Q(extra_entries__user=user))
                 .exclude(extra_accepted=False).distinct().select_related("agency")
                 .defer("brief", "agency__billing_address", "agency__notes").order_by("status", "-pk"))
-    coming = [p for p in jobs if p.extra_basis == "fixed" and p.extra_rate and p.status != Project.CLOSED]
+    coming = [p for p in jobs if p.extra_basis == "fixed" and p.extra_rate and not S.extra_paid_on(p)]
+    for p in jobs:
+        p.x_paid_in = S.extra_paid_on(p)
     return render(request, "team/extra.html", {
         "form": form, "month": month, "prev": add_months(month, -1), "next": add_months(month, 1),
         "jobs": jobs, "coming": coming, "coming_total": sum(p.extra_rate for p in coming),

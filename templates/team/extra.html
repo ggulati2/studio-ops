@@ -16,8 +16,8 @@
   </div>
   <aside class="aside">
     <section class="card dark"><h2>My extra earnings · {{ month|date:"M" }}</h2><span style="letter-spacing:-.03em;font-size:34px">₹{{ pay|money }}</span><span class="small" style="color:var(--faint)">{{ hours|hours }} hrs · paid with your salary on the 1st</span>
-      {% if coming %}<div class="coming"><span class="small">Coming when delivered: <b>₹{{ coming_total|money }}</b></span>{% for p in coming %}<span class="small" style="color:var(--faint)">{{ p.couple }} · {{ p.deliverable }}: ₹{{ p.extra_rate|money }}</span>{% endfor %}</div>{% endif %}</section>
-    <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate|money }}/hr{% elif p.extra_rate %}₹{{ p.extra_rate|money }} for the film{% if p.status != 'closed' %}, paid when delivered{% endif %}{% else %}Pay not set yet{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
+      {% if coming %}<div class="coming"><span class="small">Coming when sent to the agency: <b>₹{{ coming_total|money }}</b></span>{% for p in coming %}<span class="small" style="color:var(--faint)">{{ p.couple }} · {{ p.deliverable }}: ₹{{ p.extra_rate|money }}</span>{% endfor %}</div>{% endif %}</section>
+    <section class="card"><h2>My extra jobs</h2>{% for p in jobs %}<div class="small" style="border-top:1px solid var(--line2);padding-top:6px"><b>{{ p }}</b><div class="muted">{% if p.extra_basis == 'hourly' %}₹{{ p.extra_rate|money }}/hr{% elif p.extra_rate %}₹{{ p.extra_rate|money }} for the film{% if p.x_paid_in %}, in {{ p.x_paid_in|date:'F' }} earnings{% else %}, paid when sent to the agency{% endif %}{% else %}Pay not set yet{% endif %} · {{ p.get_status_display }}</div></div>{% empty %}<span class="small muted">None yet.</span>{% endfor %}</section>
   </aside>
 </div>
 {% endblock %}

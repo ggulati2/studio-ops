@@ -1,0 +1,13 @@
+{% load ops_extras %}{% with dv=deliveries %}<section class="card" id="my-films"><div class="title"><h2>Films done in {{ dv.month|date:"F" }}</h2><span class="small muted">{{ dv.done }} film{{ dv.done|pluralize }}</span></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Film</th><th>Your deadline</th><th>Sent to agency</th><th>Last worked after deadline</th><th>Result</th></tr></thead>
+    <tbody>{% for p in dv.films %}<tr>
+      <td><b>{{ p.couple }}</b> <span class="small muted">{{ p.deliverable }}{% if p.agency.code %} · {{ p.agency.code }}{% endif %}</span></td>
+      <td class="nowrap">{{ p.deadline|date:"D j M"|default:"–" }}</td>
+      <td class="nowrap">{{ p.done_on|date:"D j M" }}</td>
+      <td class="nowrap">{% if p.late_days %}{{ p.late_days|last|date:"D j M" }} <span class="small muted">· {{ p.late_days|length }} day{{ p.late_days|length|pluralize }} of work</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td>{% if p.verdict == "late" %}<span class="tag bad">Late · {{ p.days_over }} day{{ p.days_over|pluralize }}</span>{% elif p.verdict == "on_time" %}<span class="tag ok">On time</span>{% else %}<span class="tag">No deadline set</span>{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="5" class="muted">No films sent to the agency in {{ dv.month|date:"F" }} yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if dv.overdue %}<p class="small" style="margin:0;color:var(--warn)"><b>Past your deadline now:</b> {% for p in dv.overdue %}{{ p.couple }} · {{ p.deliverable }} (due {{ p.deadline|date:"j M" }}){% if not forloop.last %}, {% endif %}{% endfor %}. Need more time? Report a delay from <a href="{% url 'my_jobs' %}">My jobs</a>.</p>{% endif %}
+</section>{% endwith %}
