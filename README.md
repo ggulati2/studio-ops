@@ -2,6 +2,8 @@
 
 Private web app for running the editing studio: projects, planner, deadlines, daily logs, QC, delivery, hard drives, invoices, payroll, extra work, and Trailblazer of the Month. Founders, team leads, editors, QC and the drive desk each log in and see only what their role allows.
 
+> New to this repo, or picking it up from another Claude account? Start with **[HANDOVER.md](HANDOVER.md)**: where it runs, how changes are made, how the owner works, AutoCheck internals and the parked ideas.
+
 Deploying it for ₹0 (Render + Supabase): **[DEPLOY.md](DEPLOY.md)**.
 
 ---
