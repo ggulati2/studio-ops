@@ -63,7 +63,7 @@
     if (/cut|remove|trim|delete|start|end|add|insert|speech|shot|replace|move|edit|extend|shorten|don.?t|keep|transition|slow|fast|speed/.test(t)) return "edit";
     return "other";
   }
-  var throughout = function (t) { return /through ?out|thru ?out|whole film|all over|entire|everywhere|full film/i.test(t || ""); };
+  var throughout = function (t) { return /through ?out|thru ?out|thur ?out|thro ?out|whole film|all over|entire|everywhere|full film/i.test(t || ""); };
   var clean = function (s) { return (s || "").replace(/#/g, "no. ").replace(/\s+/g, " ").trim(); };
 
   function runs(n, pred, minLen, step) {
@@ -103,12 +103,12 @@
     // ---- 2. quick pass + audio
     var Q2, A2, Q1, A1;
     log("Quick pass on V2 (whole film)…", 0.08);
-    Q2 = await AC.quickPass(await AC.loadProxy(I2.proxy), 0.5, function (f) { barEl.style.width = Math.round((0.08 + f * 0.17) * 100) + "%"; });
+    Q2 = await AC.quickPassHLS(I2.vBase, I2.duration, 0.5, function (f) { barEl.style.width = Math.round((0.08 + f * 0.17) * 100) + "%"; });
     log("Listening to V2's audio…", 0.26);
     A2 = await AC.audioPass(I2.aBase);
     if (I1) {
       log("Quick pass on V1…", 0.32);
-      Q1 = await AC.quickPass(await AC.loadProxy(I1.proxy), 0.5, function (f) { barEl.style.width = Math.round((0.32 + f * 0.17) * 100) + "%"; });
+      Q1 = await AC.quickPassHLS(I1.vBase, I1.duration, 0.5, function (f) { barEl.style.width = Math.round((0.32 + f * 0.17) * 100) + "%"; });
       log("Listening to V1's audio…", 0.5);
       A1 = await AC.audioPass(I1.aBase);
     }
@@ -132,9 +132,12 @@
         else if (k === "text") {
           var fa = await HD1.frames(tv1, tv1 + 0.2, 10, 320), fb = await HD2.frames(tv2, tv2 + 0.2, 10, 320);
           if (fa.length && fb.length) {
-            var dd = AC.diff(fa[0], fb[0]);
-            if (dd > 6) { r.verdict = "fixed"; r.note = "the text/graphic changed"; }
-            else { r.verdict = "not_fixed"; r.note = "the frame looks the same as V1"; }
+            // titles are a small part of the frame, so look at the most-changed region, not the whole frame
+            var bm = Math.max.apply(null, AC.blocks(fa[0], fb[0]));
+            r.measure = [Math.round(bm)];
+            if (bm >= 12) { r.verdict = "fixed"; r.note = "the text/graphic changed"; }
+            else if (bm < 6) { r.verdict = "not_fixed"; r.note = "the frame looks the same as V1"; }
+            else { r.verdict = "check"; r.note = "only a small change here; please check the text"; }
             if (/spell|name|typo/i.test(c.text) && r.verdict === "fixed") { r.verdict = "check"; r.note = "the text changed; please check the spelling"; }
           }
         } else if (k === "look") {
@@ -175,7 +178,8 @@
             sp1 = Math.max(sp1, A1.score[a1 + w2] || 0); sp2 = Math.max(sp2, A2.score[a2 + bs + w2] || 0);
           }
           mad /= 61; r.measure = [Math.round(mad * 10) / 10, Math.round(sp1 * 10) / 10, Math.round(sp2 * 10) / 10];
-          if (mad < 6 && sp2 >= sp1 * 0.7) { r.verdict = "not_fixed"; r.note = "the audio here is unchanged from V1"; }
+          if (mad < 6 && sp1 < 1) { r.verdict = "check"; r.note = "the audio is unchanged, but the glitch is too subtle to measure; please listen"; }
+          else if (mad < 6 && sp2 >= sp1 * 0.7) { r.verdict = "not_fixed"; r.note = "the audio here is unchanged from V1"; }
           else if (sp2 > 1.4 && sp2 >= sp1 * 0.5) { r.verdict = "check"; r.note = "the audio changed but a spike may still be there; please listen"; }
           else { r.verdict = "fixed"; r.note = "the audio here was reworked"; }
         } else if (k === "jump") {
@@ -236,7 +240,7 @@
       }
       if (per.length >= 4) {
         var lo = per.reduce(function (a, b) { return b[1] < a[1] ? b : a; }), hi = per.reduce(function (a, b) { return b[1] > a[1] ? b : a; });
-        if (hi[1] - lo[1] > 12 * s) add("loudness", hi[0] * 60, "Loudness is uneven: around " + fmt(hi[0] * 60) + " the audio is about " + Math.round(hi[1] - lo[1]) + " dB louder than around " + fmt(lo[0] * 60) + ". Please level the audio.");
+        if (hi[1] - lo[1] > 15 * s) add("loudness", hi[0] * 60, "Loudness is uneven: around " + fmt(hi[0] * 60) + " the audio is about " + Math.round(hi[1] - lo[1]) + " dB louder than around " + fmt(lo[0] * 60) + ". Please level the audio.");
       }
     }
     if (rules.pops !== false) {
@@ -280,7 +284,7 @@
         if (si % 10 === 0) barEl.style.width = Math.round((0.88 + 0.06 * si / Math.max(1, shots.length)) * 100) + "%";
         try {
           var j3 = AC.shake(await HD2.frames(shots[si] - 0.8, shots[si] + 0.8, 12.5, 320));
-          if (j3 != null && j3 > 0.45 * s && !already(shots[si])) shaky.push(shots[si]);
+          if (j3 != null && j3 > 0.75 * s && !already(shots[si])) shaky.push(shots[si]);
         } catch (e) { /* skip */ }
       }
       shaky.forEach(function (t) { add("shake", t, "Camera shake in this shot. Please stabilise."); });

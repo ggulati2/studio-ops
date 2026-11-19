@@ -6,6 +6,25 @@
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   AC.sleep = sleep;
 
+  /* fetch with a time limit and retries: Frame.io's stream server sometimes stalls on a segment */
+  AC.get = async function (url, opts) {
+    var last;
+    for (var a = 0; a < 4; a++) {
+      try {
+        var r = await fetch(url, Object.assign({}, opts || {}, {signal: AbortSignal.timeout(a < 2 ? 20000 : 45000)}));
+        if (r.status < 500) {
+          if ((opts || {}).method === "HEAD") return r;
+          var b = await r.arrayBuffer();   // read the body inside the time limit too
+          return {status: r.status, arrayBuffer: function () { return Promise.resolve(b); },
+                  blob: function () { return Promise.resolve(new Blob([b])); }};
+        }
+        last = new Error("server error " + r.status);
+      } catch (e) { last = e; }
+      await sleep(1000 * (a + 1));
+    }
+    throw new Error("Frame.io didn't send part of the video (" + (last && last.name === "TimeoutError" ? "timed out" : last && last.message) + ")");
+  };
+
   AC.fmt = function (s) {
     s = Math.max(0, Math.round(s));
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -28,7 +47,7 @@
 
   /* ---------------- quick pass: the small preview, every half second ---------------- */
   AC.loadProxy = async function (url) {
-    var buf = await (await fetch(url)).blob();
+    var buf = await (await AC.get(url)).blob();
     var v = document.createElement("video");
     v.muted = true; v.preload = "auto"; v.src = URL.createObjectURL(buf);
     await new Promise(function (r, j) { v.onloadedmetadata = r; v.onerror = function () { j(new Error("preview won't load")); }; });
@@ -65,7 +84,7 @@
 
   /* ---------------- audio: Frame.io's audio stream, decoded at 16 kHz ---------------- */
   AC.lastSegment = async function (base) {
-    var ok = async function (n) { try { return (await fetch(base + n + ".m4s", {method: "HEAD"})).status === 200; } catch (e) { return false; } };
+    var ok = async function (n) { try { return (await AC.get(base + n + ".m4s", {method: "HEAD"})).status === 200; } catch (e) { return false; } };
     var lo = 1, hi = 8000;
     while (lo < hi) { var m = Math.ceil((lo + hi) / 2); if (await ok(m)) lo = m; else hi = m - 1; }
     return lo;
@@ -73,10 +92,10 @@
 
   AC.audioPass = async function (base, onProgress) {
     var last = await AC.lastSegment(base);
-    var parts = [await (await fetch(base + "init.mp4")).arrayBuffer()];
+    var parts = [await (await AC.get(base + "init.mp4")).arrayBuffer()];
     for (var i = 1; i <= last; i += 8) {
       var ps = [];
-      for (var j = i; j < Math.min(i + 8, last + 1); j++) ps.push(fetch(base + j + ".m4s").then(function (r) { return r.arrayBuffer(); }));
+      for (var j = i; j < Math.min(i + 8, last + 1); j++) ps.push(AC.get(base + j + ".m4s").then(function (r) { return r.arrayBuffer(); }));
       parts.push.apply(parts, await Promise.all(ps));
       if (onProgress) onProgress(i / last);
     }
@@ -166,7 +185,7 @@
   AC.HD.prototype.frames = async function (t0, t1, fps, W) {
     var self = this;
     if (!self.init) {
-      self.init = await (await fetch(self.base + "init.mp4")).arrayBuffer();
+      self.init = await (await AC.get(self.base + "init.mp4")).arrayBuffer();
       var u8 = new Uint8Array(self.init); self.codec = "avc1.640028";
       for (var i = 0; i < u8.length - 8; i++) {
         if (u8[i] === 0x61 && u8[i + 1] === 0x76 && u8[i + 2] === 0x63 && u8[i + 3] === 0x43) {
@@ -179,7 +198,7 @@
     var s0 = Math.floor(t0 / self.segDur) + 1, s1 = Math.floor(Math.max(t0, t1 - 0.001) / self.segDur) + 1;
     var bufs = [];
     for (var s = s0; s <= s1; s++) {
-      var r = await fetch(self.base + s + ".m4s");
+      var r = await AC.get(self.base + s + ".m4s");
       if (r.status !== 200) break;
       bufs.push(await r.arrayBuffer());
     }
@@ -207,6 +226,107 @@
     return out;
   };
 
+  /* fetch the segments of a stretch of a stream (6 at a time) */
+  AC.HD.prototype.fetchSegs = async function (t0, t1) {
+    var self = this;
+    if (!self.init) await self.frames(0, 0.01, 1, 16);
+    var s0 = Math.floor(Math.max(0, t0) / self.segDur) + 1, s1 = Math.floor(Math.max(t0, t1 - 0.001) / self.segDur) + 1, bufs = [];
+    for (var s = s0; s <= s1; s += 6) {
+      var ps = [];
+      for (var j = s; j <= Math.min(s1, s + 5); j++) ps.push(AC.get(self.base + j + ".m4s").then(function (r) { return r.status === 200 ? r.arrayBuffer() : null; }));
+      (await Promise.all(ps)).forEach(function (b) { if (b) bufs.push(b); });
+    }
+    return bufs;
+  };
+
+  /* load a stretch into a video element (pass `pending` to use segments already being fetched) */
+  AC.HD.prototype.load = async function (t0, t1, pending) {
+    var self = this;
+    var bufs = await (pending || self.fetchSegs(t0, t1));
+    var v = document.createElement("video"); v.muted = true;
+    var ms = new MediaSource(); v.src = URL.createObjectURL(ms);
+    await new Promise(function (r) { ms.addEventListener("sourceopen", r, {once: true}); });
+    var sb = ms.addSourceBuffer('video/mp4; codecs="' + self.codec + '"');
+    var app = function (b) { return new Promise(function (r, j) { sb.addEventListener("updateend", r, {once: true}); sb.addEventListener("error", j, {once: true}); sb.appendBuffer(b); }); };
+    await app(self.init);
+    for (var b = 0; b < bufs.length; b++) await app(bufs[b]);
+    try { ms.endOfStream(); } catch (e) {}
+    return v;
+  };
+
+  /* play a stretch at 16x and grab a small frame every `step` seconds (much faster than seeking) */
+  AC.HD.prototype.sample = async function (t0, t1, step, W, cb, pending) {
+    var v = await this.load(t0, t1, pending); W = W || 32; var H = Math.round(W * 9 / 16);
+    var c = document.createElement("canvas"); c.width = W; c.height = H;
+    var g = c.getContext("2d", {willReadFrequently: true});
+    var next = Math.ceil(t0 / step) * step;
+    await new Promise(function (res) { v.addEventListener("seeked", res, {once: true}); v.currentTime = Math.max(0, t0); setTimeout(res, 3000); });
+    await new Promise(function (done) {
+      var fin = false, end = function () { if (!fin) { fin = true; v.pause(); done(); } };
+      var grab = function (now, meta) {
+        var t = meta && meta.mediaTime != null ? meta.mediaTime : v.currentTime;
+        if (t + 0.021 >= next) {
+          g.drawImage(v, 0, 0, W, H);
+          var d = g.getImageData(0, 0, W, H).data, Y = new Float32Array(W * H), R = 0, G = 0, B = 0;
+          for (var k = 0; k < W * H; k++) { Y[k] = 0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2]; R += d[k * 4]; G += d[k * 4 + 1]; B += d[k * 4 + 2]; }
+          cb({t: t, Y: Y, W: W, H: H, rgb: [R / (W * H), G / (W * H), B / (W * H)]});
+          while (next <= t + 0.021) next += step;
+        }
+        if (v.ended || t >= t1 - 0.05) return end();
+        v.requestVideoFrameCallback(grab);
+      };
+      v.onended = end;
+      v.playbackRate = 16; v.requestVideoFrameCallback(grab); v.play().catch(end);
+      setTimeout(end, (t1 - t0) / 16 * 3000 + 5000);   // a hidden tab stops playback; the caller re-does gaps
+    });
+    URL.revokeObjectURL(v.src);
+  };
+
+  function qpFrom(f, out, i) {
+    var Y = f.Y, n = Y.length, s = 0;
+    for (var k = 0; k < n; k++) s += Y[k];
+    out.lum[i] = s / n; out.rgb[i * 3] = f.rgb[0]; out.rgb[i * 3 + 1] = f.rgb[1]; out.rgb[i * 3 + 2] = f.rgb[2];
+    var so = Array.from(Y).sort(function (a, b) { return a - b; });
+    out.p5[i] = so[Math.floor(n * 0.05)]; out.p95[i] = so[Math.floor(n * 0.95)];
+    for (var by = 0; by < 4; by++) for (var bx = 0; bx < 8; bx++) {
+      var t = 0, c = 0;
+      for (var yy = Math.floor(by * f.H / 4); yy < Math.floor((by + 1) * f.H / 4); yy++)
+        for (var xx = bx * 4; xx < bx * 4 + 4; xx++) { t += Y[yy * f.W + xx]; c++; }
+      out.sig[i * 32 + by * 8 + bx] = t / c;
+    }
+  }
+
+  /* quick pass from Frame.io's 360p stream (the 180p preview isn't always loaded by the page) */
+  AC.quickPassHLS = async function (base, dur, step, onProgress) {
+    var low = base;
+    var tries = ["h264_360", "h264_540", "h264_720"];
+    for (var q = 0; q < tries.length; q++) {
+      var b = base.replace(/\/h264_[a-z0-9_]+\//, "/" + tries[q] + "/");
+      try { if ((await AC.get(b + "init.mp4", {method: "HEAD"})).status === 200) { low = b; break; } } catch (e) { /* next */ }
+    }
+    if (!dur) dur = (await AC.lastSegment(low)) * 2;
+    var hd = new AC.HD(low), n = Math.floor(dur / step), has = new Uint8Array(n);
+    var out = {dur: dur, step: step, n: n, sig: new Uint8Array(n * 32), lum: new Float32Array(n), p5: new Uint8Array(n),
+               p95: new Uint8Array(n), rgb: new Uint8Array(n * 3)};
+    var CH = 120, pending = hd.fetchSegs(0, Math.min(dur, CH));
+    for (var t0 = 0; t0 < dur; t0 += CH) {
+      var t1 = Math.min(dur, t0 + CH), got = 0, mine = pending;
+      pending = t1 < dur ? hd.fetchSegs(t1, Math.min(dur, t1 + CH)) : null;   // fetch the next stretch while this one plays
+      var put = function (f) { var i = Math.round(f.t / step); if (i < n && !has[i]) { qpFrom(f, out, i); has[i] = 1; got++; } };
+      if (!document.hidden) await hd.sample(t0, t1, step, 32, put, mine);
+      if (got < (t1 - t0) / step * 0.6) (await hd.frames(t0, t1, 1 / step, 32)).forEach(put);   // tab in the background: seek instead
+      if (onProgress) onProgress(t0 / dur);
+    }
+    var fill = function (i, j) {
+      out.lum[i] = out.lum[j]; out.p5[i] = out.p5[j]; out.p95[i] = out.p95[j];
+      for (var k = 0; k < 32; k++) out.sig[i * 32 + k] = out.sig[j * 32 + k];
+      for (var k2 = 0; k2 < 3; k2++) out.rgb[i * 3 + k2] = out.rgb[j * 3 + k2];
+    };
+    for (var i = 1; i < n; i++) if (!has[i] && has[i - 1]) { fill(i, i - 1); has[i] = 1; }
+    for (var i2 = n - 2; i2 >= 0; i2--) if (!has[i2] && has[i2 + 1]) { fill(i2, i2 + 1); has[i2] = 1; }
+    return out;
+  };
+
   function meanLum(f) { var s = 0; for (var i = 0; i < f.Y.length; i++) s += f.Y[i]; return s / f.Y.length; }
   function diff(a, b, step) { var s = 0, n = 0; step = step || 2; for (var i = 0; i < a.Y.length; i += step) { s += Math.abs(a.Y[i] - b.Y[i]); n++; } return s / n; }
   function ndiff(a, b) {   // structure only (brightness-normalised)
@@ -214,6 +334,17 @@
     for (var i = 0; i < a.Y.length; i += 3) { s += Math.abs((a.Y[i] - ma) - (b.Y[i] - mb)); n++; }
     return s / n;
   }
+  /* mean difference in each of 8x6 regions (a changed title shows up in a few regions only) */
+  AC.blocks = function (a, b) {
+    var W = a.W, H = a.H, out = [];
+    for (var by = 0; by < 6; by++) for (var bx = 0; bx < 8; bx++) {
+      var s = 0, n = 0;
+      for (var y = Math.floor(by * H / 6); y < Math.floor((by + 1) * H / 6); y++)
+        for (var x = Math.floor(bx * W / 8); x < Math.floor((bx + 1) * W / 8); x++) { s += Math.abs(a.Y[y * W + x] - b.Y[y * W + x]); n++; }
+      out.push(s / n);
+    }
+    return out;
+  };
   AC.meanLum = meanLum; AC.diff = diff; AC.ndiff = ndiff;
 
   /* global camera motion between frames: (dx, dy) by block matching on a small copy */

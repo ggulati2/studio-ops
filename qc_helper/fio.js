@@ -15,6 +15,7 @@ async function fioPrepare() {
       p: R.find(function (n) { return /video_h264_\d+\.mp4/.test(n); })
     };
   };
+  try { performance.setResourceTimingBufferSize(5000); } catch (e) { /* older Chrome */ }
   var f = find();
   if (!f.v || !f.a) {
     var play = document.querySelector("[data-testid=overlay-play-button]") || document.querySelector("[data-testid=play-button]");
@@ -22,6 +23,8 @@ async function fioPrepare() {
     for (var k = 0; k < 30 && !(f.v && f.a); k++) { await sleep(500); f = find(); }
     document.querySelectorAll("video").forEach(function (v) { v.pause(); });
   }
+  // the audio sits next to the video under the same token
+  if (f.v && !f.a) f.a = f.v.replace(/\/h264_[a-z0-9_]+\/(\d+\.m4s)/, "/aac_cha2/$1");
   var vids = Array.prototype.slice.call(document.querySelectorAll("video"));
   var dur = Math.max.apply(null, vids.map(function (v) { return isFinite(v.duration) ? v.duration : 0; }));
   var hd = (f.v || "").match(/\/(h264_[a-z0-9_]+)\//);
