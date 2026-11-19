@@ -92,7 +92,14 @@ def qc_entry(request, pk):
         if op == "review_delete":
             r.delete()
             record(request, "qc.review_delete", str(p), f"{'passed' if r.passed else 'failed'} {r.created:%d %b}")
-            messages.success(request, f"{p}: that QC entry is deleted.")
+            left = p.reviews.filter(kind=Review.QC).count()
+            msg = f"{p}: that QC entry is deleted."
+            if _waiting_for_qc(p):
+                msg += (" The film is still waiting for QC, so it stays on the list. To take it off,"
+                        " use Remove this film from the QC list.")
+            elif left:
+                msg += f" {left} more QC entr{'y' if left == 1 else 'ies'} left for this film."
+            messages.success(request, msg)
         else:
             r.passed = P.get("passed") == "1"
             r.comments = P.get("comments", "")[:4000]
@@ -116,15 +123,46 @@ def qc_entry(request, pk):
             record(request, "qc.closed_edit", str(p), f"{on or 'not closed'}")
             messages.success(request, f"{p}: " + (f"closed from QC on {on:%d %b}." if on else "not closed from QC."))
     elif op == "remove":
-        n = p.reviews.filter(kind=Review.QC).count()
-        p.reviews.filter(kind=Review.QC).delete()
-        p.qc_closed_on, p.qc_closed_by = None, None
-        p.save(update_fields=["qc_closed_on", "qc_closed_by"])
-        if p.status == Project.QC:
-            messages.info(request, f"{p} is still waiting for QC, so it stays in the queue.")
-        record(request, "qc.remove", str(p), f"{n} QC entr{'y' if n == 1 else 'ies'} removed")
-        messages.success(request, f"{p}: removed from the QC list ({n} entr{'y' if n == 1 else 'ies'}).")
+        n, was = _remove_from_qc(p)
+        record(request, "qc.remove", str(p), f"{n} QC entr{'y' if n == 1 else 'ies'} removed"
+                                             + (f"; status {was} -> {p.get_status_display()}" if was else ""))
+        msg = f"{p}: removed from the QC list ({n} entr{'y' if n == 1 else 'ies'} deleted)."
+        if was:
+            msg += f" It was {was}; it's now {p.get_status_display()}, so the editor can send it again when ready."
+        messages.success(request, msg)
     return redirect(back)
+
+
+def _waiting_for_qc(p):
+    return p.status == Project.QC or p.events.filter(status=FilmEvent.QC).exists()
+
+
+def _remove_from_qc(p):
+    """Take a film off the QC list for good: its QC entries go, it's no longer closed from QC,
+    and if it (or any of its events) was waiting for QC it goes back to the editor, so it
+    doesn't come straight back as "Waiting". Queued AutoChecks for it are cancelled.
+    Returns (entries deleted, old status label or "")."""
+    from ..models import AutoCheckRun
+    n = p.reviews.filter(kind=Review.QC).count()
+    p.reviews.filter(kind=Review.QC).delete()
+    was = p.get_status_display() if _waiting_for_qc(p) else ""
+    for e in p.events.filter(status=FilmEvent.QC):
+        if e.reviews.exists():
+            e.status = FilmEvent.REVISIONS            # it has a TL review history: back with the editor
+            e.save(update_fields=["status"])
+        else:
+            e.delete()                                # sent for QC and nothing else: as if never sent
+    p.qc_closed_on, p.qc_closed_by = None, None
+    fields = ["qc_closed_on", "qc_closed_by"]
+    if p.status == Project.QC:
+        p.status = Project.IN_PROGRESS
+        fields.append("status")
+    p.save(update_fields=fields)
+    S.sync_film_status(p)
+    p.refresh_from_db(fields=["status", "whole_review"])
+    AutoCheckRun.objects.filter(project=p, status__in=(AutoCheckRun.QUEUED, AutoCheckRun.RUNNING)).update(
+        status=AutoCheckRun.FAILED, finished_at=timezone.now(), progress="Film removed from QC")
+    return n, was
 
 
 @requires("qc.earnings")

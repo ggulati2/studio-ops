@@ -1448,6 +1448,66 @@ class QCEarnings(SeededTestCase):
         self.assertEqual(qc.post(f"/qc/{p.pk}/entry/", {"op": "remove"}).status_code, 403)
 
 
+class QCRemoveReallyRemoves(SeededTestCase):
+    """A founder deleting a film's QC entries / removing it from the QC list must make it leave
+    the board, even while the film (or one of its events) is waiting for QC."""
+
+    def setUp(self):
+        from ops.models import FilmEvent
+        self.ag = self.login("ag")
+        brc = Agency.objects.get(code="BRC")
+        self.whole = Project.objects.create(couple="Waiting Whole", deliverable="Teaser", agency=brc,
+                                            start_date=timezone.localdate(), status=Project.QC)
+        self.byev = Project.objects.create(couple="Waiting Event", deliverable="Full Film", agency=brc,
+                                           start_date=timezone.localdate(), status=Project.IN_PROGRESS)
+        FilmEvent.objects.create(project=self.byev, name="Haldi", status=FilmEvent.QC)
+        from ops.services import sync_film_status
+        sync_film_status(self.byev)
+
+    def board(self):
+        return [b["p"].couple for b in self.ag.get("/qc/").context["board"]]
+
+    def test_remove_takes_waiting_films_off_the_board(self):
+        from ops.models import AutoCheckRun, FilmEvent, Review
+        qc = self.login("qc")
+        qc.post(f"/qc/{self.whole.pk}/", {"decision": "fail", "comments": "fix blacks"})
+        Project.objects.filter(pk=self.whole.pk).update(status=Project.QC)       # editor re-sent it
+        AutoCheckRun.objects.create(project=self.whole, round=2, auto=True)
+        self.assertIn("Waiting Whole", self.board())
+        self.assertIn("Waiting Event", self.board())
+        r = self.ag.post(f"/qc/{self.whole.pk}/entry/", {"op": "remove"}, follow=True)
+        self.assertContains(r, "now In progress")
+        self.whole.refresh_from_db()
+        self.assertEqual(self.whole.status, Project.IN_PROGRESS)
+        self.assertFalse(Review.objects.filter(project=self.whole, kind="qc").exists())
+        self.assertFalse(AutoCheckRun.objects.filter(project=self.whole, status=AutoCheckRun.QUEUED).exists())
+        self.ag.post(f"/qc/{self.byev.pk}/entry/", {"op": "remove"})
+        self.byev.refresh_from_db()
+        self.assertEqual(self.byev.status, Project.IN_PROGRESS)
+        self.assertFalse(FilmEvent.objects.filter(project=self.byev, status=FilmEvent.QC).exists())
+        board = self.board()
+        self.assertNotIn("Waiting Whole", board)
+        self.assertNotIn("Waiting Event", board)
+
+    def test_deleting_the_only_entry_of_a_passed_film_removes_it(self):
+        from ops.models import Review
+        qc = self.login("qc")
+        qc.post(f"/qc/{self.whole.pk}/", {"decision": "pass", "comments": ""})
+        self.assertIn("Waiting Whole", self.board())
+        rev = Review.objects.get(project=self.whole, kind="qc")
+        r = self.ag.post(f"/qc/{self.whole.pk}/entry/", {"op": "review_delete", "review": rev.pk}, follow=True)
+        self.assertContains(r, "that QC entry is deleted")
+        self.assertNotIn("Waiting Whole", self.board())
+
+    def test_deleting_an_entry_while_waiting_says_why_it_stays(self):
+        from ops.models import Review
+        Review.objects.create(project=self.whole, kind=Review.QC, passed=False, comments="old")
+        rev = Review.objects.get(project=self.whole, kind="qc")
+        r = self.ag.post(f"/qc/{self.whole.pk}/entry/", {"op": "review_delete", "review": rev.pk}, follow=True)
+        self.assertContains(r, "still waiting for QC")
+        self.assertContains(r, "data-confirm=")
+
+
 class QCContractMerged(SeededTestCase):
     def test_founder_menu_has_one_item_with_tabs(self):
         f = self.login("ag")

@@ -7,7 +7,7 @@
       <div class="small muted">{{ r.created|date:"j M, g:i A" }} · {{ r.reviewer.profile.name|default:"—" }}{% if r.event_id %} · {{ r.event.name }}{% endif %}</div>
       <select name="passed" class="input"><option value="1"{% if r.passed %} selected{% endif %}>Passed</option><option value="0"{% if not r.passed %} selected{% endif %}>Failed</option></select>
       <textarea name="comments" class="input" rows="2" placeholder="Comments">{{ r.comments }}</textarea>
-      <div class="actions"><button class="btn sm" name="op" value="review_save">Save</button><button class="btn sm danger" name="op" value="review_delete">Delete entry</button></div>
+      <div class="actions"><button class="btn sm" name="op" value="review_save">Save</button><button class="btn sm danger" name="op" value="review_delete" data-confirm="Delete this QC entry? This can't be undone.">Delete entry</button></div>
     </form>{% empty %}<span class="small muted">No QC entries.</span>{% endfor %}
     <form method="post" action="{% url 'qc_entry' p.pk %}" class="qc-edit-row" data-live-page>{% csrf_token %}
       <div class="small"><b>Closed from QC</b></div>
@@ -16,6 +16,7 @@
         <button class="btn sm" name="op" value="closed">Save</button></div>
       <span class="small muted">Clear the date to mark it not closed.</span>
     </form>
-    <form method="post" action="{% url 'qc_entry' p.pk %}" data-live-page>{% csrf_token %}<button class="btn sm danger" name="op" value="remove">Remove this film from the QC list</button></form>
+    <form method="post" action="{% url 'qc_entry' p.pk %}" data-live-page>{% csrf_token %}<button class="btn sm danger" name="op" value="remove" data-confirm="Remove {{ p }} from the QC list? Its QC entries are deleted, and if it's waiting for QC it goes back to the editor as In progress.">Remove this film from the QC list</button>
+      <span class="small muted">Deletes its QC entries. If it's waiting for QC, it goes back to the editor as In progress.</span></form>
   </div>
 </details>
