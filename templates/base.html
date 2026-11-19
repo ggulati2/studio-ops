@@ -16,7 +16,8 @@
 <script src="{% static 'tables.js' %}" defer></script>
 <script src="{% static 'live.js' %}" defer></script>
 <script src="{% static 'suggest.js' %}" defer></script>
-<script src="{% static 'autocheck.js' %}" defer></script>
+{% if request.role == "qc" or request.role == "admin" %}<meta name="ac-csrf" content="{{ csrf_token }}">{% if request.role == "qc" %}<meta name="ac-claim" content="{% url 'autocheck_claim' %}">{% endif %}
+<script src="{% static 'autocheck.js' %}" defer></script>{% endif %}
 {% block scripts %}{% endblock %}
 <noscript><style>@media (max-width:1079.98px){.side{position:static!important;transform:none!important;visibility:visible!important;width:100%!important;height:auto!important;box-shadow:none!important}.shell{flex-direction:column}.topbar .iconbtn{visibility:hidden}}</style></noscript>
 </head>

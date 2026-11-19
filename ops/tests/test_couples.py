@@ -1492,6 +1492,7 @@ class AutoCheckPortal(SeededTestCase):
     def setUp(self):
         self.p = Project.objects.create(couple="Auto Check", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
                                         start_date=timezone.localdate(), status=Project.QC)
+        Project.objects.filter(pk=self.p.pk).update(whole_review=True)
 
     def test_run_lifecycle(self):
         import json
@@ -1509,6 +1510,8 @@ class AutoCheckPortal(SeededTestCase):
         self.assertTrue(job["rules"]["jump_cuts"])
         again = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v2_link": "https://f.io/def"}).json()
         self.assertIn("already running", again["error"])
+        same = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v1_link": "https://f.io/x", "v2_link": "https://f.io/x"}).json()
+        self.assertIn("same", same["error"])
         url = f"/qc/autocheck/{job['id']}/update/"
         qc.post(url, json.dumps({"type": "progress", "text": "Quick pass on V2…"}), content_type="application/json")
         run = AutoCheckRun.objects.get(pk=job["id"])
@@ -1530,6 +1533,68 @@ class AutoCheckPortal(SeededTestCase):
         self.assertContains(qc.get(f"/qc/?p={self.p.pk}"), "Report →")
         # someone else can't write to this run
         self.assertEqual(self.login("pratik").post(url, "{}", content_type="application/json").status_code, 403)
+
+    def test_editor_sends_queue_autocheck_with_versions(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import AutoCheckRun, CutLink, FilmEvent
+        pratik = get_user_model().objects.get(username="pratik")
+        p = Project.objects.create(couple="Auto Queue", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                   editor=pratik, start_date=timezone.localdate(), status=Project.IN_PROGRESS)
+        ed = self.login("pratik")
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Haldi", "cut_link": "https://f.io/haldi1"})
+        e = FilmEvent.objects.get(project=p, name="Haldi")
+        r1 = AutoCheckRun.objects.get(project=p, event=e)
+        self.assertEqual((r1.status, r1.auto, r1.round, r1.v1_link, r1.v2_link), ("queued", True, 1, "", "https://f.io/haldi1"))
+        # QC sends it back, the editor sends the fixed version: V1 vs V2, and the old queued check is replaced
+        FilmEvent.objects.filter(pk=e.pk).update(status=FilmEvent.REVISIONS)
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Haldi", "cut_link": "https://f.io/haldi2"})
+        r2 = AutoCheckRun.objects.filter(project=p, event=e).latest("pk")
+        self.assertEqual((r2.round, r2.v1_link, r2.v2_link), (2, "https://f.io/haldi1", "https://f.io/haldi2"))
+        r1.refresh_from_db()
+        self.assertEqual((r1.status, r1.progress), ("failed", "Replaced by a newer link"))
+        # the same link again (a version stacked in Frame.io): nothing new to compare
+        CutLink.objects.filter(project=p).update(sent_at=timezone.now() - timezone.timedelta(hours=1))
+        FilmEvent.objects.filter(pk=e.pk).update(status=FilmEvent.REVISIONS)
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Haldi", "cut_link": "https://f.io/haldi2"})
+        self.assertEqual(AutoCheckRun.objects.filter(project=p, event=e).count(), 2)
+        # a Drive link is kept in the history but can't be AutoChecked
+        ed.post(f"/my-jobs/{p.pk}/event/", {"event": "Sangeet", "cut_link": "https://drive.google.com/x"})
+        self.assertTrue(CutLink.objects.filter(project=p, event__name="Sangeet").exists())
+        self.assertFalse(AutoCheckRun.objects.filter(project=p, event__name="Sangeet").exists())
+        # QC sees both versions on the event; the editor sees nothing of AutoCheck
+        FilmEvent.objects.filter(pk=e.pk).update(status=FilmEvent.QC)
+        page = self.login("qc").get(f"/qc/?p={p.pk}")
+        self.assertContains(page, "https://f.io/haldi1")
+        self.assertContains(page, ">V2</span>")
+        self.assertContains(page, "Sent again with the same link")
+        self.assertNotContains(ed.get("/my-jobs/"), "AutoCheck")
+        self.assertNotContains(ed.get("/my-jobs/"), "ac-claim")
+
+    def test_qc_browser_claims_queued_checks_one_at_a_time(self):
+        from ops.models import AutoCheckRun
+        from ops import services as S
+        S.note_cut_link(self.p, None, "https://f.io/v1")
+        S.note_cut_link(self.p, None, "https://f.io/v2")
+        other = Project.objects.create(couple="Second", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                       start_date=timezone.localdate(), status=Project.QC)
+        S.note_cut_link(other, None, "https://f.io/t1")
+        qc = self.login("qc")
+        self.assertContains(qc.get("/qc/"), 'name="ac-claim"')
+        job = qc.post("/qc/autocheck/claim/").json()["job"]
+        self.assertEqual((job["v1"], job["v2"], job["prev_label"], job["cur_label"], job["auto"], job["checker"]),
+                         ("https://f.io/v1", "https://f.io/v2", "V1", "V2", True, "Ritika (QC)"))
+        self.assertIsNone(qc.post("/qc/autocheck/claim/").json()["job"])         # one at a time
+        # founders don't pick up queued checks by themselves (QC does), but can run one now
+        self.assertIsNone(self.login("ag").post("/qc/autocheck/claim/").json()["job"])
+        # a check that stopped responding goes back in the queue
+        AutoCheckRun.objects.filter(pk=job["id"]).update(updated=timezone.now() - timezone.timedelta(hours=1))
+        nxt = qc.post("/qc/autocheck/claim/").json()["job"]
+        self.assertEqual(nxt["id"], job["id"])
+        self.assertEqual(AutoCheckRun.objects.get(pk=job["id"]).attempts, 2)
+        qc.post(f"/qc/autocheck/{job['id']}/update/", '{"type": "failed", "error": "x"}', content_type="application/json")
+        third = qc.post("/qc/autocheck/claim/").json()["job"]
+        self.assertEqual(third["v2"], "https://f.io/t1")
+        self.assertEqual(third["cur_label"], "V1")
 
     def test_rules_pick_most_specific(self):
         from ops.models import AutoCheckRule

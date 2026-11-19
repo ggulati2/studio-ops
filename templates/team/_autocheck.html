@@ -1,28 +1,27 @@
-{# AutoCheck: V2 checked against V1's Frame.io comments; runs in this browser through the QC Helper #}
-{% load ops_extras %}{% with last=autochecks.0 %}
-<section class="card autocheck" data-autocheck data-start="{% url 'autocheck_start' p.pk %}" data-helper-need="{{ helper_version }}">
-  <div class="title"><h2>AutoCheck</h2><span class="small muted">Checks V2 against V1's Frame.io comments, looks for new issues, and posts [AutoCheck] comments on V2.</span></div>
-  <div class="ac-helper-missing card tight warn" hidden>
-    <b class="small">Red Wed QC Helper isn't installed in this browser.</b>
-    <span class="small">AutoCheck runs through a small free Chrome extension. <a href="{% url 'qc_helper' %}">Install it (2 minutes)</a>, then reload this page.</span>
+{% comment %}AutoCheck for one event (or the whole film): the versions come from the links the editor sent.
+It's queued as soon as a Frame.io link is sent and runs by itself in a QC person's Chrome.{% endcomment %}
+{% load ops_extras %}{% with r=u.run %}
+<div class="autocheck" data-autocheck data-start="{% url 'autocheck_start' p.pk %}"{% if r %} data-ac-run-id="{{ r.pk }}"{% endif %}>
+  <div class="ac-head"><b class="small">AutoCheck</b>
+    {% if r %}<span class="tag {% if r.status == 'done' %}ok{% elif r.status == 'failed' %}bad{% elif r.status == 'running' %}qc{% else %}info{% endif %}" data-ac-tag>{{ r.get_status_display }}</span>{% endif %}
+    {% if r.status == 'done' %}{% with c=r.counts %}<span class="small">{% if r.v1_link %}{{ c.fixed }} fixed · {% if c.not_fixed %}<b style="color:var(--bad)">{{ c.not_fixed }} not fixed</b>{% else %}0 not fixed{% endif %} · {{ c.check }} to check · {% endif %}{{ c.new }} new issue{{ c.new|pluralize }} · {{ r.posted }} posted</span> <a class="small" href="{% url 'autocheck_report' r.pk %}">Report →</a>{% endwith %}
+    {% elif r %}<span class="small muted" data-ac-status>{% if r.status == 'queued' %}Starts by itself when a QC person's Chrome with the helper has Studio Ops open.{% else %}{{ r.progress }}{% endif %}</span>{% endif %}
   </div>
-  <div class="ac-helper-old card tight warn" hidden>
-    <span class="small"><b>QC Helper update available</b> (you have <span data-ac-have></span>, latest {{ helper_version }}). <a href="{% url 'qc_helper' %}">Update it</a>.</span>
+  <div class="ac-vers small">
+    {% if u.prev %}<span><span class="tag">{{ u.prev_label }}</span> <a href="{{ u.prev.link }}" target="_blank" rel="noopener">{{ u.prev.link|truncatechars:38 }}</a> <span class="muted">{{ u.prev.sent_at|date:"j M" }}</span></span>{% endif %}
+    {% if u.link %}<span><span class="tag qc">{{ u.cur_label }}</span> <a href="{{ u.link }}" target="_blank" rel="noopener">{{ u.link|truncatechars:38 }}</a>{% if u.last %} <span class="muted">{{ u.last.sent_at|date:"j M" }}</span>{% endif %}</span>
+    {% else %}<span class="muted">No link sent yet.</span>{% endif %}
   </div>
+  {% if u.same %}<div class="small" style="color:var(--warn)">Sent again with the same link as {{ u.cur_label }}. If the new version is stacked on that link in Frame.io, AutoCheck can't tell the versions apart: ask the editor to share it as its own link.</div>{% endif %}
+  {% if u.link and not u.frameio %}<div class="small muted">AutoCheck works with Frame.io links only.</div>{% endif %}
+  <div class="ac-live" hidden><div class="ac-track"><div class="ac-bar"></div></div><span class="small" data-ac-live-status></span></div>
   <form class="ac-form" autocomplete="off">{% csrf_token %}
-    <label class="small">V1 link (reviewed, with comments)<input class="input" type="url" name="v1_link" placeholder="https://f.io/…" value="{{ last.v1_link|default:'' }}"></label>
-    <label class="small">V2 link (fixed version to check)<input class="input" type="url" name="v2_link" placeholder="https://f.io/…" required value="{{ last.v2_link|default:'' }}"></label>
-    <div class="actions"><button class="btn dark" type="submit" data-ac-run>AutoCheck</button>
-      <span class="small muted">Leave V1 empty to check V2 on its own. Keep this page open while it runs (about 10–15 min for a full film).</span></div>
+    {% if event %}<input type="hidden" name="event" value="{{ event.pk }}">{% endif %}
+    <details class="ac-change"><summary class="small">Change links</summary>
+      <label class="small">Earlier version (with QC's comments){% if u.prev_label %} · {{ u.prev_label }}{% endif %}<input class="input" type="url" name="v1_link" placeholder="https://f.io/… (empty: check one version on its own)" value="{% if u.prev_frameio %}{{ u.prev.link }}{% endif %}"></label>
+      <label class="small">Version to check · {{ u.cur_label }}<input class="input" type="url" name="v2_link" placeholder="https://f.io/…" value="{% if u.frameio %}{{ u.link }}{% endif %}"></label>
+    </details>
+    <button class="btn sm" type="submit" data-ac-run>{% if r.status == 'queued' %}Run now here{% elif r %}Run again{% else %}Run AutoCheck{% endif %}</button>
   </form>
-  <div class="ac-live" hidden><div class="ac-track"><div class="ac-bar"></div></div><span class="small" data-ac-status></span></div>
-  {% if autochecks %}<div class="ac-runs">
-    {% for r in autochecks %}<div class="ac-run">
-      <span class="tag {% if r.status == 'done' %}ok{% elif r.status == 'failed' %}bad{% else %}qc{% endif %}">{{ r.get_status_display }}</span>
-      <span class="small">{{ r.started_at|date:"j M, g:i A" }} · {{ r.started_by.profile.name|default:"—" }}</span>
-      <span class="small muted">{{ r.progress }}</span>
-      {% if r.status == 'done' %}<a class="small" href="{% url 'autocheck_report' r.pk %}">Report →</a>{% endif %}
-    </div>{% endfor %}
-  </div>{% endif %}
-</section>
+</div>
 {% endwith %}

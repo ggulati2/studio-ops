@@ -89,6 +89,7 @@ urlpatterns = [
     path("qc/earnings/", v.qc_earnings, name="qc_earnings"),
     path("qc/send/", v.qc_send, name="qc_send"),
     path("qc/<int:pk>/autocheck/", v.autocheck_start, name="autocheck_start"),
+    path("qc/autocheck/claim/", v.autocheck_claim, name="autocheck_claim"),
     path("qc/autocheck/<int:pk>/update/", v.autocheck_update, name="autocheck_update"),
     path("qc/autocheck/<int:pk>/", v.autocheck_report, name="autocheck_report"),
     path("qc/autocheck/rules/", v.autocheck_rules, name="autocheck_rules"),

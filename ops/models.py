@@ -790,7 +790,7 @@ class AutoCheckRun(models.Model):
     """One AutoCheck: V2 checked against V1's comments plus a hygiene pass, run by the
     Red Wed QC Helper in the QC person's Chrome; findings are posted on V2 in Frame.io."""
     QUEUED, RUNNING, DONE, FAILED = "queued", "running", "done", "failed"
-    STATUS = [(QUEUED, "Starting"), (RUNNING, "Running"), (DONE, "Done"), (FAILED, "Failed")]
+    STATUS = [(QUEUED, "Queued"), (RUNNING, "Running"), (DONE, "Done"), (FAILED, "Failed")]
     project = models.ForeignKey("Project", on_delete=models.CASCADE, related_name="autochecks")
     v1_link = models.URLField("V1 link (reviewed)", max_length=500, blank=True)
     v2_link = models.URLField("V2 link (to check)", max_length=500)
@@ -802,6 +802,12 @@ class AutoCheckRun(models.Model):
     report = models.JSONField(default=dict, blank=True)
     posted = models.PositiveIntegerField(default=0)
     helper_version = models.CharField(max_length=20, blank=True)
+    # set when it was queued by itself as the editor sent a link (one per event / whole film and round)
+    event = models.ForeignKey("FilmEvent", null=True, blank=True, on_delete=models.CASCADE, related_name="autochecks")
+    round = models.PositiveSmallIntegerField(default=0)
+    auto = models.BooleanField(default=False)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    updated = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-started_at"]
@@ -815,6 +821,24 @@ class AutoCheckRun(models.Model):
         v = [c.get("verdict") for c in r.get("comments", [])]
         return {"fixed": v.count("fixed"), "not_fixed": v.count("not_fixed"), "check": v.count("check"),
                 "new": len(r.get("issues", []))}
+
+
+class CutLink(models.Model):
+    """Every review link an editor (or a founder) sends, per event or for the whole film, so
+    AutoCheck knows V1 (the version QC commented on) and V2 (the new one) without anyone pasting them."""
+    project = models.ForeignKey("Project", on_delete=models.CASCADE, related_name="cut_links")
+    event = models.ForeignKey("FilmEvent", null=True, blank=True, on_delete=models.CASCADE, related_name="cut_links")
+    link = models.URLField(max_length=500)
+    round = models.PositiveSmallIntegerField(default=1)
+    sent_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["round", "sent_at"]
+        indexes = [models.Index(fields=["project", "event", "round"])]
+
+    def __str__(self):
+        return f"V{self.round} {self.link}"
 
 
 class FilmEvent(models.Model):

@@ -1,27 +1,27 @@
 {% extends "base.html" %}{% load ops_extras %}
 {% block title %}AutoCheck report{% endblock %}
 {% block content %}
-<div class="head"><div><a class="small" href="{% url 'qc_queue' %}?p={{ p.pk }}">← QC dashboard</a><h1>AutoCheck · {{ p }}</h1>
+<div class="head"><div><a class="small" href="{% url 'qc_queue' %}?p={{ p.pk }}">← QC dashboard</a><h1>AutoCheck · {{ p }}{% if run.event %} · {{ run.event.name }}{% endif %}</h1>
   <p>{{ run.started_at|date:"j M Y, g:i A" }} · run by {{ run.started_by.profile.name|default:"—" }}{% if rep.seconds %} · took {{ rep.seconds|div:60|floatformat:0 }} min{% endif %} · <span class="tag {% if run.status == 'done' %}ok{% elif run.status == 'failed' %}bad{% else %}qc{% endif %}">{{ run.get_status_display }}</span></p></div>
-  <div class="actions">{% if run.v1_link %}<a class="btn" href="{{ run.v1_link }}" target="_blank" rel="noopener">V1 ↗</a>{% endif %}<a class="btn dark" href="{{ run.v2_link }}" target="_blank" rel="noopener">V2 on Frame.io ↗</a></div></div>
+  <div class="actions">{% if run.v1_link %}<a class="btn" href="{{ run.v1_link }}" target="_blank" rel="noopener">{{ prev_label }} ↗</a>{% endif %}<a class="btn dark" href="{{ run.v2_link }}" target="_blank" rel="noopener">{{ cur_label }} on Frame.io ↗</a></div></div>
 {% with c=run.counts %}
 <div class="grid">
-  <div class="kpi"><span>V1 comments fixed</span><b>{{ c.fixed }}</b><small>of {{ comments|length }}</small></div>
-  <div class="kpi bad"><span>Not fixed</span><b>{{ c.not_fixed }}</b><small>posted on V2</small></div>
-  <div class="kpi warn"><span>{{ run.started_by.profile.name|default:"QC" }} needs to check</span><b>{{ c.check }}</b><small>posted on V2</small></div>
-  <div class="kpi"><span>New issues on V2</span><b>{{ c.new }}</b><small>{{ run.posted }} comment{{ run.posted|pluralize }} posted in all</small></div>
+  <div class="kpi"><span>{{ prev_label }} comments fixed</span><b>{{ c.fixed }}</b><small>of {{ comments|length }}</small></div>
+  <div class="kpi bad"><span>Not fixed</span><b>{{ c.not_fixed }}</b><small>posted on {{ cur_label }}</small></div>
+  <div class="kpi warn"><span>{{ run.started_by.profile.name|default:"QC" }} needs to check</span><b>{{ c.check }}</b><small>posted on {{ cur_label }}</small></div>
+  <div class="kpi"><span>New issues on {{ cur_label }}</span><b>{{ c.new }}</b><small>{{ run.posted }} comment{{ run.posted|pluralize }} posted in all</small></div>
 </div>{% endwith %}
 {% if run.status == 'failed' %}<div class="card tight warn"><b>{{ run.progress }}</b></div>{% endif %}
-{% if comments %}<section class="card"><h2>V1 comments</h2><div class="scroll"><table class="stack"><thead><tr><th>V1</th><th>Comment</th><th>Result</th><th>V2</th></tr></thead><tbody>
+{% if comments %}<section class="card"><h2>{{ prev_label }} comments</h2><div class="scroll"><table class="stack"><thead><tr><th>{{ prev_label }}</th><th>Comment</th><th>Result</th><th>{{ cur_label }}</th></tr></thead><tbody>
 {% for c in comments %}<tr><td class="nowrap">{{ c.n|default:"" }} · {{ c.tc|slice:"3:8" }}</td><td>{{ c.text }}</td>
   <td><b class="ac-verdict-{{ c.verdict }}">{% if c.verdict == 'fixed' %}✅ Fixed{% elif c.verdict == 'not_fixed' %}❌ Not fixed{% else %}❓ To check{% endif %}</b><div class="small muted">{{ c.note }}</div></td>
   <td class="nowrap">{% if c.t2 != None %}{{ c.t2|clock }}{% else %}—{% endif %}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
-<section class="card"><h2>New issues on V2 · {{ issues|length }}</h2>
+<section class="card"><h2>New issues on {{ cur_label }} · {{ issues|length }}</h2>
   {% for i in issues %}<div class="small"><b class="nowrap">{{ i.t|clock }}</b> · {{ i.text }}</div>{% empty %}<span class="small muted">None found.</span>{% endfor %}</section>
-{% if structure %}<section class="card"><h2>Edits between V1 and V2</h2>
-  {% for s in structure %}<div class="small">{% if s.kind == 'added' %}Added in V2 at {{ s.from|clock }}–{{ s.to|clock }}{% else %}Removed from V1 at {{ s.from|clock }}–{{ s.to|clock }}{% endif %}</div>{% endfor %}
+{% if structure %}<section class="card"><h2>Edits between {{ prev_label }} and {{ cur_label }}</h2>
+  {% for s in structure %}<div class="small">{% if s.kind == 'added' %}Added in {{ cur_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% else %}Removed from {{ prev_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% endif %}</div>{% endfor %}
   <p class="small muted" style="margin:0">Changes nobody asked for are worth a quick look.</p></section>{% endif %}
-{% if posted %}<section class="card"><h2>Posted on V2 · {{ run.posted }}</h2>
+{% if posted %}<section class="card"><h2>Posted on {{ cur_label }} · {{ run.posted }}</h2>
   {% for x in posted %}<div class="small">{% if x.ok %}✓{% else %}<b style="color:var(--bad)">not posted</b>{% endif %} <b>{{ x.t|clock }}</b> {{ x.text }}{% if x.error %} <span class="muted">({{ x.error }})</span>{% endif %}</div>{% endfor %}</section>{% endif %}
 {% endblock %}

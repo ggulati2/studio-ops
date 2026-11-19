@@ -246,6 +246,7 @@ def job_event_submit(request, pk):
         e.cut_link = link or e.cut_link
         e.sent_on = timezone.now()
         e.save()
+        S.note_cut_link(p, e, link, request.user)
         S.sync_film_status(p)
         messages.success(request, f"{p.couple} · {name} sent for {'QC' if e.status == FilmEvent.QC else 'TL review'}. "
                                   "Carry on with the next event.")
@@ -260,8 +261,9 @@ def _event_review(request, e, kind):
     issues = [QC_CHECKLIST[int(i)] for i in request.POST.getlist("issue") if i.isdigit() and int(i) < len(QC_CHECKLIST)]
     Review.objects.create(project=e.project, event=e, kind=kind, passed=passed, issues=issues,
                           comments=form.cleaned_data["comments"], reviewer=request.user)
-    if form.cleaned_data.get("cut_link"):
+    if form.cleaned_data.get("cut_link") and form.cleaned_data["cut_link"] != e.cut_link:
         e.cut_link = form.cleaned_data["cut_link"]
+        S.note_cut_link(e.project, e, e.cut_link, request.user)
     if kind == Review.TL:
         e.status = FilmEvent.QC if passed else FilmEvent.REVISIONS
     else:
@@ -306,6 +308,7 @@ def job_submit(request, pk):
             return redirect("my_jobs")
         if link:
             p.cut_link = link
+            S.note_cut_link(p, None, link, request.user)
         p.status = Project.QC if request.role == TL else Project.TL_REVIEW
         p._status_was = None            # the whole film is sent now (even if events had it in review)
         p.save(update_fields=["cut_link", "status"])
@@ -439,8 +442,9 @@ def _review(request, p, kind):
     issues = [QC_CHECKLIST[int(i)] for i in request.POST.getlist("issue") if i.isdigit() and int(i) < len(QC_CHECKLIST)]
     Review.objects.create(project=p, kind=kind, passed=passed, issues=issues,
                           comments=form.cleaned_data["comments"], reviewer=request.user)
-    if form.cleaned_data.get("cut_link"):
+    if form.cleaned_data.get("cut_link") and form.cleaned_data["cut_link"] != p.cut_link:
         p.cut_link = form.cleaned_data["cut_link"]
+        S.note_cut_link(p, None, p.cut_link, request.user)
     if kind == Review.TL:
         p.status = Project.QC if passed else Project.TL_REVISIONS
     else:
@@ -476,6 +480,7 @@ def qc_queue(request):
         open_one = next((e for e in events if e.status == FilmEvent.QC), None)
         for e in events:
             e.is_open = e is open_one
+    ac = _autocheck_units(sel, events) if sel else {}
     passed_m = Review.objects.filter(kind="qc", created__date__gte=month_start(timezone.localdate()))
     first_time = None
     if passed_m.exists():
@@ -496,7 +501,7 @@ def qc_queue(request):
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
         "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review),
-        "autochecks": list(sel.autochecks.select_related("started_by__profile")[:5]) if sel else [],
+        "whole_ac": ac.get(None),
         "helper_version": __import__("ops.views.autocheck", fromlist=["helper_version"]).helper_version(),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
         "sendable": list(Project.objects.filter(Q(status__in=Project.WORKABLE) | Q(status=Project.TL_REVIEW)
@@ -507,6 +512,38 @@ def qc_queue(request):
                           .select_related("profile")) if founder else [],
         "board": board, "counts": counts, "show": show, "states": QC_STATES,
         "first_time": first_time})
+
+
+def _autocheck_units(p, events):
+    """AutoCheck per event (and for the whole film, key None): the two versions to compare,
+    taken from the links the editor sent, and the latest checks. Sets e.ac on each event."""
+    from ..models import AutoCheckRun, CutLink
+    from .autocheck import labels
+    links, runs = defaultdict(list), defaultdict(list)
+    for c in CutLink.objects.filter(project=p).order_by("-round", "-sent_at"):
+        links[c.event_id].append(c)
+    for r in AutoCheckRun.objects.filter(project=p).select_related("started_by__profile").order_by("-started_at")[:40]:
+        runs[r.event_id].append(r)
+    units = {}
+    for key, cut in [(None, p.cut_link)] + [(e.pk, e.cut_link) for e in events]:
+        ls = links[key]
+        last = ls[0] if ls else None
+        prev = ls[1] if len(ls) > 1 else None
+        rs = runs[key][:3]
+        u = {"last": last, "prev": prev, "link": last.link if last else cut, "runs": rs, "run": rs[0] if rs else None}
+        if last:
+            u["cur_label"], u["prev_label"] = f"V{last.round}", (f"V{prev.round}" if prev else "")
+        else:
+            u["cur_label"], u["prev_label"] = "V1", ""
+        u["frameio"] = bool(S.frameio_link(u["link"]))
+        u["prev_frameio"] = bool(prev and S.frameio_link(prev.link))
+        units[key] = u
+    for e in events:
+        e.ac = units[e.pk]
+        last = e.ac["last"]
+        # sent again with the same link: a new version stacked on it in Frame.io can't be compared
+        e.ac["same"] = bool(last and e.sent_on and e.sent_on > last.sent_at + timedelta(minutes=1))
+    return units
 
 
 # key, label, tag colour

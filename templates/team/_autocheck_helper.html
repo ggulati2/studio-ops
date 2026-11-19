@@ -1,0 +1,8 @@
+{# Shown once on the QC page: whether this browser has the Red Wed QC Helper (AutoCheck runs through it) #}
+<div class="ac-helper-missing card tight warn" data-helper-need="{{ helper_version }}" hidden>
+  <b class="small">Red Wed QC Helper isn't installed in this browser.</b>
+  <span class="small">AutoCheck runs through a small free Chrome extension. <a href="{% url 'qc_helper' %}">Install it (2 minutes)</a>, then reload this page.</span>
+</div>
+<div class="ac-helper-old card tight warn" data-helper-need="{{ helper_version }}" hidden>
+  <span class="small"><b>QC Helper update available</b> (you have <span data-ac-have></span>, latest {{ helper_version }}). <a href="{% url 'qc_helper' %}">Update it</a>.</span>
+</div>

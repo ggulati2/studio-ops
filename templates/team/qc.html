@@ -25,14 +25,15 @@
   <div class="grow col-stack">
   <section class="card">
     <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% endif %}{% if sel.brief %} · Brief: {{ sel.brief }}{% endif %}</span>{% if sel.drive and not sel.received_online %}{% include "team/_drive.html" with drv=sel.drive %}{% endif %}</div></div>
+    {% include "team/_autocheck_helper.html" %}
     {% if events %}<div class="ev-strip">{% for e in events %}<span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span>{% endfor %}</div>{% endif %}
   </section>
-  {% include "team/_autocheck.html" with p=sel %}
   {% if events %}<section class="card" aria-label="Events">
     <div class="title"><h2>Events</h2><span class="small muted">Sent one by one while the editor works on the next. Open one to check it.</span></div>
     {% for e in events %}<details class="ev-qc"{% if e.is_open %} open{% endif %}>
-      <summary><b>{{ e.name }}</b> <span class="tag {{ e.tag }}">{{ e.get_status_display }}</span>{% if e.sent_on %} <span class="small muted">sent {{ e.sent_on|date:"j M, g:i A" }}</span>{% endif %}{% with n=e.reviews.all|length %}{% if n %} <span class="small muted">· {{ n }} review{{ n|pluralize }}</span>{% endif %}{% endwith %}</summary>
+      <summary><b>{{ e.name }}</b> <span class="tag {{ e.tag }}">{{ e.get_status_display }}</span>{% if e.sent_on %} <span class="small muted">sent {{ e.sent_on|date:"j M, g:i A" }}</span>{% endif %}{% with n=e.reviews.all|length %}{% if n %} <span class="small muted">· {{ n }} review{{ n|pluralize }}</span>{% endif %}{% endwith %}{% with r=e.ac.run %}{% if r %} <span class="tag {% if r.status == 'done' %}{% if r.counts.not_fixed %}bad{% else %}ok{% endif %}{% elif r.status == 'failed' %}bad{% else %}info{% endif %}">AutoCheck {% if r.status == 'done' %}{% if r.v1_link %}{{ r.counts.not_fixed }} not fixed{% else %}{{ r.counts.new }} issue{{ r.counts.new|pluralize }}{% endif %}{% else %}{{ r.get_status_display|lower }}{% endif %}</span>{% endif %}{% endwith %}</summary>
       <div class="ev-body">
+      {% include "team/_autocheck.html" with p=sel u=e.ac event=e %}
       {% if e.status == 'qc' %}
         <form method="post" action="{% url 'qc_event_review' e.pk %}" class="col-stack" data-live-page>{% csrf_token %}
           <div class="card tight" style="background:var(--sunk)">{% if e.cut_link %}<a href="{{ e.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open {{ e.name }} ↗</a>{% else %}<span class="small muted">No link yet. Paste it below.</span>{% endif %}
@@ -45,6 +46,7 @@
     </details>{% endfor %}
   </section>{% endif %}
   {% if whole_in_qc %}
+  <section class="card tight">{% include "team/_autocheck.html" with p=sel u=whole_ac event=None %}</section>
   <form method="post" action="{% url 'qc_review' sel.pk %}" class="card" data-live-page>{% csrf_token %}
     <div class="title"><h2>{% if events %}Whole film{% else %}Final film{% endif %}</h2></div>
     {% if sel.cut_link %}<a href="{{ sel.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open film ↗</a>{% endif %}

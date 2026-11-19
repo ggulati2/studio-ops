@@ -1011,3 +1011,50 @@ def undo_leave(req):
     kind = DayLog.HALF if req.half_day else DayLog.LEAVE
     DayLog.objects.filter(user=req.user, date__range=(req.start, req.end), day_type=kind, tasks__isnull=True,
                           notes__startswith="Approved leave").delete()
+
+
+# ---------------------------------------------------------------- AutoCheck: link history + queue
+FRAMEIO_HOSTS = ("f.io", "frame.io", "next.frame.io", "app.frame.io")
+
+
+def frameio_link(url):
+    """The link if it's an https Frame.io link, else None."""
+    from urllib.parse import urlparse
+    url = (url or "").strip()
+    try:
+        u = urlparse(url)
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower()
+    if u.scheme != "https" or not (host in FRAMEIO_HOSTS or host.endswith(".frame.io")):
+        return None
+    return url
+
+
+def autocheck_pair(project, event=None):
+    """(previous, latest) CutLink for a film / one event: latest is the version to check,
+    previous the one QC commented on (None on the first round)."""
+    from .models import CutLink
+    links = list(CutLink.objects.filter(project=project, event=event).order_by("-round", "-sent_at")[:2])
+    return (links[1] if len(links) > 1 else None), (links[0] if links else None)
+
+
+def note_cut_link(project, event, link, user=None):
+    """Called whenever a review link is sent. Keeps the link history (V1, V2, V3…) and queues an
+    AutoCheck on the new version; a QC person's Chrome (with the QC Helper) picks it up by itself.
+    Returns the queued AutoCheckRun, or None."""
+    from .models import AutoCheckRun, CutLink
+    if not link:
+        return None
+    prev, last = autocheck_pair(project, event)
+    if last and last.link == link:
+        return None                     # same link again (e.g. a new version stacked in Frame.io): nothing new to compare
+    cur = CutLink.objects.create(project=project, event=event, link=link, round=(last.round + 1) if last else 1,
+                                 sent_by=user if user and user.is_authenticated else None)
+    if not frameio_link(link):
+        return None
+    AutoCheckRun.objects.filter(project=project, event=event, status=AutoCheckRun.QUEUED).update(
+        status=AutoCheckRun.FAILED, finished_at=timezone.now(), progress="Replaced by a newer link")
+    v1 = last.link if last and frameio_link(last.link) else ""
+    return AutoCheckRun.objects.create(project=project, event=event, round=cur.round, auto=True,
+                                       v1_link=v1, v2_link=link, progress="Waiting for a QC computer")

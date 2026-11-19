@@ -6,7 +6,7 @@
    5. Report back to Studio Ops. */
 (function () {
   "use strict";
-  var AC = window.AC, jobId = location.hash.slice(1), job = null, portalTab = null;
+  var AC = window.AC, jobId = location.hash.slice(1), job = null, portalTab = null, myWindow;
   var started = Date.now(), logEl = document.getElementById("log"), barEl = document.getElementById("bar");
 
   function log(text, frac) {
@@ -16,6 +16,13 @@
   }
   function tell(msg) {
     msg.source = "redwed-helper";
+    if (msg.type === "autocheck:done" || msg.type === "autocheck:failed") {
+      // kept until Studio Ops confirms it saved it (the portal tab may have been closed or moved on)
+      msg.film = job && job.film;
+      var keep = {};
+      keep["result:" + jobId] = {msg: msg, origin: job && job.portal ? new URL(job.portal).origin : ""};
+      chrome.storage.local.set(keep);
+    }
     if (portalTab != null) chrome.tabs.sendMessage(portalTab, msg, function () { void chrome.runtime.lastError; });
   }
   function inTab(tabId, func, args) {
@@ -24,7 +31,7 @@
   }
   function openTab(url, label) {
     return new Promise(function (res, rej) {
-      chrome.tabs.create({url: url, active: false}, function (tab) {
+      chrome.tabs.create({url: url, active: false, windowId: myWindow}, function (tab) {
         var done = false;
         var finish = function (ok, why) {
           if (done) return; done = true; chrome.tabs.onUpdated.removeListener(check);
@@ -43,10 +50,16 @@
   }
   async function prepare(tabId) {
     // the stream only starts loading on a visible tab: show it for a moment, then come back here
-    var me = await chrome.tabs.getCurrent();
+    var me = await chrome.tabs.getCurrent(), back = null;
+    if (job.auto) {
+      // a check that started by itself runs in its own window behind; bring it forward for a few seconds
+      try { back = await chrome.windows.getLastFocused(); } catch (e) { back = null; }
+      await chrome.windows.update(myWindow, {focused: true});
+    }
     await chrome.tabs.update(tabId, {active: true});
     var info = await inTab(tabId, fioPrepare);
     await chrome.tabs.update(me.id, {active: true});
+    if (back && back.id !== myWindow) chrome.windows.update(back.id, {focused: true}, function () { void chrome.runtime.lastError; });
     return info;
   }
 
@@ -77,6 +90,8 @@
     var rec = got["job:" + jobId];
     if (!rec) { log("This AutoCheck has expired. Start it again from Studio Ops."); return; }
     job = rec.job; portalTab = rec.portalTab;
+    myWindow = (await chrome.tabs.getCurrent()).windowId;
+    var P = job.prev_label || "V1", N = job.cur_label || "V2";
     document.getElementById("title").textContent = "AutoCheck · " + (job.film || "");
     var rules = job.rules || {}, s = SENS[rules.sensitivity] || 1, who = job.checker || "QC";
     var report = {version: chrome.runtime.getManifest().version, comments: [], issues: [], posted: [], structure: []};
@@ -91,10 +106,10 @@
     report.v2 = {title: I2.title, duration: I2.duration, quality: I2.quality};
     var comments = [];
     if (t1) {
-      log("Reading V1's comments…", 0.05);
+      log("Reading " + P + "'s comments…", 0.05);
       comments = await inTab(t1, fioComments) || [];
       report.v1 = {title: I1.title, duration: I1.duration, comments: comments.length};
-      log(comments.length + " comment(s) on V1.", 0.06);
+      log(comments.length + " comment(s) on " + P + ".", 0.06);
     }
     var maxFF = 0;
     comments.forEach(function (c) { maxFF = Math.max(maxFF, +c.tc.slice(9)); });
@@ -102,14 +117,14 @@
 
     // ---- 2. quick pass + audio
     var Q2, A2, Q1, A1;
-    log("Quick pass on V2 (whole film)…", 0.08);
+    log("Quick pass on " + N + " (whole film)…", 0.08);
     Q2 = await AC.quickPassHLS(I2.vBase, I2.duration, 0.5, function (f) { barEl.style.width = Math.round((0.08 + f * 0.17) * 100) + "%"; });
-    log("Listening to V2's audio…", 0.26);
+    log("Listening to " + N + "'s audio…", 0.26);
     A2 = await AC.audioPass(I2.aBase);
     if (I1) {
-      log("Quick pass on V1…", 0.32);
+      log("Quick pass on " + P + "…", 0.32);
       Q1 = await AC.quickPassHLS(I1.vBase, I1.duration, 0.5, function (f) { barEl.style.width = Math.round((0.32 + f * 0.17) * 100) + "%"; });
-      log("Listening to V1's audio…", 0.5);
+      log("Listening to " + P + "'s audio…", 0.5);
       A1 = await AC.audioPass(I1.aBase);
     }
     var HD2 = new AC.HD(I2.vBase), HD1 = I1 ? new AC.HD(I1.vBase) : null;
@@ -117,7 +132,7 @@
     // ---- 3. line up and check each V1 comment
     var Al = null;
     if (Q1) {
-      log("Lining up V1 with V2…", 0.55);
+      log("Lining up " + P + " with " + N + "…", 0.55);
       Al = AC.align(Q1, Q2);
       report.structure = Al.segs.map(function (g) { return {kind: g.kind, from: g.from, to: g.to}; });
     }
@@ -126,7 +141,7 @@
       var c = comments[ci], tv1 = AC.tcToSec(c.tc, fps), k = kind(c.text), m = AC.toV2(Al, tv1);
       var tv2 = m ? m.t : null, near = AC.changedNear(Al, tv1, tv2, 6);
       var r = {n: c.n, tc: c.tc, t1: tv1, t2: tv2, text: c.text, kind: k, verdict: "check", note: ""};
-      log("Checking V1 comment " + (c.n || ci + 1) + " (" + fmt(tv1) + ")…", 0.56 + 0.2 * ci / Math.max(1, comments.length));
+      log("Checking " + P + " comment " + (c.n || ci + 1) + " (" + fmt(tv1) + ")…", 0.56 + 0.2 * ci / Math.max(1, comments.length));
       try {
         if (tv2 == null) { r.note = "this part isn't in V2 any more"; r.verdict = k === "edit" ? "fixed" : "check"; }
         else if (k === "text") {
@@ -203,7 +218,7 @@
     var already = function (t) {   // skip what a V1 comment already covers at the same moment
       return report.comments.some(function (r) { return r.t2 != null && Math.abs(r.t2 - t) < 3 && r.verdict !== "fixed"; });
     };
-    log("Looking for new issues on V2…", 0.78);
+    log("Looking for new issues on " + N + "…", 0.78);
     var dur = Q2.dur;
     if (rules.min_seconds && dur < rules.min_seconds) add("length", 0, "The film is " + fmt(dur) + " long, shorter than the " + fmt(rules.min_seconds) + " minimum.");
     if (rules.max_seconds && dur > rules.max_seconds) add("length", 0, "The film is " + fmt(dur) + " long, longer than the " + fmt(rules.max_seconds) + " maximum.");
@@ -295,15 +310,15 @@
     var posts = [];
     report.comments.forEach(function (r) {
       if (r.verdict === "fixed" || r.t2 == null) return;
-      var lead = r.verdict === "not_fixed" ? "Pending from V1 comment " + (r.n || "") + ": " : who + " needs to check: V1 comment " + (r.n || "") + " (";
+      var lead = r.verdict === "not_fixed" ? "Pending from " + P + " comment " + (r.n || "") + ": " : who + " needs to check: " + P + " comment " + (r.n || "") + " (";
       var body = r.verdict === "not_fixed" ? clean(r.text) + " (" + r.note + ")." : clean(r.text) + "): " + r.note + ".";
-      if (r.ranges) r.ranges.forEach(function (x) { posts.push({t: x[0], text: "[AutoCheck] Pending from V1 comment " + (r.n || "") + ": " + clean(r.text) + " (still crushed from " + fmt(x[0]) + " to " + fmt(x[1]) + ")."}); });
+      if (r.ranges) r.ranges.forEach(function (x) { posts.push({t: x[0], text: "[AutoCheck] Pending from " + P + " comment " + (r.n || "") + ": " + clean(r.text) + " (still crushed from " + fmt(x[0]) + " to " + fmt(x[1]) + ")."}); });
       else posts.push({t: r.t2, text: "[AutoCheck] " + lead + body});
     });
     issues.forEach(function (x) { posts.push({t: x.t, text: "[AutoCheck] " + x.text}); });
     posts.sort(function (a, b) { return a.t - b.t; });
     posts = posts.slice(0, 60);
-    log("Posting " + posts.length + " comment(s) on V2…", 0.95);
+    log("Posting " + posts.length + " comment(s) on " + N + "…", 0.95);
     var me = await chrome.tabs.getCurrent();
     await chrome.tabs.update(t2, {active: true});
     for (var pi = 0; pi < posts.length; pi++) {
@@ -313,15 +328,17 @@
     await chrome.tabs.update(me.id, {active: true});
     var okN = report.posted.filter(function (p) { return p.ok; }).length;
     report.seconds = Math.round((Date.now() - started) / 1000);
-    log("Done: " + okN + " of " + posts.length + " comment(s) posted on V2 in " + Math.round(report.seconds / 60) + " min.", 1);
+    log("Done: " + okN + " of " + posts.length + " comment(s) posted on " + N + " in " + Math.round(report.seconds / 60) + " min.", 1);
     tell({type: "autocheck:done", id: jobId, report: report, posted: okN});
     chrome.tabs.remove([t2].concat(t1 ? [t1] : []));
     chrome.storage.local.remove("job:" + jobId);
     document.getElementById("done").hidden = false;
+    if (job.auto) setTimeout(function () { chrome.windows.remove(myWindow); }, 8000);   // its own window: tidy up
   }
 
   main().catch(function (err) {
     log("Stopped: " + err.message);
     tell({type: "autocheck:failed", id: jobId, error: err.message});
+    if (job && job.auto) setTimeout(function () { chrome.windows.remove(myWindow); }, 60000);
   });
 })();

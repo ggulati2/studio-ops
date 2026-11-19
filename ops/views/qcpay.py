@@ -207,6 +207,7 @@ def qc_send(request):
         e.status, e.sent_on = FilmEvent.QC, timezone.now()
         e.cut_link = link or e.cut_link
         e.save()
+        S.note_cut_link(p, e, link, request.user)
         S.sync_film_status(p)
         what = f"{p.couple} · {e.name}"
     else:
@@ -214,6 +215,7 @@ def qc_send(request):
         p._status_was = None                    # the whole film is sent now (even if events had it In QC)
         p.cut_link = link or p.cut_link
         p.save(update_fields=["status", "cut_link"])
+        S.note_cut_link(p, None, link, request.user)
         what = str(p)
     record(request, "qc.send", str(p), f"sent for QC by a founder{' · ' + name if name else ''}")
     messages.success(request, f"{what} sent for QC for {p.editor.profile.name if p.editor_id else 'the editor'}.")
