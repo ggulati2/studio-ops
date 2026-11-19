@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}AutoCheck rules{% endblock %}
+{% block content %}
+{% include "_qc_contract_tabs.html" with tab="rules" %}
+<div class="head"><div><h1>AutoCheck rules</h1><p>What AutoCheck looks for, per agency and film type. The most specific rule wins (agency + film type, then agency, then film type, then "any"). With no rule, everything is checked at medium sensitivity.</p></div>
+  <div class="actions"><a class="btn" href="{% url 'qc_helper' %}">QC Helper</a></div></div>
+<div class="row">
+  <section class="card grow"><h2>Rules</h2>
+    <div class="scroll"><table class="stack"><thead><tr><th>Agency</th><th>Film type</th><th>Length</th><th>Sensitivity</th><th>Off</th><th></th></tr></thead><tbody>
+    {% for r in rules %}<tr><td>{{ r.agency|default:"Any" }}</td><td>{{ r.deliverable|default:"Any" }}</td>
+      <td class="nowrap">{% if r.min_seconds or r.max_seconds %}{{ r.min_seconds|default:0|clock }}–{% if r.max_seconds %}{{ r.max_seconds|clock }}{% else %}any{% endif %}{% else %}any{% endif %}</td>
+      <td>{{ r.get_sensitivity_display }}</td>
+      <td class="small">{% if not r.check_jump_cuts %}jump cuts {% endif %}{% if not r.check_shake %}shake {% endif %}{% if not r.check_colour_jumps %}colour jumps {% endif %}{% if not r.check_pops %}pops {% endif %}{% if not r.check_loudness %}loudness {% endif %}{% if not r.check_silence %}silences {% endif %}{% if not r.check_blacks %}blacks {% endif %}{% if not r.check_highlights %}highlights {% endif %}{% if not r.check_black_frames %}black/flash frames {% endif %}{% if not r.check_audio_peaks %}0 dB {% endif %}</td>
+      <td class="nowrap"><a class="btn sm" href="?edit={{ r.pk }}">Edit</a>
+        <form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="pk" value="{{ r.pk }}"><button class="btn sm danger" name="op" value="delete">Delete</button></form></td></tr>
+    {% empty %}<tr><td colspan="6" class="muted">No rules yet: every film is checked for everything at medium sensitivity.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <form method="post" class="card aside" style="min-width:320px">{% csrf_token %}{% if edit %}<input type="hidden" name="pk" value="{{ edit.pk }}">{% endif %}
+    <h2>{% if edit %}Edit rule{% else %}Add a rule{% endif %}</h2>
+    {% include "_form.html" %}
+    <div class="actions"><button class="btn primary">Save rule</button>{% if edit %}<a class="btn" href="{% url 'autocheck_rules' %}">Cancel</a>{% endif %}</div>
+    <p class="small muted" style="margin:0">Example: BadalRaja · Trailer · 180–240 seconds · jump cuts off (they're part of the style).</p>
+  </form>
+</div>
+{% endblock %}

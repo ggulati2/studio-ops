@@ -132,3 +132,22 @@ def abs_money(v):
         return money(abs(int(round(float(v)))))
     except (TypeError, ValueError):
         return v
+
+
+@register.filter
+def clock(v):
+    """Seconds -> m:ss (or h:mm:ss)."""
+    try:
+        s = max(0, int(round(float(v))))
+    except (TypeError, ValueError):
+        return ""
+    h, m, x = s // 3600, s % 3600 // 60, s % 60
+    return f"{h}:{m:02d}:{x:02d}" if h else f"{m}:{x:02d}"
+
+
+@register.filter
+def div(v, n):
+    try:
+        return float(v) / float(n)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return 0

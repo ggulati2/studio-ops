@@ -33,7 +33,8 @@
     requestAnimationFrame(function () { t.classList.add("in"); });
     setTimeout(function () { t.classList.remove("in"); setTimeout(function () { t.remove(); }, 250); },
       opts.level === "error" ? 8000 : opts.undo ? 7000 : 4500);
-  }
+  }  window.StudioToast = toast;
+
   window.StudioToast = toast;
 
   function csrfOf(form) {

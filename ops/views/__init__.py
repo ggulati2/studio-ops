@@ -7,6 +7,7 @@ from .team import *          # noqa
 from .money import *         # noqa
 from .drives import *        # noqa
 from .qcpay import *        # noqa
+from .autocheck import *    # noqa
 from .suggest import *       # noqa
 from .delays import *        # noqa
 from .contracts import *     # noqa

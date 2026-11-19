@@ -1483,3 +1483,72 @@ class FounderSendsForQC(SeededTestCase):
         self.assertEqual(self.login("qc").post("/qc/send/", {"project": p.pk}).status_code, 403)
         bad = f.post("/qc/send/", {"project": p.pk, "cut_link": "not a link"}, follow=True)
         self.assertContains(bad, "Pick the film")              # already in QC: not offered any more
+
+
+class AutoCheckPortal(SeededTestCase):
+    """AutoCheck: the portal starts a run, stores progress and the report from the QC Helper,
+    holds the rules and hands out the extension."""
+
+    def setUp(self):
+        self.p = Project.objects.create(couple="Auto Check", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                        start_date=timezone.localdate(), status=Project.QC)
+
+    def test_run_lifecycle(self):
+        import json
+        from ops.models import AutoCheckRun
+        qc = self.login("qc")
+        page = qc.get(f"/qc/?p={self.p.pk}")
+        self.assertContains(page, "data-autocheck")
+        self.assertContains(page, "QC Helper isn")
+        bad = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v2_link": "https://example.com/x"}).json()
+        self.assertFalse(bad["ok"])
+        d = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v1_link": "https://f.io/abc", "v2_link": "https://f.io/def"}).json()
+        self.assertTrue(d["ok"])
+        job = d["job"]
+        self.assertEqual((job["v1"], job["v2"], job["checker"]), ("https://f.io/abc", "https://f.io/def", "Ritika (QC)"))
+        self.assertTrue(job["rules"]["jump_cuts"])
+        again = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v2_link": "https://f.io/def"}).json()
+        self.assertIn("already running", again["error"])
+        url = f"/qc/autocheck/{job['id']}/update/"
+        qc.post(url, json.dumps({"type": "progress", "text": "Quick pass on V2…"}), content_type="application/json")
+        run = AutoCheckRun.objects.get(pk=job["id"])
+        self.assertEqual((run.status, run.progress), ("running", "Quick pass on V2…"))
+        report = {"version": "1.0.0", "comments": [
+            {"n": 1, "tc": "00:01:11:17", "text": "change the font", "verdict": "fixed", "note": "changed", "t2": 71.7},
+            {"n": 14, "tc": "00:08:54:22", "text": "camera shake", "verdict": "not_fixed", "note": "same", "t2": 536},
+            {"n": 17, "tc": "00:10:04:01", "text": "sound glitch", "verdict": "check", "note": "listen", "t2": 607}],
+            "issues": [{"kind": "audio_peaks", "t": 617, "text": "Audio hits 0 dB."}],
+            "posted": [{"t": 536, "text": "[AutoCheck] Pending from V1 comment 14: camera shake", "ok": True}],
+            "structure": [{"kind": "added", "from": 366, "to": 381}], "seconds": 600}
+        qc.post(url, json.dumps({"type": "done", "report": report, "posted": 3}), content_type="application/json")
+        run.refresh_from_db()
+        self.assertEqual(run.status, "done")
+        self.assertEqual(run.counts, {"fixed": 1, "not_fixed": 1, "check": 1, "new": 1})
+        rep = qc.get(f"/qc/autocheck/{run.pk}/")
+        self.assertContains(rep, "Not fixed")
+        self.assertContains(rep, "Added in V2 at 6:06–6:21")
+        self.assertContains(qc.get(f"/qc/?p={self.p.pk}"), "Report →")
+        # someone else can't write to this run
+        self.assertEqual(self.login("pratik").post(url, "{}", content_type="application/json").status_code, 403)
+
+    def test_rules_pick_most_specific(self):
+        from ops.models import AutoCheckRule
+        f = self.login("ag")
+        f.post("/qc/autocheck/rules/", {"deliverable": "", "sensitivity": "medium", "check_jump_cuts": "on"})
+        f.post("/qc/autocheck/rules/", {"agency": self.p.agency_id, "deliverable": "Full Film", "sensitivity": "low",
+                                         "min_seconds": "1200"})
+        r = AutoCheckRule.for_project(self.p)
+        self.assertEqual((r.sensitivity, r.min_seconds, r.check_jump_cuts), ("low", 1200, False))
+        self.assertContains(f.get("/qc/autocheck/rules/"), "AutoCheck rules")
+        self.assertEqual(self.login("qc").get("/qc/autocheck/rules/").status_code, 403)
+
+    def test_helper_page_and_download(self):
+        import io
+        import zipfile
+        qc = self.login("qc")
+        self.assertContains(qc.get("/qc/helper/"), "Load unpacked")
+        z = zipfile.ZipFile(io.BytesIO(qc.get("/qc/helper/download/").content))
+        names = z.namelist()
+        for f in ("manifest.json", "runner.js", "analyse.js", "fio.js", "bridge.js"):
+            self.assertIn(f"RedWed-QC-Helper/{f}", names)
+        self.assertNotEqual(self.login("pratik").get("/qc/helper/download/").status_code, 200)

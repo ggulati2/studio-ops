@@ -629,7 +629,10 @@ def delivered(request):
         messages.success(request, f"{p}: {p.timing_label}.")
         return redirect(request.get_full_path())
     qs = (Project.objects.filter(status__in=(Project.CLOSED, Project.CLIENT_REV), closed_on__range=(month_start(month), month_end(month)))
-          .select_related("agency", "editor__profile", "drive").order_by("-closed_on"))
+          .select_related("agency", "editor__profile", "drive", "invoice_line__invoice")
+          .annotate(qc_n=Count("reviews", filter=Q(reviews__kind="qc"), distinct=True),
+                    rev_n=Count("client_revisions", distinct=True))
+          .order_by("-closed_on"))
     q = request.GET.get("q", "").strip()
     if q:
         qs = qs.filter(Q(couple__icontains=q) | Q(agency__name__icontains=q))
@@ -639,8 +642,7 @@ def delivered(request):
             inv = p.invoice_line.invoice
         except Exception:
             inv = None
-        rows.append({"p": p, "qc_rounds": p.reviews.filter(kind="qc").count(), "invoice": inv,
-                     "revisions": p.client_revisions.count()})
+        rows.append({"p": p, "qc_rounds": p.qc_n, "invoice": inv, "revisions": p.rev_n})
     pending_close = Project.objects.filter(status=Project.QC_PASSED).select_related("editor__profile")
     from ..models import HardDrive
     drives = []

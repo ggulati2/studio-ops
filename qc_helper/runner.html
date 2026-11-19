@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>AutoCheck · Red Wed QC Helper</title>
+<style>
+  body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f6f5f3;color:#1d1d1f}
+  main{max-width:720px;margin:40px auto;padding:0 20px}
+  h1{font-size:22px;margin:0 0 4px}
+  .note{color:#6b6b6b;margin:0 0 18px}
+  .track{height:8px;background:#e6e3de;border-radius:99px;overflow:hidden;margin:16px 0}
+  #bar{height:100%;width:0;background:#a51c24;transition:width .4s}
+  ol{background:#fff;border:1px solid #e6e3de;border-radius:12px;padding:12px 16px 12px 36px;max-height:55vh;overflow:auto}
+  li{margin:2px 0}
+  #done{background:#e9f6ee;border:1px solid #b9e2c7;border-radius:12px;padding:12px 16px}
+</style></head>
+<body><main>
+  <h1 id="title">AutoCheck</h1>
+  <p class="note">Keep this tab open. Frame.io tabs open and close by themselves; the result appears on the Studio Ops QC dashboard.</p>
+  <div class="track"><div id="bar"></div></div>
+  <ol id="log"></ol>
+  <p id="done" hidden>Finished. You can close this tab.</p>
+</main>
+<script src="analyse.js"></script>
+<script src="fio.js"></script>
+<script src="runner.js"></script>
+</body></html>

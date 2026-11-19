@@ -1,0 +1,28 @@
+{# AutoCheck: V2 checked against V1's Frame.io comments; runs in this browser through the QC Helper #}
+{% load ops_extras %}{% with last=autochecks.0 %}
+<section class="card autocheck" data-autocheck data-start="{% url 'autocheck_start' p.pk %}" data-helper-need="{{ helper_version }}">
+  <div class="title"><h2>AutoCheck</h2><span class="small muted">Checks V2 against V1's Frame.io comments, looks for new issues, and posts [AutoCheck] comments on V2.</span></div>
+  <div class="ac-helper-missing card tight warn" hidden>
+    <b class="small">Red Wed QC Helper isn't installed in this browser.</b>
+    <span class="small">AutoCheck runs through a small free Chrome extension. <a href="{% url 'qc_helper' %}">Install it (2 minutes)</a>, then reload this page.</span>
+  </div>
+  <div class="ac-helper-old card tight warn" hidden>
+    <span class="small"><b>QC Helper update available</b> (you have <span data-ac-have></span>, latest {{ helper_version }}). <a href="{% url 'qc_helper' %}">Update it</a>.</span>
+  </div>
+  <form class="ac-form" autocomplete="off">{% csrf_token %}
+    <label class="small">V1 link (reviewed, with comments)<input class="input" type="url" name="v1_link" placeholder="https://f.io/…" value="{{ last.v1_link|default:'' }}"></label>
+    <label class="small">V2 link (fixed version to check)<input class="input" type="url" name="v2_link" placeholder="https://f.io/…" required value="{{ last.v2_link|default:'' }}"></label>
+    <div class="actions"><button class="btn dark" type="submit" data-ac-run>AutoCheck</button>
+      <span class="small muted">Leave V1 empty to check V2 on its own. Keep this page open while it runs (about 10–15 min for a full film).</span></div>
+  </form>
+  <div class="ac-live" hidden><div class="ac-track"><div class="ac-bar"></div></div><span class="small" data-ac-status></span></div>
+  {% if autochecks %}<div class="ac-runs">
+    {% for r in autochecks %}<div class="ac-run">
+      <span class="tag {% if r.status == 'done' %}ok{% elif r.status == 'failed' %}bad{% else %}qc{% endif %}">{{ r.get_status_display }}</span>
+      <span class="small">{{ r.started_at|date:"j M, g:i A" }} · {{ r.started_by.profile.name|default:"—" }}</span>
+      <span class="small muted">{{ r.progress }}</span>
+      {% if r.status == 'done' %}<a class="small" href="{% url 'autocheck_report' r.pk %}">Report →</a>{% endif %}
+    </div>{% endfor %}
+  </div>{% endif %}
+</section>
+{% endwith %}

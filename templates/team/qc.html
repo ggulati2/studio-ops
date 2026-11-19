@@ -27,6 +27,7 @@
     <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% endif %}{% if sel.brief %} · Brief: {{ sel.brief }}{% endif %}</span>{% if sel.drive and not sel.received_online %}{% include "team/_drive.html" with drv=sel.drive %}{% endif %}</div></div>
     {% if events %}<div class="ev-strip">{% for e in events %}<span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span>{% endfor %}</div>{% endif %}
   </section>
+  {% include "team/_autocheck.html" with p=sel %}
   {% if events %}<section class="card" aria-label="Events">
     <div class="title"><h2>Events</h2><span class="small muted">Sent one by one while the editor works on the next. Open one to check it.</span></div>
     {% for e in events %}<details class="ev-qc"{% if e.is_open %} open{% endif %}>

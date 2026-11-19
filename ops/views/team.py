@@ -496,6 +496,8 @@ def qc_queue(request):
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
         "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review),
+        "autochecks": list(sel.autochecks.select_related("started_by__profile")[:5]) if sel else [],
+        "helper_version": __import__("ops.views.autocheck", fromlist=["helper_version"]).helper_version(),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
         "sendable": list(Project.objects.filter(Q(status__in=Project.WORKABLE) | Q(status=Project.TL_REVIEW)
                                                | Q(status=Project.QC, whole_review=False)).select_related("editor__profile", "agency")

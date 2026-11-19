@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}QC Helper{% endblock %}
+{% block content %}
+<div class="head"><div><h1>Red Wed QC Helper</h1><p>A small free Chrome extension that runs AutoCheck from the QC dashboard: it reads V1's Frame.io comments, checks V2 in HD, and posts [AutoCheck] comments on V2. Everything runs in your browser.</p></div>
+  <div class="actions"><a class="btn primary" href="{% url 'qc_helper_zip' %}">Download QC Helper {{ version }}</a></div></div>
+<section class="card"><h2>Install (once, about 2 minutes)</h2>
+<ol class="helper-steps">
+  <li>Click <b>Download QC Helper</b> above. You get a <code>.zip</code> file.</li>
+  <li><b>Unzip it</b> into a folder you won't delete, for example <code>Documents/RedWed-QC-Helper</code>.</li>
+  <li>In Chrome open <code>chrome://extensions</code> (in Edge: <code>edge://extensions</code>).</li>
+  <li>Turn on <b>Developer mode</b> (switch at the top right).</li>
+  <li>Click <b>Load unpacked</b> and choose the unzipped <code>RedWed-QC-Helper</code> folder.</li>
+  <li>Click the puzzle-piece icon in the toolbar and <b>pin</b> Red Wed QC Helper.</li>
+  <li><b>Reload</b> the QC dashboard. The AutoCheck card no longer says the helper is missing.</li>
+  <li>Stay signed in to Frame.io in this Chrome, so it can post comments under your account.</li>
+</ol></section>
+<section class="card"><h2>Using it</h2>
+<ol class="helper-steps">
+  <li>On the QC dashboard, open the film and find the <b>AutoCheck</b> card.</li>
+  <li>Paste the <b>V1 link</b> (the version with QC comments) and the <b>V2 link</b> (the fixed version), then click <b>AutoCheck</b>.</li>
+  <li>A tab opens showing progress; Frame.io tabs open and close by themselves. Keep Chrome open and the computer awake: a full film takes about 10–15 minutes, a trailer a couple of minutes.</li>
+  <li>When it finishes, the comments are on V2 and the report is on the QC dashboard.</li>
+</ol></section>
+<section class="card"><h2>Updating</h2>
+<p class="small" style="margin:0">When the AutoCheck card says <b>QC Helper update available</b>: download the new zip, replace the files in the same folder, then click <b>↻</b> (reload) on the QC Helper in <code>chrome://extensions</code>. Chrome may show a notice about developer-mode extensions at start-up; it's normal for private extensions, just close it.</p></section>
+{% endblock %}

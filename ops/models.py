@@ -743,6 +743,80 @@ QC_CHECKLIST = [
 ]
 
 
+class AutoCheckRule(models.Model):
+    """What AutoCheck looks for, per agency and film type (blank = any). The most specific
+    matching rule wins; with none, the defaults below apply."""
+    SENS = [("low", "Low (fewer flags)"), ("medium", "Medium"), ("high", "High (more flags)")]
+    agency = models.ForeignKey("Agency", null=True, blank=True, on_delete=models.CASCADE, related_name="autocheck_rules",
+                               help_text="Blank = every agency")
+    deliverable = models.CharField("Film type", max_length=40, blank=True, help_text="Blank = every film type")
+    min_seconds = models.PositiveIntegerField("Shortest allowed (seconds)", null=True, blank=True)
+    max_seconds = models.PositiveIntegerField("Longest allowed (seconds)", null=True, blank=True)
+    sensitivity = models.CharField(max_length=8, choices=SENS, default="medium")
+    check_blacks = models.BooleanField("Crushed blacks / too dark", default=True)
+    check_highlights = models.BooleanField("Blown highlights", default=True)
+    check_black_frames = models.BooleanField("Black, flash and frozen frames", default=True)
+    check_audio_peaks = models.BooleanField("Audio hitting 0 dB", default=True)
+    check_loudness = models.BooleanField("Uneven loudness between sections", default=True)
+    check_pops = models.BooleanField("Audio pops and clicks", default=True)
+    check_silence = models.BooleanField("Sudden silences", default=True)
+    check_shake = models.BooleanField("Camera shake", default=True)
+    check_jump_cuts = models.BooleanField("Jump cuts", default=True,
+                                          help_text="Switch off for films where jump cuts are a style (often trailers)")
+    check_colour_jumps = models.BooleanField("Colour / exposure jumps between shots", default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["agency", "deliverable"], name="one_autocheck_rule_per_scope")]
+
+    def __str__(self):
+        return f"{self.agency.code if self.agency_id else 'All agencies'} · {self.deliverable or 'all films'}"
+
+    CHECKS = ["blacks", "highlights", "black_frames", "audio_peaks", "loudness", "pops", "silence", "shake",
+              "jump_cuts", "colour_jumps"]
+
+    def as_dict(self):
+        return {"min_seconds": self.min_seconds, "max_seconds": self.max_seconds, "sensitivity": self.sensitivity,
+                **{c: getattr(self, "check_" + c) for c in self.CHECKS}}
+
+    @classmethod
+    def for_project(cls, p):
+        rules = list(cls.objects.filter(models.Q(agency=p.agency_id) | models.Q(agency__isnull=True),
+                                        models.Q(deliverable=p.deliverable) | models.Q(deliverable="")))
+        rules.sort(key=lambda r: (r.agency_id is not None, r.deliverable != ""), reverse=True)
+        return rules[0] if rules else cls()
+
+
+class AutoCheckRun(models.Model):
+    """One AutoCheck: V2 checked against V1's comments plus a hygiene pass, run by the
+    Red Wed QC Helper in the QC person's Chrome; findings are posted on V2 in Frame.io."""
+    QUEUED, RUNNING, DONE, FAILED = "queued", "running", "done", "failed"
+    STATUS = [(QUEUED, "Starting"), (RUNNING, "Running"), (DONE, "Done"), (FAILED, "Failed")]
+    project = models.ForeignKey("Project", on_delete=models.CASCADE, related_name="autochecks")
+    v1_link = models.URLField("V1 link (reviewed)", max_length=500, blank=True)
+    v2_link = models.URLField("V2 link (to check)", max_length=500)
+    status = models.CharField(max_length=10, choices=STATUS, default=QUEUED)
+    progress = models.CharField(max_length=200, blank=True)
+    started_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name="autochecks")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    report = models.JSONField(default=dict, blank=True)
+    posted = models.PositiveIntegerField(default=0)
+    helper_version = models.CharField(max_length=20, blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"AutoCheck {self.project} {self.started_at:%d %b %H:%M}"
+
+    @property
+    def counts(self):
+        r = self.report or {}
+        v = [c.get("verdict") for c in r.get("comments", [])]
+        return {"fixed": v.count("fixed"), "not_fixed": v.count("not_fixed"), "check": v.count("check"),
+                "new": len(r.get("issues", []))}
+
+
 class FilmEvent(models.Model):
     """One event of a long film (Haldi, Sangeet, Wedding, Reception…) sent for review on its own,
     so the editor can carry on with the next event while it's checked. No dates are tracked."""

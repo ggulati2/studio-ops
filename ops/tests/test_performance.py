@@ -17,7 +17,7 @@ U = get_user_model()
 FOUNDER_PAGES = {
     "/dashboard/": 40, "/projects/": 20, "/projects/?status=": 20, "/projects/?view=list&status=": 20, "/planner/": 20, "/planner/?view=month": 20,
     "/team/": 35, "/payroll/": 20, "/deadlines/": 16, "/delivered/": 16, "/reports/": 12, "/invoices/": 18,
-    "/delays/": 16, "/qc/": 22, "/leave/": 16, "/contract-editors/": 18, "/agencies/": 16,
+    "/delays/": 16, "/qc/": 24, "/leave/": 16, "/contract-editors/": 18, "/agencies/": 16,
 }
 EDITOR_PAGES = {"/today/": 30, "/my-month/": 28, "/my-jobs/": 32, "/my-leave/": 14, "/leaderboard/": 22}
 

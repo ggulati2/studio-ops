@@ -1290,3 +1290,13 @@ nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 .money-eye.icon-only{padding:0;width:40px;justify-content:center}
 .money-eye.icon-only .ico{width:18px;height:18px}
 .hrs-tip .over,.over{color:var(--bad)}
+/* AutoCheck card */
+.autocheck .ac-form{display:flex;flex-direction:column;gap:8px}
+.autocheck .ac-form label{display:flex;flex-direction:column;gap:4px}
+.ac-track{height:6px;background:var(--line2);border-radius:99px;overflow:hidden;margin:6px 0}
+.ac-bar{height:100%;width:0;background:var(--accent,#a51c24);transition:width .4s}
+.ac-runs{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line2);padding-top:8px}
+.ac-run{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ac-verdict-fixed{color:var(--ok)}.ac-verdict-not_fixed{color:var(--bad)}.ac-verdict-check{color:var(--warn)}
+.helper-steps li{margin:6px 0}
+.autocheck [hidden]{display:none!important}
