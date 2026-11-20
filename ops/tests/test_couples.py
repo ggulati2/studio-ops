@@ -2186,7 +2186,7 @@ class QCBoardInPlaceAndAutoCheckPage(SeededTestCase):
         board = qc.get("/qc/")
         self.assertContains(board, f'data-qc-film="{self.p.pk}"')
         self.assertContains(board, f'data-url="/qc/film/{self.p.pk}/"')
-        self.assertContains(board, "qcboard.js")
+        self.assertContains(board, "/static/qcboard.")          # (a hashed name in production)
         frag = qc.get(f"/qc/film/{self.p.pk}/", HTTP_X_REQUESTED_WITH="fetch")
         self.assertEqual(frag.status_code, 200)
         self.assertNotContains(frag, "<html")                      # a piece of the page, not a page
