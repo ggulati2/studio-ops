@@ -66,7 +66,7 @@
         <td class="right nowrap">{% if d.data_gb %}<b>{{ d.data_gb|hours }}</b> GB{% if d.used_pct is not None %}<div class="bar sm"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
         <td class="nowrap">{% if d.n_folders %}📁 {{ d.n_folders }}{% if d.n_waiting %} <span class="tag warn">{{ d.n_waiting }} waiting</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
         <td class="nowrap">{{ d.received_on|date:"j M Y" }}</td>
-        <td class="nowrap">{% with r=d.last_return %}{% if r %}{{ r.sent_on|date:"j M Y" }}<div class="small muted ellip" style="max-width:160px" title="{{ r.sent_to }} · {{ r.get_method_display }} · {{ r.get_status_display }}">to {{ r.sent_to }} · {{ r.get_status_display|lower }}</div>{% elif d.status == "ready" %}<span class="tag warn">Ready to send</span>{% else %}<span class="muted">–</span>{% endif %}{% endwith %}</td>
+        {% include "drives/_sent_cell.html" %}
         <td>{{ d.location|default:"–" }}</td>
         {% if can_delete %}<td><details class="dc-del inline"><summary aria-label="Delete {{ d.code }}" title="Delete {{ d.code }}">🗑</summary>
           <form method="post" action="{% url 'drive_delete' d.pk %}" data-live class="dc-del-pop">{% csrf_token %}<b class="small">Delete {{ d.code }}?</b><span class="small muted">Its folder list and send-back records go too. Films stay on Projects, without a drive.</span>
@@ -85,7 +85,7 @@
         <b class="small">{% if d.studio_owned %}Studio drive{% else %}{{ d.agency|default:"No agency" }}{% endif %}</b>
         {% if d.films_text %}<span class="small">🎬 {{ d.films_text }}</span>{% endif %}{% if d.contents %}<span class="small muted">{{ d.contents }}</span>{% endif %}
         {% if d.data_gb %}{% if d.used_pct is not None %}<div class="bar"><i style="width:{{ d.used_pct }}%"></i></div>{% endif %}<span class="small muted">{{ d.data_gb|hours }} GB data available{% if d.capacity_tb %} · {{ d.capacity_tb|hours }} TB drive{% endif %}</span>{% endif %}
-        <span class="small muted">{% if d.n_folders %}📁 {{ d.n_folders }} folder{{ d.n_folders|pluralize }} · {% endif %}Received {{ d.received_on|date:"j M" }}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
+        <span class="small muted">{% if d.n_folders %}📁 {{ d.n_folders }} folder{{ d.n_folders|pluralize }} · {% endif %}Received {{ d.received_on|date:"j M" }}{% if d.last_return %} · Sent back {{ d.last_return.sent_on|date:"j M" }}{% elif d.status == "sent" %} · <b style="color:var(--warn)">sent-back date missing</b>{% endif %}{% if d.location %} · {{ d.location }}{% endif %}{% if d.damaged_on_arrival %} · <b style="color:var(--bad)">arrived damaged</b>{% endif %}</span>
       </div></a>
       {% if can_delete %}<details class="dc-del"><summary class="iconbtn" aria-label="Delete {{ d.code }}" title="Delete {{ d.code }}">🗑</summary>
         <form method="post" action="{% url 'drive_delete' d.pk %}" data-live class="dc-del-pop">{% csrf_token %}

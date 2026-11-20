@@ -1313,3 +1313,7 @@ nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 .delivery-kpis{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
 .delivery-kpis .title{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .delivery-kpis .title h2{margin:0}
+
+/* Drive register: sent-back date in the list */
+.sent-add{margin-top:4px}.sent-add>summary{list-style:none;cursor:pointer;color:var(--muted)}.sent-add>summary::-webkit-details-marker{display:none}
+.sent-form{display:flex;gap:6px;align-items:center;margin-top:6px}.sent-form .input{width:auto;min-height:32px;padding:4px 8px}

@@ -6,11 +6,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from ..audit import record
 from ..rbac import ADMIN, has_perm, requires
-from ..forms import DriveForm, DriveReturnForm, ReceiveDriveForm
+from ..forms import DriveForm, DriveReturnForm, ReceiveDriveForm, save_sent_back
 from ..models import DriveFolder, DriveReturn, HardDrive, Project
 from ..services import store_image
 
-__all__ = ["drives", "drive_edit", "drive_returns", "drive_return_status", "drive_delete"]
+__all__ = ["drives", "drive_edit", "drive_returns", "drive_return_status", "drive_delete", "drive_sent_on"]
 
 
 def _next_code(kind="HDD"):
@@ -124,7 +124,14 @@ def drive_edit(request, pk):
         _save_photos(form, d)
         from .suggest import link_drive_films
         link_drive_films(request, d)
-        messages.success(request, f"{d.code} saved.")
+        on = form.cleaned_data.get("sent_back_on")
+        if on:
+            _, created = save_sent_back(d, on, request.user)
+            if created or "sent_back_on" in form.changed_data:
+                record(request, "drive.sent_back", d.code, f"{on:%d %b %Y}")
+            if d.open_jobs.exists():
+                messages.warning(request, f"{d.code} still has open films on Projects. Check they don't need this footage.")
+        messages.success(request, f"{d.code} saved." + (f" Sent back on {on:%-d %b %Y}." if on else ""))
         return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "drives")
     return render(request, "drives/edit.html", {"d": d, "form": form, "folders": d.folders.select_related("client"),
                                                 "can_delete": has_perm(request.user, "projects.manage"),
@@ -184,4 +191,47 @@ def drive_delete(request, pk):
         return JsonResponse({"ok": True, "messages": [{"level": "success", "text": text}],
                              "remove": [f'[data-drive-cell="{pk}"]']})
     messages.success(request, text)
+    return redirect("drives")
+
+
+@requires("drives.manage")
+def drive_sent_on(request, pk):
+    """Set (or correct) the day a drive went back, straight from the register: the drive becomes
+    Sent back and the date shows in its Sent back column and history. Answers fetch with the cell."""
+    from datetime import date
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
+    from django.utils import timezone
+    d = get_object_or_404(HardDrive.objects.select_related("agency"), pk=pk)
+    if request.method != "POST":
+        return redirect("drives")
+    try:
+        on = date.fromisoformat(request.POST.get("sent_on", ""))
+    except ValueError:
+        on = None
+    say = []
+    if not on:
+        say.append(("error", "Pick the date it was sent back."))
+    elif on > timezone.localdate():
+        say.append(("error", "That date is in the future. Pick the day it actually went back."))
+    elif on < d.received_on:
+        say.append(("error", f"That's before {d.code} was received ({d.received_on:%-d %b %Y})."))
+    else:
+        _, created = save_sent_back(d, on, request.user)
+        if d.status != "sent":
+            d.status = "sent"
+            d.save(update_fields=["status"])
+        record(request, "drive.sent_back", d.code, f"{on:%d %b %Y}")
+        say.append(("success", f"{d.code} sent back on {on:%-d %b %Y}."))
+        if d.open_jobs.exists():
+            say.append(("warning", f"{d.code} still has open films on Projects. Check they don't need this footage."))
+    bad = any(l == "error" for l, _ in say)
+    if request.headers.get("X-Requested-With") == "fetch":
+        d.last_return = d.returns.order_by("-sent_on", "-pk").first()
+        cell = render_to_string("drives/_sent_cell.html", {"d": d}, request=request)
+        return JsonResponse({"ok": not bad, "messages": [{"level": l, "text": t} for l, t in say],
+                             "swap": [{"sel": f'[data-sent-cell="{d.pk}"]', "mode": "outer", "html": cell}],
+                             "refresh": not bad})
+    for l, t in say:
+        getattr(messages, l)(request, t)
     return redirect("drives")

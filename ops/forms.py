@@ -429,6 +429,8 @@ class AgencyForm(StyledMixin, forms.ModelForm):
 
 class DriveForm(StyledMixin, forms.ModelForm):
     photos_upload = PhotosField(required=False, label="Photos (label, serial sticker, any damage) — up to 6")
+    sent_back_on = forms.DateField(label="Sent back on", required=False, widget=DATE,
+                                   help_text="The day the drive went back to the agency. Filling it sets the status to Sent back.")
 
     class Meta:
         model = HardDrive
@@ -456,8 +458,45 @@ class DriveForm(StyledMixin, forms.ModelForm):
             "data-initial": json.dumps([{"id": p.pk, "label": film_label(p)}
                                         for p in picked.select_related("agency").order_by("couple", "deliverable")])})
 
+        # the date sits right under the status; it shows the last send-back on record
+        order = list(self.fields)
+        order.remove("sent_back_on")
+        order.insert(order.index("status") + 1, "sent_back_on")
+        self.order_fields(order)
+        if self.instance.pk and not self.is_bound:
+            last = self.instance.returns.order_by("-sent_on", "-pk").first()
+            if last:
+                self.initial["sent_back_on"] = last.sent_on
+
     def clean(self):
-        return _check_drive_data(self, super().clean())
+        data = _check_drive_data(self, super().clean())
+        if "sent_back_on" not in self.fields:
+            return data
+        on, status = data.get("sent_back_on"), data.get("status")
+        if on:
+            if on > timezone.localdate():
+                self.add_error("sent_back_on", "That's in the future. Enter the day it actually went back.")
+            elif data.get("received_on") and on < data["received_on"]:
+                self.add_error("sent_back_on", f"That's before it was received ({data['received_on']:%-d %b %Y}).")
+            elif status != "damaged":
+                data["status"] = "sent"
+        elif status == "sent" and not (self.instance.pk and self.instance.returns.exists()):
+            self.add_error("sent_back_on", "Add the date it was sent back.")
+        return data
+
+
+def save_sent_back(drive, on, user):
+    """Record the day a drive went back: corrects the latest send-back record, or creates one
+    (to the agency, by courier) when there is none yet. Returns (record, created)."""
+    last = drive.returns.order_by("-sent_on", "-pk").first()
+    if last:
+        if last.sent_on != on:
+            last.sent_on = on
+            last.save(update_fields=["sent_on"])
+        return last, False
+    a = drive.agency
+    to = (f"{a.name} – {a.contact_person}" if a and a.contact_person else a.name if a else "Agency")
+    return DriveReturn.objects.create(drive=drive, sent_on=on, sent_to=to[:120], recorded_by=user), True
 
 
 def _check_drive_data(form, data):
@@ -478,6 +517,10 @@ class ReceiveDriveForm(DriveForm):
                                      "class": "mono"}),
         help_text="One per line. Windows: select the folders, Shift + right-click → Copy as path. Mac: select them in Finder → ⌘C. "
                   "Each folder then waits on Projects for a founder to add it as a project or decline it.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop("sent_back_on", None)          # a drive that just came in hasn't gone back
 
 
 class DriveReturnForm(StyledMixin, forms.ModelForm):

@@ -1,0 +1,9 @@
+{% load ops_extras %}<td class="nowrap sent-cell" data-sent-cell="{{ d.pk }}">{% with r=d.last_return %}
+  {% if r %}{{ r.sent_on|date:"j M Y" }}<div class="small muted ellip" style="max-width:160px" title="{{ r.sent_to }} · {{ r.get_method_display }} · {{ r.get_status_display }}">to {{ r.sent_to }} · {{ r.get_status_display|lower }}</div>
+  {% elif d.status == "sent" %}<span class="tag warn">Date missing</span>
+  {% elif d.status == "ready" %}<span class="tag warn">Ready to send</span>{% endif %}
+  <details class="sent-add"{% if d.status == "sent" and not r %} open{% endif %}><summary class="linkish small">{% if r %}Change date{% else %}+ Sent back date{% endif %}</summary>
+    <form method="post" action="{% url 'drive_sent_on' d.pk %}" data-live class="sent-form">{% csrf_token %}
+      <input class="input" type="date" name="sent_on" value="{% if r %}{{ r.sent_on|date:'Y-m-d' }}{% else %}{% now 'Y-m-d' %}{% endif %}" max="{% now 'Y-m-d' %}" min="{{ d.received_on|date:'Y-m-d' }}" required aria-label="Date {{ d.code }} was sent back">
+      <button class="btn sm">Save</button></form></details>
+{% endwith %}</td>

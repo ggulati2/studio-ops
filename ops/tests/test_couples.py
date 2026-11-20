@@ -672,6 +672,83 @@ class DriveListSentBack(SeededTestCase):
         self.assertContains(r, f'data-href="/drives/{d.pk}/"')
 
 
+class DriveSentBackDate(SeededTestCase):
+    """The drive desk / founders can add (or correct) the date a drive was sent back, on the
+    drive's page and straight from the register list."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from ops.models import HardDrive
+        self.today = timezone.localdate()
+        self.d = HardDrive.objects.create(code="HDD-91", agency=Agency.objects.get(code="BRC"), status="ready",
+                                          received_on=self.today - timedelta(days=20))
+        self.f = self.login("ag")
+
+    def edit(self, **over):
+        data = {"code": "HDD-91", "kind": "HDD", "agency": self.d.agency_id, "received_on": self.d.received_on.isoformat(),
+                "received_via": "courier", "status": "ready", **over}
+        return self.f.post(f"/drives/{self.d.pk}/", data, follow=True)
+
+    def test_date_on_the_drive_page(self):
+        from datetime import timedelta
+        from ops.models import DriveReturn
+        self.assertContains(self.f.get(f"/drives/{self.d.pk}/"), "Sent back on")
+        on = self.today - timedelta(days=3)
+        r = self.edit(sent_back_on=on.isoformat())
+        self.assertContains(r, f"Sent back on {on:%-d %b %Y}")
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.status, "sent")                       # the date sets the status
+        ret = DriveReturn.objects.get(drive=self.d)
+        self.assertEqual((ret.sent_on, ret.sent_to), (on, "BadalRaja Company" if not self.d.agency.contact_person
+                                                       else f"{self.d.agency.name} – {self.d.agency.contact_person}"))
+        # correcting the date changes that record, never adds a second one
+        self.edit(status="sent", sent_back_on=(on - timedelta(days=1)).isoformat())
+        self.assertEqual(DriveReturn.objects.filter(drive=self.d).count(), 1)
+        self.assertEqual(DriveReturn.objects.get(drive=self.d).sent_on, on - timedelta(days=1))
+        self.assertContains(self.f.get(f"/drives/{self.d.pk}/"), f'value="{on - timedelta(days=1):%Y-%m-%d}"')
+
+    def test_page_validation(self):
+        from datetime import timedelta
+        r = self.edit(status="sent")
+        self.assertContains(r, "Add the date it was sent back.")
+        r = self.edit(sent_back_on=(self.today + timedelta(days=1)).isoformat())
+        self.assertContains(r, "in the future")
+        r = self.edit(sent_back_on=(self.d.received_on - timedelta(days=1)).isoformat())
+        self.assertContains(r, "before it was received")
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.status, "ready")
+        # a drive that just came in has no sent-back date on its form
+        self.assertNotContains(self.f.get("/drives/"), 'name="sent_back_on"')
+
+    def test_inline_from_the_register(self):
+        from datetime import timedelta
+        from ops.models import DriveReturn
+        r = self.f.get("/drives/?view=list&status=all")
+        self.assertContains(r, f'data-sent-cell="{self.d.pk}"')
+        self.assertContains(r, "+ Sent back date")
+        on = self.today - timedelta(days=2)
+        res = self.f.post(f"/drives/{self.d.pk}/sent-on/", {"sent_on": on.isoformat()}, **FETCH).json()
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["swap"][0]["sel"], f'[data-sent-cell="{self.d.pk}"]')
+        self.assertIn(f"{on:%-d %b %Y}", res["swap"][0]["html"])
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.status, "sent")
+        self.assertEqual(DriveReturn.objects.get(drive=self.d).sent_on, on)
+        bad = self.f.post(f"/drives/{self.d.pk}/sent-on/", {"sent_on": (self.today + timedelta(days=2)).isoformat()}, **FETCH).json()
+        self.assertFalse(bad["ok"])
+        self.assertEqual(DriveReturn.objects.get(drive=self.d).sent_on, on)
+        # the drive desk can do it; editors can't
+        self.assertTrue(self.login("drives").post(f"/drives/{self.d.pk}/sent-on/", {"sent_on": on.isoformat()}, **FETCH).json()["ok"])
+        self.assertNotEqual(self.login("pratik").post(f"/drives/{self.d.pk}/sent-on/", {"sent_on": on.isoformat()}).status_code, 200)
+
+    def test_sent_without_a_date_is_flagged(self):
+        self.d.status = "sent"
+        self.d.save()
+        r = self.f.get("/drives/?view=list&status=sent")
+        self.assertContains(r, "Date missing")
+        self.assertContains(self.f.get("/drives/?status=sent"), "sent-back date missing")
+
+
 class StartDates(SeededTestCase):
     """Projects get a start date; the Planner plans from it and shows start + due days."""
 
