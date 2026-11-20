@@ -8,6 +8,7 @@ It's queued as soon as a Frame.io link is sent and runs by itself in a QC person
     {% elif r %}<span class="small muted" data-ac-status>{% if r.status == 'queued' %}Starts by itself when a QC person's Chrome with the helper has Studio Ops open.{% else %}{{ r.progress }}{% endif %}</span>{% endif %}
   </div>
   <div class="ac-vers small">
+    {% for o in u.older %}<span><span class="tag">V{{ o.round }}</span> <a href="{{ o.link }}" target="_blank" rel="noopener">{{ o.link|truncatechars:38 }}</a> <span class="muted">{{ o.sent_at|date:"j M" }}</span></span>{% endfor %}
     {% if u.prev %}<span><span class="tag">{{ u.prev_label }}</span> <a href="{{ u.prev.link }}" target="_blank" rel="noopener">{{ u.prev.link|truncatechars:38 }}</a> <span class="muted">{{ u.prev.sent_at|date:"j M" }}</span></span>{% endif %}
     {% if u.link %}<span><span class="tag qc">{{ u.cur_label }}</span> <a href="{{ u.link }}" target="_blank" rel="noopener">{{ u.link|truncatechars:38 }}</a>{% if u.last %} <span class="muted">{{ u.last.sent_at|date:"j M" }}</span>{% endif %}</span>
     {% else %}<span class="muted">No link sent yet.</span>{% endif %}

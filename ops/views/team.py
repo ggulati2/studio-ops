@@ -476,7 +476,14 @@ def qc_queue(request):
              .select_related("agency", "editor__profile", "drive")
              .annotate(ev_waiting=Count("events", filter=Q(events__status=FilmEvent.QC), distinct=True))
              .order_by("deadline"))
-    sel = queue.filter(pk=request.GET.get("p")).first() or queue.first()
+    pid = request.GET.get("p", "")
+    sel = queue.filter(pk=pid).first() if pid.isdigit() else None
+    if not sel and pid.isdigit():
+        # a film that's no longer waiting (passed, sent back, delivered): open it to see its links and history
+        sel = (Project.objects.filter(Q(reviews__kind=Review.QC) | Q(cut_links__isnull=False) | Q(events__isnull=False), pk=pid)
+               .select_related("agency", "editor__profile", "drive").distinct().first())
+    sel = sel or queue.first()
+    waiting = bool(sel and any(q.pk == sel.pk for q in queue))
     events = []
     if sel:
         events = list(sel.events.prefetch_related(Prefetch("reviews", queryset=Review.objects.select_related("reviewer__profile"))))
@@ -503,7 +510,8 @@ def qc_queue(request):
     return render(request, "team/qc.html", {
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
-        "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review),
+        "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review), "waiting": waiting,
+        "last_qc": sel.reviews.filter(kind=Review.QC).select_related("reviewer__profile").first() if sel and not waiting else None,
         "whole_ac": ac.get(None),
         "helper_version": __import__("ops.views.autocheck", fromlist=["helper_version"]).helper_version(),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
@@ -533,7 +541,8 @@ def _autocheck_units(p, events):
         last = ls[0] if ls else None
         prev = ls[1] if len(ls) > 1 else None
         rs = runs[key][:3]
-        u = {"last": last, "prev": prev, "link": last.link if last else cut, "runs": rs, "run": rs[0] if rs else None}
+        u = {"last": last, "prev": prev, "link": last.link if last else cut, "runs": rs, "run": rs[0] if rs else None,
+             "older": list(reversed(ls[2:]))}      # V1… before the two shown
         if last:
             u["cur_label"], u["prev_label"] = f"V{last.round}", (f"V{prev.round}" if prev else "")
         else:
@@ -558,10 +567,12 @@ def qc_board(days=120):
     """Every film that reached QC recently, with where it stands now: waiting, back for a
     re-check after a fail, sent back to the editor, passed, or delivered."""
     from django.db.models import Prefetch, Q
+    from ..models import CutLink
     since = timezone.now() - timedelta(days=days)
     qs = (Project.objects.filter(Q(status=Project.QC) | Q(events__status=FilmEvent.QC)
                                  | Q(reviews__kind=Review.QC, reviews__created__gte=since)).distinct()
           .select_related("agency", "editor__profile", "qc_closed_by__profile").prefetch_related("events")
+          .prefetch_related(Prefetch("cut_links", queryset=CutLink.objects.select_related("event").order_by("round", "sent_at")))
           .prefetch_related(Prefetch("reviews", queryset=Review.objects.filter(kind=Review.QC).select_related("reviewer__profile", "event"),
                                      to_attr="qc_reviews")))
     label = {k: (lbl, cls) for k, lbl, cls in QC_STATES}
@@ -579,7 +590,14 @@ def qc_board(days=120):
             state = "delivered"
         else:
             state = "passed"
-        rows.append({"p": p, "events": evs, "state": state, "label": label[state][0], "cls": label[state][1], "last": last,
+        latest = {}
+        for c in p.cut_links.all():                 # the newest version of the whole film and of each event
+            latest[c.event_id] = c
+        links = [{"label": (c.event.name + " " if c.event_id else "") + f"V{c.round}", "link": c.link, "at": c.sent_at}
+                 for c in sorted(latest.values(), key=lambda c: (c.event_id is not None, c.event.name if c.event_id else ""))]
+        if not latest.get(None) and p.cut_link:
+            links.insert(0, {"label": "Film", "link": p.cut_link, "at": None})
+        rows.append({"p": p, "events": evs, "state": state, "links": links, "label": label[state][0], "cls": label[state][1], "last": last,
                      "rounds": len(revs), "fails": fails, "first_time": bool(revs) and fails == 0 and last.passed,
                      "when": last.created if last else None})
     order = {k: i for i, (k, _, _) in enumerate(QC_STATES)}

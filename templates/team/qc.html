@@ -15,6 +15,7 @@
   <div class="actions"><div class="kpi"><span>Waiting</span><b>{{ queue|length }}</b></div><div class="kpi"><span>First-time pass (this month)</span><b>{% if first_time is not None %}{{ first_time }}%{% else %}–{% endif %}</b></div></div></div>
 <div class="row" data-live-region="qc">
   <section class="aside" aria-label="Queue">
+    {% if sel and not waiting %}<a class="card tight" href="?" style="text-decoration:none;color:inherit;border:2px solid var(--red)"><b>{{ sel }}</b><span class="small muted">Not waiting for QC · viewing its links and history</span><span class="small">← Back to the queue</span></a>{% endif %}
     {% for p in queue %}<a class="card tight" href="?p={{ p.pk }}" style="text-decoration:none;color:inherit;{% if sel.pk == p.pk %}border:2px solid var(--red){% endif %}">
       <b>{{ p }}</b><span class="small muted">{{ p.agency }} · {{ p.editor.profile.name }}</span>
       <span class="small" style="font-weight:600;{% if p.days_left is not None and p.days_left <= 1 %}color:var(--bad){% endif %}">{% if p.deadline %}Due {{ p.deadline|date:"j M" }}{% endif %}</span>
@@ -24,7 +25,8 @@
   {% if sel %}
   <div class="grow col-stack">
   <section class="card">
-    <div class="title"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% endif %}{% if sel.brief %} · Brief: {{ sel.brief }}{% endif %}</span>{% if sel.drive and not sel.received_online %}{% include "team/_drive.html" with drv=sel.drive %}{% endif %}</div></div>
+    <div class="title" id="qc-film"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% endif %}{% if sel.brief %} · Brief: {{ sel.brief }}{% endif %}</span>{% if sel.drive and not sel.received_online %}{% include "team/_drive.html" with drv=sel.drive %}{% endif %}</div></div>
+    {% if not waiting %}<div class="small"><span class="tag {{ sel.status|status_class }}">{{ sel.get_status_display }}</span>{% if last_qc %} · last QC <b style="color:{% if last_qc.passed %}var(--ok){% else %}var(--bad){% endif %}">{% if last_qc.passed %}passed{% else %}failed{% endif %}</b> by {{ last_qc.reviewer.profile.name|default:"—" }}, {{ last_qc.created|date:"j M, g:i A" }}{% endif %}</div>{% endif %}
     {% include "team/_autocheck_helper.html" %}
     {% if events %}<div class="ev-strip">{% for e in events %}<span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span>{% endfor %}</div>{% endif %}
   </section>
@@ -53,6 +55,13 @@
     {% include "team/_qc_checks.html" %}
     {% if history %}<div style="border-top:1px solid var(--line2);padding-top:10px"><h3>History</h3>{% for r in history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
   </form>
+  {% elif sel %}
+  <section class="card">
+    <div class="title"><h2>{% if events %}Whole film{% else %}Film{% endif %}</h2>{% if sel.cut_link %}<a href="{{ sel.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open film ↗</a>{% endif %}</div>
+    {% if whole_ac.link or whole_ac.runs %}{% include "team/_autocheck.html" with p=sel u=whole_ac event=None %}{% endif %}
+    {% if history %}<div style="border-top:1px solid var(--line2);padding-top:10px"><h3>History</h3>{% for r in history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.reviewer.profile.name|default:"—" }} · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}</div>
+    {% elif not sel.cut_link and not whole_ac.link %}<span class="small muted">No whole-film link or review yet.</span>{% endif %}
+  </section>
   {% endif %}
   </div>
   {% endif %}
@@ -67,9 +76,10 @@
     <a href="?s=failed#status" class="{% if show == 'failed' %}on{% endif %}">Failed at least once <span class="muted">{{ counts.failed }}</span></a>
     <a href="?s=closed#status" class="{% if show == 'closed' %}on{% endif %}">Closed from QC <span class="muted">{{ counts.closed }}</span></a>
   </div>
-  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Editor</th><th>Status</th><th>QC rounds</th><th>Latest QC</th><th>Film status</th><th>Closed from QC</th>{% if founder %}<th class="right">QC fee</th><th></th>{% endif %}</tr></thead><tbody>
+  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Links</th><th>Editor</th><th>Status</th><th>QC rounds</th><th>Latest QC</th><th>Film status</th><th>Closed from QC</th>{% if founder %}<th class="right">QC fee</th><th></th>{% endif %}</tr></thead><tbody>
   {% for b in board %}<tr>
-    <td><b>{{ b.p }}</b><div class="small muted">{{ b.p.agency }}</div></td>
+    <td><a href="?p={{ b.p.pk }}#qc-film"><b>{{ b.p }}</b></a><div class="small muted">{{ b.p.agency }}</div></td>
+    <td><div class="qc-links">{% for l in b.links %}<a class="tag info" href="{{ l.link }}" target="_blank" rel="noopener" title="{{ l.link }}{% if l.at %} · sent {{ l.at|date:'j M' }}{% endif %}">{{ l.label }} ↗</a>{% empty %}<span class="muted small">–</span>{% endfor %}</div></td>
     <td>{{ b.p.editor.profile.name|default:"—" }}</td>
     <td><span class="tag {{ b.cls }}">{{ b.label }}</span>{% if b.first_time %} <span class="tag ok">First-time pass</span>{% endif %}
       {% if b.events %}<details class="ev-mini"><summary class="small">{{ b.events|length }} event{{ b.events|length|pluralize }}</summary>{% for e in b.events %}<div class="small"><span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span></div>{% endfor %}</details>{% endif %}</td>
@@ -84,7 +94,7 @@
     {% if founder %}<td class="right nowrap"><form method="post" action="{% url 'qc_fee' b.p.pk %}" data-live class="cell-edit extra-amt">{% csrf_token %}
         <span class="amt-wrap"><span class="amt-cur" aria-hidden="true">₹</span><input class="cell-input num" name="fee" inputmode="numeric" pattern="[0-9,]*" value="{% if b.p.qc_fee %}{{ b.p.qc_fee }}{% endif %}" placeholder="0" data-save-on-leave aria-label="QC fee for {{ b.p }}"></span></form></td>
       <td>{% include "team/_qc_entry_edit.html" with p=b.p %}</td>{% endif %}
-  </tr>{% empty %}<tr><td colspan="9" class="muted">No films {% if show %}with this status{% else %}have reached QC yet{% endif %}.</td></tr>{% endfor %}
+  </tr>{% empty %}<tr><td colspan="10" class="muted">No films {% if show %}with this status{% else %}have reached QC yet{% endif %}.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
 {% endblock %}

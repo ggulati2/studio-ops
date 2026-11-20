@@ -1328,3 +1328,7 @@ nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 .learn-how ul{margin:4px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
 .learn-change{display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;border-top:1px solid var(--line2);padding-top:8px}
 @media (max-width:640px){.learn-change{grid-template-columns:1fr}}
+
+/* QC board: each film's latest review links */
+.qc-links{display:flex;flex-wrap:wrap;gap:4px;min-width:90px}
+.qc-links .tag{text-decoration:none;white-space:nowrap}

@@ -2102,3 +2102,62 @@ class HelperChecksJS(SeededTestCase):
         script = Path(__file__).resolve().parent / "js" / "test_checks.js"
         r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class QCLinksStayVisible(SeededTestCase):
+    """After QC passes or fails a film, its review links (V1, V2…) stay on the QC page: on the
+    board and when the film is opened, though it's no longer in the queue."""
+
+    def test_links_after_pass_and_fail(self):
+        from ops import services as S
+        p = Project.objects.create(couple="Links Stay", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                   start_date=timezone.localdate(), status=Project.QC, cut_link="https://f.io/teaser-v2")
+        Project.objects.filter(pk=p.pk).update(whole_review=True)
+        S.note_cut_link(p, None, "https://f.io/teaser-v1")
+        S.note_cut_link(p, None, "https://f.io/teaser-v2")
+        qc = self.login("qc")
+        qc.post(f"/qc/{p.pk}/", {"decision": "fail", "comments": "lift the blacks"})
+        p.refresh_from_db()
+        self.assertEqual(p.status, Project.REVISIONS)
+        board = qc.get("/qc/")
+        self.assertContains(board, 'href="https://f.io/teaser-v2"')          # the latest version on the board
+        self.assertContains(board, "V2 ↗")
+        self.assertContains(board, f'href="?p={p.pk}#qc-film"')
+        page = qc.get(f"/qc/?p={p.pk}")
+        self.assertEqual(page.context["sel"].pk, p.pk)
+        self.assertFalse(page.context["waiting"])
+        self.assertContains(page, "https://f.io/teaser-v1")                    # every version when opened
+        self.assertContains(page, "https://f.io/teaser-v2")
+        self.assertContains(page, "lift the blacks")
+        self.assertContains(page, "Back to the queue")
+        self.assertNotContains(page, f'action="/qc/{p.pk}/"')                 # nothing to pass or fail now
+        # passed later: still there
+        Project.objects.filter(pk=p.pk).update(status=Project.QC, whole_review=True)
+        qc.post(f"/qc/{p.pk}/", {"decision": "pass", "comments": ""})
+        page = qc.get(f"/qc/?p={p.pk}")
+        self.assertContains(page, "https://f.io/teaser-v2")
+        self.assertContains(page, "passed</b> by")
+        # a film that never reached QC can't be opened this way
+        other = Project.objects.create(couple="Never QC", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                       start_date=timezone.localdate())
+        sel = qc.get(f"/qc/?p={other.pk}").context["sel"]
+        self.assertNotEqual(sel and sel.pk, other.pk)
+
+    def test_three_versions_all_listed(self):
+        from ops import services as S
+        from ops.models import FilmEvent
+        p = Project.objects.create(couple="Three Vers", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                   start_date=timezone.localdate(), status=Project.IN_PROGRESS)
+        e = FilmEvent.objects.create(project=p, name="Haldi", status=FilmEvent.REVISIONS)
+        for n in (1, 2, 3):
+            S.note_cut_link(p, e, f"https://f.io/haldi-{n}")
+        qc = self.login("qc")
+        e.status = FilmEvent.QC
+        e.save()
+        qc.post(f"/qc/event/{e.pk}/", {"decision": "pass", "comments": ""})
+        e.refresh_from_db()
+        self.assertEqual(e.status, FilmEvent.PASSED)
+        page = qc.get(f"/qc/?p={p.pk}")
+        for n in (1, 2, 3):
+            self.assertContains(page, f"https://f.io/haldi-{n}")
+        self.assertContains(page, "Haldi V3 ↗")
