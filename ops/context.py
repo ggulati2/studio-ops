@@ -13,6 +13,7 @@ MENU = [
     ("My leave", "my_leave", "work.log_own", "plane"),
     ("My jobs", "my_jobs", "work.log_own", "film"),
     ("QC dashboard", "qc_queue", "qc.review", "check"),
+    ("AutoCheck", "autocheck_home", "qc.review", "spark"),
     ("My earnings", "qc_earnings", "qc.earnings", "wallet"),
     ("Projects", "projects", "projects.manage", "film"),
     ("Planner", "planner", "planner.manage", "layout"),

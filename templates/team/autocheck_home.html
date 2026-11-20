@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% load ops_extras static %}
+{% block title %}AutoCheck{% endblock %}
+{% block scripts %}<script src="{% static 'autocheck_page.js' %}" defer></script>{% endblock %}
+{% block content %}
+<div class="head"><div><h1>AutoCheck</h1><p>Check any film or event now, on its own, and see every recent check. Comments go on the version in Frame.io as [Hygiene].</p></div>
+  <div class="actions ac-get">
+    <a class="ac-dl" href="{% url 'qc_helper_zip' %}" download title="The latest QC Helper build"><svg class="ico" aria-hidden="true"><use href="{% static 'icons.svg' %}#repeat"/></svg>QC Helper {{ version }}</a>
+    <a class="small muted" href="{% url 'qc_helper' %}">How to install</a>
+  </div></div>
+{% include "team/_autocheck_helper.html" %}
+
+<div class="row">
+  <section class="card grow ac-any" aria-labelledby="ac-any-h">
+    <h2 id="ac-any-h">Check a film</h2>
+    <div class="autocheck ac-any-box" data-autocheck data-start="{% if pick %}{% url 'autocheck_start' pick.pk %}{% endif %}" data-links="{% url 'autocheck_links' %}">
+      <form class="ac-form ac-any-form" autocomplete="off">{% csrf_token %}
+        <div class="ac-any-row">
+          <label class="ac-film-pick"><span>Film</span>
+            <input class="input" type="search" placeholder="Type a couple, film or agency…" data-film-search aria-label="Search films">
+            <select class="input" name="_film" data-film-select required size="1">
+              <option value="">Pick the film</option>
+              {% for f in films %}<option value="{{ f.pk }}"{% if pick.pk == f.pk %} selected{% endif %}>{{ f.couple }} · {{ f.deliverable }}{% if f.agency.code %} · {{ f.agency.code }}{% endif %} — {{ f.get_status_display }}</option>{% endfor %}
+            </select></label>
+          <label><span>Event</span> <select class="input" name="event" data-event-select disabled><option value="">Whole film</option></select></label>
+        </div>
+        <div class="ac-any-row">
+          <label><span>Earlier version, with QC's comments <span class="muted" data-v1-label></span></span>
+            <input class="input" type="url" name="v1_link" placeholder="https://f.io/… (empty: check one version on its own)"></label>
+          <label><span>Version to check <span class="muted" data-v2-label></span></span>
+            <input class="input" type="url" name="v2_link" placeholder="https://f.io/…" required></label>
+        </div>
+        <p class="small muted" data-links-note>Pick a film: its latest versions fill in by themselves. You can paste any Frame.io links instead.</p>
+        <div class="actions"><button class="btn primary" type="submit" data-ac-run>Run AutoCheck</button>
+          <span class="small muted">Runs in this Chrome through the QC Helper, in a new tab. Leave Earlier version empty to check one version on its own (hygiene only).</span></div>
+      </form>
+      <div class="ac-head"></div>
+      <div class="ac-live" hidden><div class="ac-track"><div class="ac-bar"></div></div><span class="small" data-ac-live-status></span></div>
+    </div>
+  </section>
+  <aside class="aside">
+    <section class="card"><h2>Right now</h2>
+      <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="kpi{% if busy.queued %} warn{% endif %}"><span>Queued</span><b>{{ busy.queued }}</b></div>
+        <div class="kpi"><span>Running</span><b>{{ busy.running }}</b></div>
+      </div>
+      <p class="small muted" style="margin:0">{% if is_qc %}Checks queued when editors send links run by themselves while Studio Ops is open in this Chrome (with the helper).{% else %}Queued checks run by themselves in a QC person's Chrome with the helper and Studio Ops open. Founders' browsers don't pick them up; use Run now on one.{% endif %}</p>
+      {% if is_founder %}<p class="small" style="margin:0"><a href="{% url 'autocheck_rules' %}">Rules</a> · <a href="{% url 'autocheck_learnt' %}">What it learnt</a></p>{% endif %}
+    </section>
+  </aside>
+</div>
+
+<section class="card"><div class="title"><h2>Recent checks</h2><span class="small muted">The last {{ runs|length }}</span></div>
+  <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Versions</th><th>Status</th><th>Result</th><th>When</th><th></th></tr></thead><tbody>
+  {% for r in runs %}<tr>
+    <td><b>{{ r.project.couple }} · {{ r.project.deliverable }}</b>{% if r.event %} <span class="tag">{{ r.event.name }}</span>{% endif %}<div class="small muted">{{ r.project.agency.code|default:r.project.agency.name }}{% if r.auto %} · queued by the editor's send{% endif %}</div></td>
+    <td class="small nowrap">{% if r.v1_link %}<a href="{{ r.v1_link }}" target="_blank" rel="noopener">{{ r.prev_label }} ↗</a> → {% endif %}<a href="{{ r.v2_link }}" target="_blank" rel="noopener">{{ r.cur_label }} ↗</a></td>
+    <td><span class="tag {% if r.status == 'done' %}ok{% elif r.status == 'failed' %}bad{% elif r.status == 'running' %}qc{% else %}info{% endif %}">{{ r.get_status_display }}</span>{% if r.status != 'done' and r.progress %}<div class="small muted" style="max-width:260px">{{ r.progress|truncatechars:90 }}</div>{% endif %}</td>
+    <td class="small">{% if r.status == 'done' %}{% with c=r.counts %}{% if r.v1_link %}{{ c.fixed }} fixed · {% if c.not_fixed %}<b style="color:var(--bad)">{{ c.not_fixed }} not fixed</b>{% else %}0 not fixed{% endif %} · {% endif %}{{ c.new }} new · {{ r.posted }} posted{% endwith %}{% else %}<span class="muted">–</span>{% endif %}</td>
+    <td class="small nowrap">{{ r.started_at|date:"j M, g:i A" }}<div class="muted">{{ r.started_by.profile.name|default:"" }}</div></td>
+    <td class="nowrap">{% if r.status == 'done' or r.report %}<a class="btn sm" href="{% url 'autocheck_report' r.pk %}">Report</a>{% endif %} <a class="btn sm ghost" href="?p={{ r.project_id }}" data-ac-again="{{ r.project_id }}" data-event="{{ r.event_id|default:'' }}">Check again</a></td>
+  </tr>{% empty %}<tr><td colspan="6" class="muted">No checks yet.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% endblock %}

@@ -26,7 +26,7 @@ from ..models import Agency, AutoCheckLesson, AutoCheckRule, AutoCheckRun, AutoC
 from ..rbac import QC, has_perm, requires, role_of
 
 __all__ = ["autocheck_start", "autocheck_claim", "autocheck_update", "autocheck_report", "autocheck_rules", "qc_helper",
-           "qc_helper_zip", "autocheck_learnt"]
+           "qc_helper_zip", "autocheck_learnt", "autocheck_home", "autocheck_links"]
 
 HELPER_DIR = Path(settings.BASE_DIR) / "qc_helper"
 STALE = timezone.timedelta(minutes=30)      # a running check that hasn't reported for this long has stopped
@@ -227,6 +227,40 @@ def autocheck_rules(request):
     rules = AutoCheckRule.objects.select_related("agency").order_by("agency__name", "deliverable")
     return render(request, "team/autocheck_rules.html", {"form": form, "rules": rules, "edit": edit,
                                                          "defaults": AutoCheckRule().as_dict()})
+
+
+@requires("qc.review")
+def autocheck_home(request):
+    """AutoCheck on its own: check any film (or one of its events) now, see every recent check,
+    and get the QC Helper."""
+    films = list(Project.objects.select_related("agency").only("id", "couple", "deliverable", "status", "agency__code",
+                                                                 "agency__name").order_by("-created")[:600])
+    runs = list(AutoCheckRun.objects.select_related("project__agency", "event", "started_by__profile")
+                .order_by("-started_at")[:60])
+    for r in runs:
+        r.prev_label, r.cur_label = labels(r)
+        r.prev_label = r.prev_label or "V1"
+    busy = {s: sum(1 for r in runs if r.status == s) for s in (AutoCheckRun.QUEUED, AutoCheckRun.RUNNING)}
+    pick = Project.objects.filter(pk=request.GET.get("p") or 0).first()
+    return render(request, "team/autocheck_home.html", {
+        "films": films, "runs": runs, "busy": busy, "version": helper_version(), "helper_version": helper_version(),
+        "pick": pick, "is_qc": role_of(request.user) == QC})
+
+
+@requires("qc.review")
+def autocheck_links(request):
+    """For the AutoCheck page: a film's events and the two latest versions sent (film or event)."""
+    p = get_object_or_404(Project.objects.select_related("agency"), pk=request.GET.get("p") or 0)
+    ev_raw = request.GET.get("event", "")
+    event = p.events.filter(pk=ev_raw).first() if ev_raw.isdigit() else None
+    prev, last = S.autocheck_pair(p, event)
+    cur = last.link if last else (event.cut_link if event else p.cut_link) or ""
+    return JsonResponse({
+        "ok": True, "start": reverse("autocheck_start", args=[p.pk]),
+        "events": [{"id": e.pk, "name": e.name, "status": e.get_status_display()} for e in p.events.all()],
+        "v1": prev.link if prev and _frameio(prev.link) else "", "v2": cur if _frameio(cur) else "",
+        "v1_label": f"V{prev.round}" if prev else "", "v2_label": f"V{last.round}" if last else "",
+        "note": ("" if _frameio(cur) else "No Frame.io link sent for this yet: paste the version to check.")})
 
 
 @requires("settings.manage")

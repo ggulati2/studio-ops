@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% load ops_extras %}
 {% block title %}QC{% endblock %}
+{% block scripts %}{% load static %}<script src="{% static 'qcboard.js' %}" defer></script>{% endblock %}
 {% block content %}
 {% include "_qc_contract_tabs.html" with tab="qc" %}
 {% if founder %}<details class="card qc-send" data-live-region="qc-send"{% if not queue %} open{% endif %}><summary><b>+ Send a film for QC</b> <span class="small muted">for an editor who forgot to</span></summary>
@@ -26,11 +27,10 @@
   <div class="grow col-stack">
   <section class="card">
     <div class="title" id="qc-film"><div><h2 style="font-size:20px">{{ sel }}</h2><span class="small muted">{{ sel.agency }} · Editor {{ sel.editor.profile.name }}{% if sel.received_online %} · Cloud{% endif %}{% if sel.brief %} · Brief: {{ sel.brief }}{% endif %}</span>{% if sel.drive and not sel.received_online %}{% include "team/_drive.html" with drv=sel.drive %}{% endif %}</div></div>
-    {% if not waiting %}<div class="small"><span class="tag {{ sel.status|status_class }}">{{ sel.get_status_display }}</span>{% if last_qc %} · last QC <b style="color:{% if last_qc.passed %}var(--ok){% else %}var(--bad){% endif %}">{% if last_qc.passed %}passed{% else %}failed{% endif %}</b> by {{ last_qc.reviewer.profile.name|default:"—" }}, {{ last_qc.created|date:"j M, g:i A" }}{% endif %}</div>{% endif %}
     {% include "team/_autocheck_helper.html" %}
-    {% if events %}<div class="ev-strip">{% for e in events %}<span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span>{% endfor %}</div>{% endif %}
+    {% if events and waiting %}<div class="ev-strip">{% for e in events %}<span class="tag {{ e.tag }}">{{ e.name }} · {{ e.get_status_display }}</span>{% endfor %}</div>{% endif %}
   </section>
-  {% if events %}<section class="card" aria-label="Events">
+  {% if events and waiting %}<section class="card" aria-label="Events">
     <div class="title"><h2>Events</h2><span class="small muted">Sent one by one while the editor works on the next. Open one to check it.</span></div>
     {% for e in events %}<details class="ev-qc"{% if e.is_open %} open{% endif %}>
       <summary><b>{{ e.name }}</b> <span class="tag {{ e.tag }}">{{ e.get_status_display }}</span>{% if e.sent_on %} <span class="small muted">sent {{ e.sent_on|date:"j M, g:i A" }}</span>{% endif %}{% with n=e.reviews.all|length %}{% if n %} <span class="small muted">· {{ n }} review{{ n|pluralize }}</span>{% endif %}{% endwith %}{% with r=e.ac.run %}{% if r %} <span class="tag {% if r.status == 'done' %}{% if r.counts.not_fixed %}bad{% else %}ok{% endif %}{% elif r.status == 'failed' %}bad{% else %}info{% endif %}">AutoCheck {% if r.status == 'done' %}{% if r.v1_link %}{{ r.counts.not_fixed }} not fixed{% else %}{{ r.counts.new }} issue{{ r.counts.new|pluralize }}{% endif %}{% else %}{{ r.get_status_display|lower }}{% endif %}</span>{% endif %}{% endwith %}</summary>
@@ -55,13 +55,8 @@
     {% include "team/_qc_checks.html" %}
     {% if history %}<div style="border-top:1px solid var(--line2);padding-top:10px"><h3>History</h3>{% for r in history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
   </form>
-  {% elif sel %}
-  <section class="card">
-    <div class="title"><h2>{% if events %}Whole film{% else %}Film{% endif %}</h2>{% if sel.cut_link %}<a href="{{ sel.cut_link }}" target="_blank" rel="noopener" style="font-weight:600">Open film ↗</a>{% endif %}</div>
-    {% if whole_ac.link or whole_ac.runs %}{% include "team/_autocheck.html" with p=sel u=whole_ac event=None %}{% endif %}
-    {% if history %}<div style="border-top:1px solid var(--line2);padding-top:10px"><h3>History</h3>{% for r in history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.reviewer.profile.name|default:"—" }} · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}</div>
-    {% elif not sel.cut_link and not whole_ac.link %}<span class="small muted">No whole-film link or review yet.</span>{% endif %}
-  </section>
+  {% elif sel and not waiting %}
+  <section class="card">{% include "team/_qc_film.html" %}</section>
   {% endif %}
   </div>
   {% endif %}
@@ -77,8 +72,8 @@
     <a href="?s=closed#status" class="{% if show == 'closed' %}on{% endif %}">Closed from QC <span class="muted">{{ counts.closed }}</span></a>
   </div>
   <div class="scroll"><table class="stack"><thead><tr><th>Film</th><th>Links</th><th>Editor</th><th>Status</th><th>QC rounds</th><th>Latest QC</th><th>Film status</th><th>Closed from QC</th>{% if founder %}<th class="right">QC fee</th><th></th>{% endif %}</tr></thead><tbody>
-  {% for b in board %}<tr>
-    <td><a href="?p={{ b.p.pk }}#qc-film"><b>{{ b.p }}</b></a><div class="small muted">{{ b.p.agency }}</div></td>
+  {% for b in board %}<tr data-qc-row="{{ b.p.pk }}">
+    <td><a class="qc-open" href="?p={{ b.p.pk }}#qc-film" data-qc-film="{{ b.p.pk }}" data-url="{% url 'qc_film' b.p.pk %}" aria-expanded="false"><span class="qc-caret" aria-hidden="true"></span><b>{{ b.p }}</b></a><div class="small muted">{{ b.p.agency }}</div></td>
     <td><div class="qc-links">{% for l in b.links %}<a class="tag info" href="{{ l.link }}" target="_blank" rel="noopener" title="{{ l.link }}{% if l.at %} · sent {{ l.at|date:'j M' }}{% endif %}">{{ l.label }} ↗</a>{% empty %}<span class="muted small">–</span>{% endfor %}</div></td>
     <td>{{ b.p.editor.profile.name|default:"—" }}</td>
     <td><span class="tag {{ b.cls }}">{{ b.label }}</span>{% if b.first_time %} <span class="tag ok">First-time pass</span>{% endif %}

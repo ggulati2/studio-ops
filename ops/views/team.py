@@ -23,7 +23,7 @@ from ..services import (add_months, attendance, celebrated_award, day_kind, extr
                         trophy_counts)
 
 User = get_user_model()
-__all__ = ["job_event_submit", "tl_event_review", "qc_event_review", "today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
+__all__ = ["qc_film", "job_event_submit", "tl_event_review", "qc_event_review", "today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
            "leaderboard", "congrats", "pod", "tl_review", "qc_queue", "qc_review", "my_payslips", "payslip_view"]
 
 
@@ -511,7 +511,7 @@ def qc_queue(request):
         "queue": queue, "sel": sel, "checklist": list(enumerate(QC_CHECKLIST)), "form": ReviewForm(),
         "history": sel.reviews.filter(event__isnull=True).select_related("reviewer__profile") if sel else [],
         "events": events, "whole_in_qc": bool(sel and sel.status == Project.QC and sel.whole_review), "waiting": waiting,
-        "last_qc": sel.reviews.filter(kind=Review.QC).select_related("reviewer__profile").first() if sel and not waiting else None,
+        **(film_details(sel) if sel and not waiting else {}),
         "whole_ac": ac.get(None),
         "helper_version": __import__("ops.views.autocheck", fromlist=["helper_version"]).helper_version(),
         "founder": founder, "qc_summary": qc_month_summary(month) if founder else [], "month": month,
@@ -523,6 +523,28 @@ def qc_queue(request):
                           .select_related("profile")) if founder else [],
         "board": board, "counts": counts, "show": show, "states": QC_STATES,
         "first_time": first_time})
+
+
+def film_details(p):
+    """Everything about one film the QC page shows when it's opened: events with their reviews,
+    every version's link, AutoCheck, whole-film history and the last QC result."""
+    from django.db.models import Prefetch
+    events = list(p.events.prefetch_related(Prefetch("reviews", queryset=Review.objects.select_related("reviewer__profile"))))
+    units = _autocheck_units(p, events)
+    whole = units.get(None)
+    return {"f": p, "f_events": events, "f_whole": whole,
+            "f_history": list(p.reviews.filter(event__isnull=True).select_related("reviewer__profile")),
+            "f_last_qc": p.reviews.filter(kind=Review.QC).select_related("reviewer__profile").first(),
+            "f_waiting": p.status == Project.QC and p.whole_review or any(e.status == FilmEvent.QC for e in events)}
+
+
+@requires("qc.review")
+def qc_film(request, pk):
+    """One film's details, opened in place on the QC status board (fetched, no page reload)."""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    p = get_object_or_404(Project.objects.select_related("agency", "editor__profile", "drive"), pk=pk)
+    return HttpResponse(render_to_string("team/_qc_film.html", film_details(p), request=request))
 
 
 def _autocheck_units(p, events):

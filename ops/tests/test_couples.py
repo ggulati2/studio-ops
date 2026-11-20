@@ -2161,3 +2161,60 @@ class QCLinksStayVisible(SeededTestCase):
         for n in (1, 2, 3):
             self.assertContains(page, f"https://f.io/haldi-{n}")
         self.assertContains(page, "Haldi V3 ↗")
+
+
+class QCBoardInPlaceAndAutoCheckPage(SeededTestCase):
+    """A film on the QC board opens in place (its details come as a fragment); AutoCheck has its
+    own page in the menu to check any film, with the QC Helper download."""
+
+    def setUp(self):
+        from ops import services as S
+        from ops.models import FilmEvent
+        self.p = Project.objects.create(couple="Fold Open", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                        start_date=timezone.localdate(), status=Project.REVISIONS)
+        self.e = FilmEvent.objects.create(project=self.p, name="Sangeet", status=FilmEvent.REVISIONS)
+        S.note_cut_link(self.p, self.e, "https://f.io/sangeet-1")
+        S.note_cut_link(self.p, self.e, "https://f.io/sangeet-2")
+        S.note_cut_link(self.p, None, "https://f.io/full-1")
+
+    def test_board_row_opens_in_place(self):
+        from ops.models import Review
+        from django.contrib.auth import get_user_model
+        Review.objects.create(project=self.p, event=self.e, kind=Review.QC, passed=False, comments="fix the jump at 2:10",
+                              reviewer=get_user_model().objects.get(username="qc"))
+        qc = self.login("qc")
+        board = qc.get("/qc/")
+        self.assertContains(board, f'data-qc-film="{self.p.pk}"')
+        self.assertContains(board, f'data-url="/qc/film/{self.p.pk}/"')
+        self.assertContains(board, "qcboard.js")
+        frag = qc.get(f"/qc/film/{self.p.pk}/", HTTP_X_REQUESTED_WITH="fetch")
+        self.assertEqual(frag.status_code, 200)
+        self.assertNotContains(frag, "<html")                      # a piece of the page, not a page
+        for link in ("https://f.io/sangeet-1", "https://f.io/sangeet-2", "https://f.io/full-1"):
+            self.assertContains(frag, link)
+        self.assertContains(frag, "fix the jump at 2:10")
+        self.assertContains(frag, "data-autocheck")
+        self.assertEqual(self.login("pratik").get(f"/qc/film/{self.p.pk}/").status_code, 403)
+
+    def test_autocheck_page_in_menu_and_any_film(self):
+        qc = self.login("qc")
+        menu = [i[0] for i in qc.get("/qc/").context["nav_items"]]
+        self.assertIn("AutoCheck", menu)
+        self.assertIn("AutoCheck", [i[0] for i in self.login("ag").get("/dashboard/").context["nav_items"]])
+        self.assertNotIn("AutoCheck", [i[0] for i in self.login("pratik").get("/today/").context["nav_items"]])
+        page = qc.get("/autocheck/")
+        self.assertContains(page, "Check a film")
+        self.assertContains(page, 'href="/qc/helper/download/"')
+        self.assertContains(page, "QC Helper 1.3.0")
+        self.assertContains(page, "Fold Open · Full Film")
+        d = qc.get(f"/autocheck/links/?p={self.p.pk}").json()
+        self.assertEqual((d["v1"], d["v2"], d["start"]), ("", "https://f.io/full-1", f"/qc/{self.p.pk}/autocheck/"))
+        self.assertEqual([e["name"] for e in d["events"]], ["Sangeet"])
+        d = qc.get(f"/autocheck/links/?p={self.p.pk}&event={self.e.pk}").json()
+        self.assertEqual((d["v1"], d["v2"], d["v1_label"], d["v2_label"]), ("https://f.io/sangeet-1", "https://f.io/sangeet-2", "V1", "V2"))
+        # running it from the page uses the same start as the QC page (any film, not only ones in QC)
+        r = qc.post(f"/qc/{self.p.pk}/autocheck/", {"event": self.e.pk, "v1_link": d["v1"], "v2_link": d["v2"]}).json()
+        self.assertTrue(r["ok"])
+        self.assertContains(qc.get("/autocheck/"), "Running")
+        self.assertEqual(self.login("pratik").get("/autocheck/").status_code, 403)
+        self.assertEqual(self.login("pratik").get(f"/autocheck/links/?p={self.p.pk}").status_code, 403)

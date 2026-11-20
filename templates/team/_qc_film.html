@@ -1,0 +1,21 @@
+{% comment %}One film opened on the QC page (in place on the status board, or at the top when it isn't waiting):
+status, every version's link, events, AutoCheck and the review history. Nothing to pass or fail here.{% endcomment %}
+{% load ops_extras %}<div class="qc-film">
+  <div class="qc-film-head small">
+    <span class="tag {{ f.status|status_class }}">{{ f.get_status_display }}</span>
+    {% if f_last_qc %}<span>Last QC <b style="color:{% if f_last_qc.passed %}var(--ok){% else %}var(--bad){% endif %}">{% if f_last_qc.passed %}passed{% else %}failed{% endif %}</b> by {{ f_last_qc.reviewer.profile.name|default:"—" }}, {{ f_last_qc.created|date:"j M, g:i A" }}</span>{% endif %}
+    <span class="muted">Editor {{ f.editor.profile.name|default:"—" }}{% if f.deadline %} · due {{ f.deadline|date:"j M" }}{% endif %}</span>
+    {% if f_waiting %}<a class="btn sm dark" href="{% url 'qc_queue' %}?p={{ f.pk }}">Waiting for QC: open to pass or fail</a>{% endif %}
+  </div>
+  {% if f_whole.link or f_whole.runs or f_history %}<div class="qc-film-unit">
+    <b class="small">{% if f_events %}Whole film{% else %}Film{% endif %}</b>
+    {% include "team/_autocheck.html" with p=f u=f_whole event=None %}
+    {% for r in f_history %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.reviewer.profile.name|default:"—" }} · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}
+  </div>{% endif %}
+  {% for e in f_events %}<div class="qc-film-unit">
+    <b class="small">{{ e.name }} <span class="tag {{ e.tag }}">{{ e.get_status_display }}</span>{% if e.sent_on %} <span class="muted">sent {{ e.sent_on|date:"j M, g:i A" }}</span>{% endif %}</b>
+    {% include "team/_autocheck.html" with p=f u=e.ac event=e %}
+    {% for r in e.reviews.all %}<div class="small"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} {% if r.passed %}passed{% else %}failed{% endif %}</b> · {{ r.reviewer.profile.name|default:"—" }} · {{ r.created|date:"j M, g:i A" }}{% if r.issues %} · {{ r.issues|join:", " }}{% endif %}{% if r.comments %}<div class="muted" style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% endfor %}
+  </div>{% endfor %}
+  {% if not f_events and not f_whole.link and not f_whole.runs and not f_history %}<span class="small muted">No links or reviews yet.</span>{% endif %}
+</div>
