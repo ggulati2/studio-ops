@@ -22,6 +22,11 @@
     <section class="card"><h2>Review history</h2>
       {% for r in reviews %}<div class="small" style="border-top:1px solid var(--line2);padding-top:8px"><b style="color:{% if r.passed %}var(--ok){% else %}var(--bad){% endif %}">{{ r.get_kind_display }} · {% if r.passed %}passed{% else %}sent back{% endif %}</b> <span class="muted">{{ r.created|date:"j M, H:i" }} · {{ r.reviewer.profile.name }}</span>{% if r.issues %}<div>Issues: {{ r.issues|join:", " }}</div>{% endif %}{% if r.comments %}<div style="white-space:pre-line">{{ r.comments }}</div>{% endif %}</div>{% empty %}<span class="small muted">No reviews yet.</span>{% endfor %}
     </section>
+    <details class="card danger-zone"><summary><b>Delete this film</b></summary>
+      <form method="post" action="{% url 'project_delete' p.pk %}" class="col-stack" style="gap:8px;margin-top:8px">{% csrf_token %}
+        <span class="small">Removes {{ p }} for good.{% if delete_gone %} Also removed: {{ delete_gone|join:"; " }}.{% endif %}{% if delete_kept %} {{ delete_kept|join:"; "|capfirst }}.{% endif %} This can't be undone.</span>
+        <label class="small inline"><input type="checkbox" required> Yes, I want to delete it</label>
+        <button class="btn sm danger">Delete {{ p.deliverable }}</button></form></details>
   </aside>
 </div>
 {% endblock %}

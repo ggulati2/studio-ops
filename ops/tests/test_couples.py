@@ -1876,3 +1876,76 @@ class EditorDeliveries(SeededTestCase):
         self.assertContains(r, "Late · 1 day")
         # someone else's films never show
         self.assertNotContains(self.login("nikhil").get("/my-month/"), "Latefilm")
+
+
+class DeleteProjects(SeededTestCase):
+    """Founders delete any film from Projects (row, couple view or the film's page); the work
+    logged on it goes with it, invoices keep their lines, and nobody else can do it."""
+
+    def setUp(self):
+        from datetime import time, timedelta
+        from django.contrib.auth import get_user_model
+        from ops.models import DayLog, ExtraEntry, PlanEntry, TaskEntry
+        self.ed = get_user_model().objects.get(username="pratik")
+        self.brc = Agency.objects.get(code="BRC")
+        t = timezone.localdate()
+        self.p = Project.objects.create(couple="Delete Me", deliverable="Teaser", agency=self.brc, editor=self.ed,
+                                        start_date=t, deadline=t + timedelta(days=5))
+        self.q = Project.objects.create(couple="Delete Me", deliverable="Highlight", agency=self.brc, start_date=t)
+        log, _ = DayLog.objects.get_or_create(user=self.ed, date=t - timedelta(days=1), defaults={"day_type": DayLog.OFFICE})
+        TaskEntry.objects.create(daylog=log, project=self.p, hours=3)
+        ExtraEntry.objects.create(user=self.ed, project=self.p, date=t, start=time(20), end=time(21))
+        PlanEntry.objects.filter(user=self.ed, date=t + timedelta(days=1)).delete()
+        PlanEntry.objects.create(user=self.ed, date=t + timedelta(days=1), project=self.p)
+        self.f = self.login("ag")
+
+    def test_delete_from_the_row(self):
+        from ops.models import AuditEvent, Couple, TaskEntry
+        r = self.f.get("/projects/?view=list&status=")
+        self.assertContains(r, f'action="/projects/{self.p.pk}/delete/"')
+        res = self.f.post(f"/projects/{self.p.pk}/delete/", {"next": "/projects/"}, **FETCH).json()
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["remove"], [f'tr[data-pk="{self.p.pk}"]'])
+        self.assertIn("1 logged day of work", res["messages"][0]["text"])
+        self.assertIn("1 planned day", res["messages"][0]["text"])
+        self.assertFalse(Project.objects.filter(pk=self.p.pk).exists())
+        self.assertFalse(TaskEntry.objects.filter(project_id=self.p.pk).exists())
+        self.assertTrue(Couple.objects.filter(films=self.q).exists())          # the couple still has a film
+        self.assertTrue(AuditEvent.objects.filter(action="project.delete").exists())
+
+    def test_invoice_keeps_its_line_and_couple_goes_with_last_film(self):
+        from ops.models import Couple, Invoice, InvoiceLine
+        inv = Invoice.objects.create(number="T-DEL-1", agency=self.brc)
+        InvoiceLine.objects.create(invoice=inv, project=self.p, couple="Delete Me", film="Teaser", amount=15000)
+        couple = self.p.client_id
+        msg = self.f.post(f"/projects/{self.p.pk}/delete/", **FETCH).json()["messages"][0]["text"]
+        self.assertIn("T-DEL-1", msg)
+        line = InvoiceLine.objects.get(invoice=inv)
+        self.assertIsNone(line.project_id)
+        self.assertEqual(line.amount, 15000)
+        self.f.post(f"/projects/{self.q.pk}/delete/", **FETCH)
+        self.assertFalse(Couple.objects.filter(pk=couple).exists())
+
+    def test_film_page_and_couple_delete(self):
+        r = self.f.get(f"/projects/{self.p.pk}/")
+        self.assertContains(r, "Delete this film")
+        self.assertContains(r, "1 logged day of work on it")
+        r = self.f.post(f"/projects/{self.p.pk}/delete/", follow=True)
+        self.assertRedirects(r, "/projects/")
+        self.assertFalse(Project.objects.filter(pk=self.p.pk).exists())
+        # whole couple from the grouped view: needs the tick
+        c = self.q.client_id
+        res = self.f.post(f"/projects/couple/{c}/action/", {"op": "delete", "ids": [self.q.pk]}, **FETCH).json()
+        self.assertFalse(res["ok"])
+        self.assertTrue(Project.objects.filter(pk=self.q.pk).exists())
+        res = self.f.post(f"/projects/couple/{c}/action/", {"op": "delete", "ids": [self.q.pk], "confirm": "yes"}, **FETCH).json()
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["refresh"])
+        self.assertFalse(Project.objects.filter(pk=self.q.pk).exists())
+
+    def test_only_founders(self):
+        for who in ("pratik", "nikhil", "qc", "drives"):
+            self.assertNotEqual(self.login(who).post(f"/projects/{self.p.pk}/delete/").status_code, 302, who)
+        self.assertTrue(Project.objects.filter(pk=self.p.pk).exists())
+        self.assertEqual(self.f.get(f"/projects/{self.p.pk}/delete/").status_code, 302)     # GET deletes nothing
+        self.assertTrue(Project.objects.filter(pk=self.p.pk).exists())

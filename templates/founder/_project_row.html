@@ -30,4 +30,9 @@
         </select><noscript><button class="btn sm">Save</button></noscript></form></td>
       <td data-col="invoice" class="right"><form method="post" action="{% url 'project_status' p.pk %}" data-live class="cell-edit money-edit">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">{% if layout %}<input type="hidden" name="layout" value="{{ layout }}">{% endif %}
         <span class="cur" aria-hidden="true">{{ p.agency.symbol }}</span><input type="number" name="invoice_amount" value="{{ p.invoice_amount }}" min="0" step="1" inputmode="numeric" class="cell-input num" data-autosubmit aria-label="Invoice amount for {{ p }} in {{ p.agency.currency }}"><noscript><button class="btn sm">Save</button></noscript></form></td>
+      <td data-col="del" class="del-col"><details class="dc-del inline"><summary aria-label="Delete {{ p }}" title="Delete {{ p }}">🗑</summary>
+        <form method="post" action="{% url 'project_delete' p.pk %}" data-live class="dc-del-pop">{% csrf_token %}<input type="hidden" name="next" value="{{ back }}">
+          <b class="small">Delete {{ p }}?</b>
+          <span class="small muted">The film goes for good, with the work logged on it (daily logs, extra hours, reviews and QC, Planner days). Invoices keep their lines. This can't be undone.</span>
+          <span class="dc-del-btns"><button class="btn sm danger">Delete film</button><button type="button" class="btn sm ghost" data-close-details>Cancel</button></span></form></details></td>
     </tr>

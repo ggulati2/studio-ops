@@ -1317,3 +1317,9 @@ nav.seg.page-tabs{display:inline-flex;width:auto;max-width:100%}
 /* Drive register: sent-back date in the list */
 .sent-add{margin-top:4px}.sent-add>summary{list-style:none;cursor:pointer;color:var(--muted)}.sent-add>summary::-webkit-details-marker{display:none}
 .sent-form{display:flex;gap:6px;align-items:center;margin-top:6px}.sent-form .input{width:auto;min-height:32px;padding:4px 8px}
+
+/* Projects: delete a film */
+.del-col{width:36px;text-align:right}
+.btn.danger-ghost{color:var(--bad)}
+.btn.danger-ghost:hover{background:var(--bad-bg);border-color:var(--bad-line)}
+.grp-form label.inline{display:flex;flex-direction:row;align-items:center;gap:6px}

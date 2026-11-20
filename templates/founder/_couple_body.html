@@ -1,6 +1,6 @@
 {% load ops_extras %}<div class="scroll"><table class="grp-table">
-  <thead><tr><th>Film</th><th>Editor</th><th>Start</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th></tr></thead>
-  <tbody>{% for p in g.films %}{% include "founder/_project_row.html" with layout="couple" %}{% empty %}<tr><td colspan="8" class="muted">No films of this couple match the filters.</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>Film</th><th>Editor</th><th>Start</th><th>Editor's deadline</th><th>Agency's deadline</th><th>Status</th><th>Footage</th><th class="right">Invoice</th><th class="sr-col"><span class="sr">Delete</span></th></tr></thead>
+  <tbody>{% for p in g.films %}{% include "founder/_project_row.html" with layout="couple" %}{% empty %}<tr><td colspan="9" class="muted">No films of this couple match the filters.</td></tr>{% endfor %}</tbody>
 </table></div>
 {% if g.s.hidden %}<p class="small muted grp-hidden">{{ g.s.hidden }} more film{{ g.s.hidden|pluralize }} for {{ g.c.name }} {{ g.s.hidden|pluralize:"is,are" }} hidden by the filters. <a href="{% url 'projects' %}?status=&amp;agency={{ g.c.agency_id }}&amp;q={{ g.c.name|urlencode }}">Show every film</a></p>{% endif %}
 <div class="grp-tools" role="group" aria-label="Actions for {{ g.c.name }}">
@@ -31,6 +31,10 @@
       <label class="small">Agency's deadline <input type="date" name="agency_deadline" class="input"></label>
       <label class="small">Invoice ({{ g.c.agency.symbol }}) <input type="number" name="invoice_amount" class="input num" min="0" step="1" placeholder="Agency rate" style="width:120px"></label>
       <button class="btn primary sm">Add film</button></form></details>
+  {% if g.films %}<details class="grp-tool"><summary class="btn sm danger-ghost">Delete films</summary>
+    <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="delete">
+      <label class="small inline"><input type="checkbox" name="confirm" value="yes" required> Yes, delete {% if g.s.n == 1 %}this film{% else %}all {{ g.s.n }} films shown{% endif %} of {{ g.c.name }}, with the work logged on {% if g.s.n == 1 %}it{% else %}them{% endif %}</label>
+      <button class="btn danger sm">Delete</button><span class="small muted">Can't be undone. Invoices keep their lines. To delete one film, use 🗑 on its row.</span></form></details>{% endif %}
   <details class="grp-tool"><summary class="btn sm">Edit couple</summary>
     <form method="post" action="{% url 'couple_action' g.c.pk %}" data-live class="grp-form">{% include "founder/_couple_hidden.html" %}<input type="hidden" name="op" value="edit">
       <label class="small">Name <input name="name" class="input" value="{{ g.c.name }}" maxlength="120" required></label>

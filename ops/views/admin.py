@@ -529,7 +529,10 @@ def project_edit(request, pk):
                 messages.warning(request, f"{short} day(s) of work didn't fit before the deadline. Check the Planner.")
         messages.success(request, "Job saved.")
         return redirect(request.get_full_path() if request.headers.get("X-Live-Page") else "projects")
+    from .couples import delete_impact
+    gone, kept = delete_impact([p])
     return render(request, "founder/project_edit.html", {"form": form, "p": p, "hours": project_hours(p),
+                                                       "delete_gone": gone, "delete_kept": kept,
                                                        "reviews": p.reviews.select_related("reviewer"),
                                                        "history": S.editor_history(p)})
 

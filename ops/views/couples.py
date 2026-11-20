@@ -26,7 +26,7 @@ from ..rbac import requires
 from ..services import team
 from .admin import project_filter
 
-__all__ = ["couple_block", "couple_action"]
+__all__ = ["couple_block", "couple_action", "project_delete"]
 
 DONE = (Project.CLOSED, Project.SENT_AGENCY)
 INLINE_OPEN = 6          # a search that finds this many couples or fewer shows their films straight away
@@ -222,6 +222,75 @@ def _merge(src, dst):
     return n
 
 
+def delete_impact(films):
+    """What deleting these films also removes (or leaves behind), in plain words, for the
+    confirm box and the message afterwards."""
+    from ..models import ExtraEntry, InvoiceLine, PlanEntry, Review, TaskEntry
+    ids = [p.pk for p in films]
+    days = TaskEntry.objects.filter(project_id__in=ids).values("daylog_id").distinct().count()
+    extras = list(ExtraEntry.objects.filter(project_id__in=ids).select_related("project"))
+    plans = PlanEntry.objects.filter(project_id__in=ids, date__gte=timezone.localdate()).count()
+    reviews = Review.objects.filter(project_id__in=ids).count()
+    invoices = sorted(set(InvoiceLine.objects.filter(project_id__in=ids).values_list("invoice__number", flat=True)))
+    gone, kept = [], []
+    if days:
+        gone.append(f"{days} logged day{'s' if days != 1 else ''} of work on {'it' if len(ids) == 1 else 'them'}")
+    if extras:
+        pay = sum(e.pay for e in extras)
+        gone.append(f"{len(extras)} extra-hours entr{'y' if len(extras) == 1 else 'ies'}" + (f" (₹{pay:,} extra pay)" if pay else ""))
+    if reviews:
+        gone.append(f"{reviews} review / QC entr{'y' if reviews == 1 else 'ies'}")
+    if plans:
+        gone.append(f"{plans} planned day{'s' if plans != 1 else ''} in the Planner")
+    paid_fixed = [p for p in films if p.is_extra and S.extra_paid_on(p) and p.extra_rate]
+    if paid_fixed:
+        gone.append(f"₹{sum(p.extra_rate for p in paid_fixed):,} fixed extra pay already counted in earnings")
+    if invoices:
+        kept.append(f"invoice{'s' if len(invoices) > 1 else ''} {', '.join(invoices)} keep{'s' if len(invoices) == 1 else ''} "
+                    f"{'its' if len(invoices) == 1 else 'their'} line and amount")
+    return gone, kept
+
+
+def delete_films(request, films):
+    """Delete films for good, with everything logged on them (see delete_impact). A couple left
+    with no films and no drive folders is removed too. Returns the message to show."""
+    from ..models import DriveFolder
+    if not films:
+        return "Nothing to delete."
+    gone, kept = delete_impact(films)
+    names = [str(p) for p in films]
+    couples = {p.client_id for p in films if p.client_id}
+    with transaction.atomic():
+        Project.objects.filter(pk__in=[p.pk for p in films]).delete()
+        for c in Couple.objects.filter(pk__in=couples).annotate(n=Count("films")).filter(n=0):
+            if not DriveFolder.objects.filter(client=c).exists():
+                c.delete()
+    for n in names:
+        record(request, "project.delete", n, "; ".join(gone) or "nothing logged")
+    what = names[0] if len(names) == 1 else f"{len(names)} films"
+    msg = f"Deleted {what}." + (f" Also removed: {'; '.join(gone)}." if gone else "")
+    if kept:
+        k = "; ".join(kept)
+        msg += " " + k[:1].upper() + k[1:] + "."
+    return msg
+
+
+@requires("projects.manage")
+def project_delete(request, pk):
+    """Delete one film (Projects list, the couple view or the film's page). Founders only."""
+    p = get_object_or_404(Project.objects.select_related("agency"), pk=pk)
+    if request.method != "POST":
+        return redirect("project_edit", p.pk)
+    msg = delete_films(request, [p])
+    from ..perf import clear
+    clear()
+    if _is_fetch(request):
+        return JsonResponse({"ok": True, "messages": [{"level": "success", "text": msg}],
+                             "remove": [f'tr[data-pk="{pk}"]'], "refresh": True})
+    messages.success(request, msg)
+    return redirect(S.safe_next(request, request.POST.get("next"), reverse("projects")))
+
+
 @requires("projects.manage")
 def couple_action(request, pk):
     couple = get_object_or_404(Couple.objects.select_related("agency"), pk=pk)
@@ -380,6 +449,17 @@ def couple_action(request, pk):
                         record(request, "couple.rename", couple.name, f"{old} -> {couple.name}")
                         refresh = True     # the agency's order and look-alike hints may change
                     say.append(("success", f"Saved {couple}."))
+
+    elif act == "delete":
+        if not films:
+            say.append(("error", "No films to delete."))
+        elif P.get("confirm") != "yes":
+            say.append(("error", "Tick the box to confirm."))
+        else:
+            say.append(("success", delete_films(request, films)))
+            from ..perf import clear
+            clear()
+            refresh = True
 
     elif act == "merge":
         dst = Couple.objects.filter(pk=P.get("into") or 0, agency=couple.agency).exclude(pk=couple.pk).first()
