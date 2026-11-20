@@ -764,6 +764,11 @@ class AutoCheckRule(models.Model):
     check_jump_cuts = models.BooleanField("Jump cuts", default=True,
                                           help_text="Switch off for films where jump cuts are a style (often trailers)")
     check_colour_jumps = models.BooleanField("Colour / exposure jumps between shots", default=True)
+    check_media_offline = models.BooleanField("Media Offline / broken frames", default=True)
+    check_clipping = models.BooleanField("Distorted (clipped) audio", default=True)
+    check_music_end = models.BooleanField("Music cut off at the end", default=True)
+    check_framing = models.BooleanField("Black bars / wrong framing", default=True)
+    check_blur = models.BooleanField("Out-of-focus shots", default=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["agency", "deliverable"], name="one_autocheck_rule_per_scope")]
@@ -772,7 +777,7 @@ class AutoCheckRule(models.Model):
         return f"{self.agency.code if self.agency_id else 'All agencies'} · {self.deliverable or 'all films'}"
 
     CHECKS = ["blacks", "highlights", "black_frames", "audio_peaks", "loudness", "pops", "silence", "shake",
-              "jump_cuts", "colour_jumps"]
+              "jump_cuts", "colour_jumps", "media_offline", "clipping", "music_end", "framing", "blur"]
 
     def as_dict(self):
         return {"min_seconds": self.min_seconds, "max_seconds": self.max_seconds, "sensitivity": self.sensitivity,
@@ -820,7 +825,46 @@ class AutoCheckRun(models.Model):
         r = self.report or {}
         v = [c.get("verdict") for c in r.get("comments", [])]
         return {"fixed": v.count("fixed"), "not_fixed": v.count("not_fixed"), "check": v.count("check"),
-                "new": len(r.get("issues", []))}
+                "new": sum(1 for x in r.get("issues", []) if not x.get("covered"))}
+
+
+class AutoCheckTuning(models.Model):
+    """What AutoCheck has learnt about one kind of flag, for one agency + film type (or an agency,
+    or the whole studio): the limit it flags at (1 = as built; higher = flags less often) and the
+    evidence, i.e. what QC kept, removed or found that AutoCheck missed. Rows whose kind starts
+    with "note:" only count QC notes AutoCheck has no check for."""
+    agency = models.ForeignKey("Agency", null=True, blank=True, on_delete=models.CASCADE, related_name="autocheck_tunings")
+    deliverable = models.CharField(max_length=40, blank=True)
+    kind = models.CharField("flag", max_length=30)
+    factor = models.FloatField(default=1.0)
+    locked = models.BooleanField(default=False, help_text="A founder fixed this limit: it no longer changes by itself")
+    right = models.PositiveIntegerField(default=0)
+    wrong = models.PositiveIntegerField(default=0)
+    missed = models.PositiveIntegerField(default=0)
+    subtle = models.PositiveIntegerField(default=0, help_text="Missed and too faint to measure at all")
+    samples = models.JSONField(default=list, blank=True, help_text="Recent [strength, real?] pairs the limit is fitted to")
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["agency", "deliverable", "kind"], name="one_tuning_per_scope")]
+
+    def __str__(self):
+        return f"{self.kind} · {self.agency.code if self.agency_id else 'studio'} · {self.deliverable or 'all films'}"
+
+
+class AutoCheckLesson(models.Model):
+    """One change AutoCheck made to a limit (or a founder's undo), with the reason in plain words."""
+    tuning = models.ForeignKey(AutoCheckTuning, on_delete=models.CASCADE, related_name="lessons")
+    old_factor = models.FloatField()
+    new_factor = models.FloatField()
+    reason = models.CharField(max_length=300)
+    run = models.ForeignKey(AutoCheckRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="lessons")
+    by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    undone = models.BooleanField(default=False)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created"]
 
 
 class CutLink(models.Model):

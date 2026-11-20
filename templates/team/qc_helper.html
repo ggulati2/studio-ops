@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}QC Helper{% endblock %}
 {% block content %}
-<div class="head"><div><h1>Red Wed QC Helper</h1><p>A small free Chrome extension that runs AutoCheck from the QC dashboard: it reads V1's Frame.io comments, checks V2 in HD, and posts [AutoCheck] comments on V2. Everything runs in your browser.</p></div>
+<div class="head"><div><h1>Red Wed QC Helper</h1><p>A small free Chrome extension that runs AutoCheck from the QC dashboard: it reads V1's Frame.io comments, checks V2 in HD, and posts [Hygiene] comments on V2. If a [Hygiene] comment is wrong, delete it on Frame.io (or reply "not an issue"): AutoCheck learns from that. Everything runs in your browser.</p></div>
   <div class="actions"><a class="btn primary" href="{% url 'qc_helper_zip' %}">Download QC Helper {{ version }}</a></div></div>
 <section class="card"><h2>Install (once, about 2 minutes)</h2>
 <ol class="helper-steps">

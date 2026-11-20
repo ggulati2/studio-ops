@@ -95,6 +95,7 @@ urlpatterns = [
     path("qc/autocheck/<int:pk>/update/", v.autocheck_update, name="autocheck_update"),
     path("qc/autocheck/<int:pk>/", v.autocheck_report, name="autocheck_report"),
     path("qc/autocheck/rules/", v.autocheck_rules, name="autocheck_rules"),
+    path("qc/autocheck/learnt/", v.autocheck_learnt, name="autocheck_learnt"),
     path("qc/helper/", v.qc_helper, name="qc_helper"),
     path("qc/helper/download/", v.qc_helper_zip, name="qc_helper_zip"),
     path("qc/<int:pk>/close/", v.qc_close, name="qc_close"),

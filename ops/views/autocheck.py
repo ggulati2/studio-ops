@@ -21,11 +21,12 @@ from django.utils import timezone
 from ..audit import record
 from ..forms import StyledMixin
 from .. import services as S
-from ..models import Agency, AutoCheckRule, AutoCheckRun, FilmEvent, Project
+from .. import learning as L
+from ..models import Agency, AutoCheckLesson, AutoCheckRule, AutoCheckRun, AutoCheckTuning, FilmEvent, Project
 from ..rbac import QC, has_perm, requires, role_of
 
 __all__ = ["autocheck_start", "autocheck_claim", "autocheck_update", "autocheck_report", "autocheck_rules", "qc_helper",
-           "qc_helper_zip"]
+           "qc_helper_zip", "autocheck_learnt"]
 
 HELPER_DIR = Path(settings.BASE_DIR) / "qc_helper"
 STALE = timezone.timedelta(minutes=30)      # a running check that hasn't reported for this long has stopped
@@ -56,7 +57,8 @@ def _job(run, request):
     return {"id": run.pk, "v1": run.v1_link, "v2": run.v2_link, "film": str(p) + (f" · {run.event.name}" if run.event_id else ""),
             "couple": p.couple, "deliverable": p.deliverable, "agency": p.agency.code if p.agency_id else "",
             "checker": request.user.profile.name if hasattr(request.user, "profile") else request.user.get_username(),
-            "rules": AutoCheckRule.for_project(p).as_dict(), "portal": request.build_absolute_uri("/"),
+            "rules": {**AutoCheckRule.for_project(p).as_dict(), "tune": L.factors_for(p)},
+            "prev_issues": L.prev_issues(run), "portal": request.build_absolute_uri("/"),
             "prev_label": prev or "V1", "cur_label": cur, "auto": run.auto}
 
 
@@ -156,6 +158,13 @@ def autocheck_update(request, pk):
         run.progress = (f"{c['fixed']} fixed · {c['not_fixed']} not fixed · {c['check']} to check · "
                         f"{c['new']} new · {run.posted} posted on V2")
         fields = ["status", "report", "finished_at", "posted", "helper_version", "progress", "updated"]
+        run.save(update_fields=fields)
+        learnt = L.learn_safely(run)
+        if learnt and (learnt["right"] or learnt["wrong"] or learnt["missed"]):
+            run.progress = (run.progress + f" · learnt from QC: {learnt['right']} right, {learnt['wrong']} wrong, "
+                            f"{learnt['missed']} missed")[:200]
+            run.save(update_fields=["progress"])
+        fields = []
     elif kind == "failed":
         run.status, run.finished_at = AutoCheckRun.FAILED, timezone.now()
         run.progress = ("Stopped: " + str(data.get("error") or "unknown error"))[:200]
@@ -171,7 +180,8 @@ def autocheck_report(request, pk):
     r = run.report or {}
     return render(request, "team/autocheck_report.html", {
         "run": run, "p": run.project, "rep": r, "comments": r.get("comments", []), "issues": r.get("issues", []),
-        "posted": r.get("posted", []), "structure": r.get("structure", []),
+        "posted": r.get("posted", []), "structure": r.get("structure", []), "learnt": r.get("learnt"),
+        "feedback": r.get("feedback"), "labels": L.LABELS,
         "prev_label": labels(run)[0] or "V1", "cur_label": labels(run)[1]})
 
 
@@ -182,8 +192,9 @@ class RuleForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = AutoCheckRule
         fields = ["agency", "deliverable", "min_seconds", "max_seconds", "sensitivity", "check_blacks",
-                  "check_highlights", "check_black_frames", "check_audio_peaks", "check_loudness", "check_pops",
-                  "check_silence", "check_shake", "check_jump_cuts", "check_colour_jumps"]
+                  "check_highlights", "check_black_frames", "check_media_offline", "check_framing", "check_blur",
+                  "check_audio_peaks", "check_clipping", "check_loudness", "check_pops", "check_silence",
+                  "check_music_end", "check_shake", "check_jump_cuts", "check_colour_jumps"]
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
@@ -216,6 +227,70 @@ def autocheck_rules(request):
     rules = AutoCheckRule.objects.select_related("agency").order_by("agency__name", "deliverable")
     return render(request, "team/autocheck_rules.html", {"form": form, "rules": rules, "edit": edit,
                                                          "defaults": AutoCheckRule().as_dict()})
+
+
+@requires("settings.manage")
+def autocheck_learnt(request):
+    """What AutoCheck has learnt from QC: each limit, the evidence, every change (undo / lock)."""
+    if request.method == "POST":
+        op, P = request.POST.get("op"), request.POST
+        row = AutoCheckTuning.objects.filter(pk=P.get("pk") or 0).first()
+        if op == "lock" and row:
+            row.locked = not row.locked
+            row.save(update_fields=["locked", "updated"])
+            record(request, "autocheck.tune_lock", str(row), "locked" if row.locked else "unlocked")
+            messages.success(request, f"{L.LABELS.get(row.kind, row.kind)}: " + (
+                "locked at its current limit." if row.locked else "unlocked. It learns from QC again."))
+        elif op == "reset" and row:
+            AutoCheckLesson.objects.create(tuning=row, old_factor=row.factor, new_factor=1.0, by=request.user,
+                                           reason="Reset to the built-in limit by a founder")
+            row.factor, row.samples, row.locked = 1.0, [], False
+            row.save(update_fields=["factor", "samples", "locked", "updated"])
+            record(request, "autocheck.tune_reset", str(row))
+            messages.success(request, f"{L.LABELS.get(row.kind, row.kind)}: back to the built-in limit; learning starts again.")
+        elif op == "undo":
+            les = AutoCheckLesson.objects.filter(pk=P.get("lesson") or 0, undone=False).select_related("tuning").first()
+            if les:
+                t = les.tuning
+                AutoCheckLesson.objects.create(tuning=t, old_factor=t.factor, new_factor=les.old_factor, by=request.user,
+                                               reason="Undone by a founder; the limit is locked so it doesn't come back")
+                t.factor, t.locked = les.old_factor, True
+                t.save(update_fields=["factor", "locked", "updated"])
+                les.undone = True
+                les.save(update_fields=["undone"])
+                record(request, "autocheck.tune_undo", str(t), f"{les.new_factor} -> {les.old_factor}")
+                messages.success(request, f"{L.LABELS.get(t.kind, t.kind)}: change undone and the limit locked. Unlock it to let it learn again.")
+        return redirect("autocheck_learnt")
+    rows = list(AutoCheckTuning.objects.select_related("agency").exclude(kind__startswith="note:")
+                .order_by("kind", "agency__name", "deliverable"))
+    for r in rows:
+        r.label = L.LABELS.get(r.kind, r.kind)
+        judged = r.right + r.wrong
+        r.accuracy = round(r.right / judged * 100) if judged else None
+        r.active = r.locked or len(r.samples) >= L.MIN_SAMPLES
+        r.n = len(r.samples)
+    studio = [r for r in rows if r.agency_id is None and not r.deliverable]
+    base = {r.kind: r.factor for r in studio}
+    # an agency's own limit only matters where it differs from the studio's
+    specific = [r for r in rows if not (r.agency_id is None and not r.deliverable) and (r.active or r.locked)
+                and (r.locked or abs(r.factor - base.get(r.kind, 1.0)) > 0.005)]
+    notes = [(L.NOTES.get(t.kind[5:], t.kind[5:]), t.missed) for t in
+             AutoCheckTuning.objects.filter(kind__startswith="note:", agency__isnull=True).order_by("-missed")]
+    lessons, same = [], set()
+    for les in (AutoCheckLesson.objects.select_related("tuning__agency", "run__project", "by__profile")
+                .order_by("-created", F("tuning__agency_id").asc(nulls_first=True), "tuning__deliverable")[:120]):
+        # the same step taken studio-wide and for the agency in one run is shown once (studio-wide first)
+        key = (les.tuning.kind, les.run_id, les.old_factor, les.new_factor, les.by_id)
+        if les.run_id and key in same:
+            continue
+        same.add(key)
+        les.label = L.LABELS.get(les.tuning.kind, les.tuning.kind)
+        lessons.append(les)
+        if len(lessons) >= 40:
+            break
+    return render(request, "team/autocheck_learnt.html", {
+        "studio": studio, "specific": specific, "notes": notes, "lessons": lessons, "min_samples": L.MIN_SAMPLES,
+        "untouched": [v for k, v in L.LABELS.items() if k not in {r.kind for r in studio}]})
 
 
 @requires("qc.review")

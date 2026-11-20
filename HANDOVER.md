@@ -63,7 +63,7 @@ Moving accounts changes none of this, because Render, Supabase and cron-job.org 
 - **Routine:** implement → run the tests → commit → **push straight to `main`** → wait for CI to go green → Render deploys by itself. (CONTRIBUTING.md describes branches and PRs. In practice the owner has had changes pushed to `main` once tests pass.)
 - **Git identity:** `Gourav Gulati <ggulati2@users.noreply.github.com>`.
 - **Commit messages:** a plain-English first line about what changed for the studio (e.g. "QC: founders can send a film or event for QC on the editor's behalf"), an optional body, then the attribution trailer the session asks for (so far `Co-Authored-By: Claude …` plus a `Claude-Session:` link).
-- **Tests:** `DEBUG=1 SECRET_KEY=x python manage.py test ops` (215 tests). `SECRET_KEY` must be set or settings refuse to load.
+- **Tests:** `DEBUG=1 SECRET_KEY=x python manage.py test ops` (240-odd tests). `SECRET_KEY` must be set or settings refuse to load.
 - **Local run:**
   ```bash
   export DEBUG=1 SECRET_KEY=x
@@ -75,7 +75,7 @@ Moving accounts changes none of this, because Render, Supabase and cron-job.org 
 - **Guard rails the tests enforce:**
   - Every URL needs `@requires("perm")` from `ops/rbac.py` (a URL-guard test).
   - Per-page **query budgets** live in `ops/tests/test_performance.py`. Avoid N+1 queries; use `select_related` / `prefetch_related` / annotate.
-  - Model changes need a committed migration (CI checks). The latest is `0028_autocheck_auto`.
+  - Model changes need a committed migration (CI checks). The latest is `0029_autocheck_learning`.
   - Anything touching money, salaries, clients or people stays founder-only (`SENSITIVE` in `rbac.py`).
 - **Front-end rules:**
   - **CSP: no inline JS.** Behaviour goes in `static/*.js` and is driven by `data-` attributes.
@@ -104,8 +104,9 @@ Moving accounts changes none of this, because Render, Supabase and cron-job.org 
 - jump cuts, colour jumps, camera shake
 - audio near 0 dB, uneven loudness, pops, sudden silence
 - length outside the rules
+- since 1.3.0: Media Offline / broken frames, black bars / wrong framing, out-of-focus shots, distorted (clipped) audio, music cut off at the end. Fades to / from black are never black-frame flags.
 
-It then posts **public** comments on the new version starting with `[AutoCheck]`. It costs nothing: no AI service, and everything runs in the QC person's Chrome.
+It then posts **public** comments on the new version starting with `[Hygiene]` (it used `[AutoCheck]` before 1.3.0; both are recognised as its own). It costs nothing: no AI service, and everything runs in the QC person's Chrome.
 
 **Flow (since `24991f5`):**
 1. Every link sent (an editor's event or whole film, a founder's "Send a film for QC", or a new link set in a review) is stored as a **`CutLink`** with a round number: V1, V2, V3… (`services.note_cut_link`).
@@ -132,7 +133,9 @@ It then posts **public** comments on the new version starting with `[AutoCheck]`
 | QC page assembly | `_autocheck_units` in `ops/views/team.py` |
 | Templates | `team/_autocheck.html`, `_autocheck_helper.html`, `autocheck_report.html`, `autocheck_rules.html`, `qc_helper.html` |
 | Portal JS | `static/autocheck.js` |
-| Extension | `qc_helper/`: `manifest.json` (version **1.2.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js`, `fio.js` |
+| Extension | `qc_helper/`: `manifest.json` (version **1.3.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
+| Learning | `ops/learning.py` (judging QC's reaction, fitting limits), models `AutoCheckTuning` / `AutoCheckLesson`, page `team/autocheck_learnt.html` |
+| JS tests | `ops/tests/js/test_checks.js` (node; the Django suite runs it when node is installed) |
 
 **Releasing a helper change:**
 1. Bump `version` in `qc_helper/manifest.json`. The portal compares it and shows "update available".
@@ -172,6 +175,10 @@ It then posts **public** comments on the new version starting with `[AutoCheck]`
 - **Audio glitches** too subtle to measure in V1 go to "needs to check".
 - **No false jump, colour or flash flags** came up in 213 cuts.
 - **Runtime** is about 15–30 min per film, depending on whether the runner window is visible.
+
+**Self-learning (1.3.0):** every flag has a strength `sev` (1 = at its limit); near misses (0.4 up to the limit) are kept as `cands`. The next round's report carries `seen` (every comment on the earlier version, ours marked) and `followup` (whether each earlier flag is still there). `learning.learn()` labels each earlier flag (deleted / "not an issue" = wrong; QC's own note on the same thing or the editor's fix = right; QC's note where nothing was flagged = missed) and refits limits once there are 10 examples (steps of x1.25, kept between 0.4 and 2.5). `_job` sends `rules.tune` (limit per flag kind) and `prev_issues`. Teena only has to delete wrong [Hygiene] comments on Frame.io.
+
+**Testing the helper without Frame.io:** build a test film with ffmpeg (fades, a hard black cut, a red Media Offline frame, a pillarboxed clip, a blurred shot, clipped audio, music stopping dead), cut it into 2-second fMP4 segments (`-f hls -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -start_number 1 -hls_segment_filename media/h264_360/%d.m4s`, same for `aac_cha2`), serve it locally and load `runner.html` with a small mock of `chrome.*` and the `fio*` functions pointing at it. That runs the real runner end to end in Playwright's Chromium.
 
 **Known limits / ideas:**
 - A version stacked on the same Frame.io link can't be compared yet. Reading the version stack would fix that.

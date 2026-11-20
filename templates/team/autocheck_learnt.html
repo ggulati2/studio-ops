@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% load ops_extras %}
+{% block title %}AutoCheck learnt{% endblock %}
+{% block content %}
+{% include "_qc_contract_tabs.html" with tab="learnt" %}
+<div class="head"><div><h1>What AutoCheck learnt</h1><p>AutoCheck watches what QC does with its [Hygiene] comments on Frame.io and tunes itself, per agency and film type. Nobody has to click anything.</p></div>
+  <div class="actions"><a class="btn" href="{% url 'autocheck_rules' %}">AutoCheck rules</a></div></div>
+
+<section class="card tight learn-how">
+  <b>How it learns</b>
+  <ul class="small">
+    <li><b>Wrong flag:</b> QC deletes the [Hygiene] comment on Frame.io, or writes "not an issue" / "intended" next to it.</li>
+    <li><b>Right flag:</b> QC writes their own note about the same thing next to it, or the editor fixes it in the next version.</li>
+    <li><b>Missed:</b> QC writes a note about something AutoCheck measures (e.g. "shaky", "out of focus", "audio distorted") where it flagged nothing.</li>
+    <li>It learns when the editor sends the next version. A limit only moves after {{ min_samples }} examples, in small steps, and never switches a check off. Every change is listed below, and you can undo it or lock the limit.</li>
+  </ul>
+</section>
+
+<section class="card"><div class="title"><h2>Each check · whole studio</h2><span class="small muted">"Limit": 1 = as built. Higher = flags less often, lower = flags more often.</span></div>
+  <div class="scroll"><table class="stack"><thead><tr><th>Check</th><th>Limit</th><th class="right">QC agreed</th><th class="right">QC removed</th><th class="right">Missed</th><th class="right">Accuracy</th><th></th></tr></thead><tbody>
+  {% for r in studio %}{% include "team/_tuning_row.html" %}{% empty %}<tr><td colspan="7" class="muted">Nothing learnt yet. It starts once QC has reviewed a version AutoCheck checked and the editor sends the next one.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if untouched and studio %}<p class="small muted" style="margin:0">No evidence yet for: {{ untouched|join:", " }}.</p>{% endif %}
+</section>
+
+{% if specific %}<section class="card"><div class="title"><h2>Per agency and film type</h2><span class="small muted">Used instead of the studio limit once it has {{ min_samples }} examples (or is locked).</span></div>
+  <div class="scroll"><table class="stack"><thead><tr><th>Check</th><th>Limit</th><th class="right">QC agreed</th><th class="right">QC removed</th><th class="right">Missed</th><th class="right">Accuracy</th><th></th></tr></thead><tbody>
+  {% for r in specific %}{% include "team/_tuning_row.html" with scoped=True %}{% endfor %}
+  </tbody></table></div></section>{% endif %}
+
+<section class="card"><h2>Changes</h2>
+  {% for les in lessons %}<div class="learn-change small">
+    <span class="nowrap muted">{{ les.created|date:"j M, g:i A" }}</span>
+    <span><b>{{ les.label }}</b>{% if les.tuning.agency %} · {{ les.tuning.agency.code|default:les.tuning.agency.name }}{% endif %}{% if les.tuning.deliverable %} · {{ les.tuning.deliverable }}{% endif %}: limit {{ les.old_factor|floatformat:2 }} → <b>{{ les.new_factor|floatformat:2 }}</b>. {{ les.reason }}{% if les.by %} <span class="muted">({{ les.by.profile.name }})</span>{% elif les.run %} <a href="{% url 'autocheck_report' les.run.pk %}">from {{ les.run.project.couple }}</a>{% endif %}</span>
+    {% if not les.undone and not les.by %}<form method="post">{% csrf_token %}<input type="hidden" name="op" value="undo"><input type="hidden" name="lesson" value="{{ les.pk }}"><button class="btn sm">Undo</button></form>{% elif les.undone %}<span class="tag">undone</span>{% endif %}
+  </div>{% empty %}<span class="small muted">No changes yet.</span>{% endfor %}
+</section>
+
+{% if notes %}<section class="card"><div class="title"><h2>What QC catches that AutoCheck can't measure yet</h2><span class="small muted">QC's notes on versions AutoCheck checked</span></div>
+  {% for label, n in notes %}<div class="small"><b>{{ n }}</b> · {{ label }}</div>{% endfor %}
+  <p class="small muted" style="margin:0">The biggest groups here are the best candidates for new checks.</p></section>{% endif %}
+{% endblock %}

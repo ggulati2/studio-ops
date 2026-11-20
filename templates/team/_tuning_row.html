@@ -1,0 +1,7 @@
+<tr><td><b>{{ r.label }}</b>{% if scoped %}<div class="small muted">{{ r.agency.code|default:r.agency.name|default:"Any agency" }} · {{ r.deliverable|default:"any film" }}</div>{% endif %}</td>
+  <td class="nowrap"><b>{{ r.factor|floatformat:2 }}</b>{% if r.locked %} <span class="tag info">locked</span>{% elif not r.active %} <span class="small muted">learning · {{ r.n }}/{{ min_samples }}</span>{% elif r.factor > 1.005 %} <span class="small muted">flags less often</span>{% elif r.factor < 0.995 %} <span class="small muted">flags more often</span>{% endif %}</td>
+  <td class="right">{{ r.right }}</td><td class="right">{{ r.wrong }}</td>
+  <td class="right">{{ r.missed }}{% if r.subtle %} <span class="small muted" title="Missed and too faint to measure">+{{ r.subtle }} faint</span>{% endif %}</td>
+  <td class="right">{% if r.accuracy is not None %}{{ r.accuracy }}%{% else %}<span class="muted">–</span>{% endif %}</td>
+  <td class="nowrap right"><form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="pk" value="{{ r.pk }}"><button class="btn sm" name="op" value="lock">{% if r.locked %}Unlock{% else %}Lock{% endif %}</button></form>
+    {% if r.factor != 1.0 or r.n %}<form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="pk" value="{{ r.pk }}"><button class="btn sm ghost" name="op" value="reset" data-confirm="Forget what AutoCheck learnt for {{ r.label }} here and go back to the built-in limit?">Reset</button></form>{% endif %}</td></tr>

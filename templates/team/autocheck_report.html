@@ -12,13 +12,17 @@
   <div class="kpi"><span>New issues on {{ cur_label }}</span><b>{{ c.new }}</b><small>{{ run.posted }} comment{{ run.posted|pluralize }} posted in all</small></div>
 </div>{% endwith %}
 {% if run.status == 'failed' %}<div class="card tight warn"><b>{{ run.progress }}</b></div>{% endif %}
+{% if learnt %}<section class="card tight"><b>Learnt from QC's notes on {{ prev_label }}</b>
+  <span class="small">{{ learnt.right }} flag{{ learnt.right|pluralize }} QC agreed with · {{ learnt.wrong }} QC removed or dismissed · {{ learnt.missed }} missed{% if learnt.subtle %} (+{{ learnt.subtle }} too faint to measure){% endif %}{% if learnt.changed %} · <b>{{ learnt.changed }} limit{{ learnt.changed|pluralize }} adjusted</b>{% endif %}.{% if is_founder %} <a href="{% url 'autocheck_learnt' %}">What AutoCheck learnt →</a>{% endif %}</span>
+  {% if learnt.why %}<details class="small"><summary>Details</summary>{% for w in learnt.why %}<div>{{ labels|get:w.kind }} · strength {{ w.sev|floatformat:2 }} · {% if w.real %}right{% else %}wrong{% endif %}: {{ w.why }}</div>{% endfor %}</details>{% endif %}
+</section>{% endif %}
 {% if comments %}<section class="card"><h2>{{ prev_label }} comments</h2><div class="scroll"><table class="stack"><thead><tr><th>{{ prev_label }}</th><th>Comment</th><th>Result</th><th>{{ cur_label }}</th></tr></thead><tbody>
 {% for c in comments %}<tr><td class="nowrap">{{ c.n|default:"" }} · {{ c.tc|slice:"3:8" }}</td><td>{{ c.text }}</td>
   <td><b class="ac-verdict-{{ c.verdict }}">{% if c.verdict == 'fixed' %}✅ Fixed{% elif c.verdict == 'not_fixed' %}❌ Not fixed{% else %}❓ To check{% endif %}</b><div class="small muted">{{ c.note }}</div></td>
   <td class="nowrap">{% if c.t2 != None %}{{ c.t2|clock }}{% else %}—{% endif %}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
 <section class="card"><h2>New issues on {{ cur_label }} · {{ issues|length }}</h2>
-  {% for i in issues %}<div class="small"><b class="nowrap">{{ i.t|clock }}</b> · {{ i.text }}</div>{% empty %}<span class="small muted">None found.</span>{% endfor %}</section>
+  {% for i in issues %}<div class="small"><b class="nowrap">{{ i.t|clock }}</b> · {{ i.text }}{% if i.sev %} <span class="muted" title="How strong: 1 = just at the limit">· strength {{ i.sev|floatformat:1 }}</span>{% endif %}{% if i.covered %} <span class="tag">already in a {{ prev_label }} comment, not posted again</span>{% elif i.repeat %} <span class="tag warn">still there from {{ prev_label }}</span>{% endif %}</div>{% empty %}<span class="small muted">None found.</span>{% endfor %}</section>
 {% if structure %}<section class="card"><h2>Edits between {{ prev_label }} and {{ cur_label }}</h2>
   {% for s in structure %}<div class="small">{% if s.kind == 'added' %}Added in {{ cur_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% else %}Removed from {{ prev_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% endif %}</div>{% endfor %}
   <p class="small muted" style="margin:0">Changes nobody asked for are worth a quick look.</p></section>{% endif %}

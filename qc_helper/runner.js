@@ -2,8 +2,9 @@
    1. Open V1 and V2 on Frame.io, read V1's comments, find each file's video and audio streams.
    2. Quick pass (whole film, small preview, every half second) + audio, for both.
    3. Line V1 up with V2, then the HD pass (1080p) on each comment point, every cut and each shot.
-   4. Verdict per V1 comment + new issues on V2 -> posted on V2 as [AutoCheck] comments.
-   5. Report back to Studio Ops. */
+   4. Verdict per V1 comment + new issues on V2 -> posted on V2 as [Hygiene] comments.
+   5. Report back to Studio Ops, with what QC did on V1 with the last check's flags (kept,
+      deleted, answered, or their own notes nearby): Studio Ops learns from that. */
 (function () {
   "use strict";
   var AC = window.AC, jobId = location.hash.slice(1), job = null, portalTab = null, myWindow;
@@ -77,13 +78,9 @@
     return "other";
   }
   var throughout = function (t) { return /through ?out|thru ?out|thur ?out|thro ?out|whole film|all over|entire|everywhere|full film/i.test(t || ""); };
-  var clean = function (s) { return (s || "").replace(/#/g, "no. ").replace(/\s+/g, " ").trim(); };
-
-  function runs(n, pred, minLen, step) {
-    var out = [], k = 0;
-    while (k < n) { if (pred(k)) { var e = k; while (e < n && pred(e)) e++; if (e - k >= minLen) out.push([k * step, e * step]); k = e; } else k++; }
-    return out;
-  }
+  var TAG = "[Hygiene] ";
+  var ours = function (text) { return /^\s*\[(AutoCheck|Hygiene)\]/i.test(text || ""); };
+  var clean = function (s) { return (s || "").replace(/^\s*\[(AutoCheck|Hygiene)\]\s*/i, "").replace(/#/g, "no. ").replace(/\s+/g, " ").trim(); };
 
   async function main() {
     var got = await chrome.storage.local.get("job:" + jobId);
@@ -94,7 +91,8 @@
     var P = job.prev_label || "V1", N = job.cur_label || "V2";
     document.getElementById("title").textContent = "AutoCheck · " + (job.film || "");
     var rules = job.rules || {}, s = SENS[rules.sensitivity] || 1, who = job.checker || "QC";
-    var report = {version: chrome.runtime.getManifest().version, comments: [], issues: [], posted: [], structure: []};
+    var report = {version: chrome.runtime.getManifest().version, comments: [], issues: [], posted: [], structure: [],
+                  seen: [], followup: [], cands: {}, tune: rules.tune || {}};
     tell({type: "autocheck:status", id: jobId, status: "running"});
 
     // ---- 1. open the files
@@ -114,6 +112,10 @@
     var maxFF = 0;
     comments.forEach(function (c) { maxFF = Math.max(maxFF, +c.tc.slice(9)); });
     var fps = maxFF >= 25 ? 30 : 25;
+    // every comment on the earlier version, ours marked: QC's notes and what's left of our flags teach Studio Ops
+    report.seen = comments.map(function (c) {
+      return {t: Math.round(AC.tcToSec(c.tc, fps) * 10) / 10, text: (c.text || "").slice(0, 300), ours: ours(c.text)};
+    });
 
     // ---- 2. quick pass + audio
     var Q2, A2, Q1, A1;
@@ -136,11 +138,16 @@
       Al = AC.align(Q1, Q2);
       report.structure = Al.segs.map(function (g) { return {kind: g.kind, from: g.from, to: g.to}; });
     }
-    var crushedV2 = runs(Q2.n, function (i) { return Q2.p5[i] <= 2 && Q2.lum[i] > 40; }, 4, 0.5);
+    var crushedV2 = AC.hyg.crushed(AC.hyg.out(rules.tune || {}), Q2, false);
     for (var ci = 0; ci < comments.length; ci++) {
       var c = comments[ci], tv1 = AC.tcToSec(c.tc, fps), k = kind(c.text), m = AC.toV2(Al, tv1);
       var tv2 = m ? m.t : null, near = AC.changedNear(Al, tv1, tv2, 6);
       var r = {n: c.n, tc: c.tc, t1: tv1, t2: tv2, text: c.text, kind: k, verdict: "check", note: ""};
+      if (ours(c.text)) {      // our own flag from last time: the same check runs again below
+        r.ours = true; r.note = "checked again by AutoCheck";
+        report.comments.push(r);
+        continue;
+      }
       log("Checking " + P + " comment " + (c.n || ci + 1) + " (" + fmt(tv1) + ")…", 0.56 + 0.2 * ci / Math.max(1, comments.length));
       try {
         if (tv2 == null) { r.note = "this part isn't in V2 any more"; r.verdict = k === "edit" ? "fixed" : "check"; }
@@ -214,66 +221,39 @@
     }
 
     // ---- 4. new issues on V2 (hygiene)
-    var issues = report.issues, add = function (kind, t, text, end) { issues.push({kind: kind, t: t, end: end || null, text: text}); };
-    var already = function (t) {   // skip what a V1 comment already covers at the same moment
-      return report.comments.some(function (r) { return r.t2 != null && Math.abs(r.t2 - t) < 3 && r.verdict !== "fixed"; });
+    var o = AC.hyg.out(rules.tune || {}), fmtS = fmt;
+    var already = function (t) {   // a QC comment on V1 already covers this moment (and isn't fixed)
+      return report.comments.some(function (r) { return !r.ours && r.t2 != null && Math.abs(r.t2 - t) < 3 && r.verdict !== "fixed"; });
+    };
+    // flagged but covered by a QC comment: measured (Studio Ops learns from it) but not posted twice
+    var flagC = function (kind, sev, t, end, text) {
+      var before = o.issues.length;
+      o.flag(kind, sev, t, end, text);
+      if (o.issues.length > before && already(t)) o.issues[o.issues.length - 1].covered = true;
     };
     log("Looking for new issues on " + N + "…", 0.78);
     var dur = Q2.dur;
-    if (rules.min_seconds && dur < rules.min_seconds) add("length", 0, "The film is " + fmt(dur) + " long, shorter than the " + fmt(rules.min_seconds) + " minimum.");
-    if (rules.max_seconds && dur > rules.max_seconds) add("length", 0, "The film is " + fmt(dur) + " long, longer than the " + fmt(rules.max_seconds) + " maximum.");
-    if (rules.blacks !== false) crushedV2.forEach(function (x) {
-      if (!report.comments.some(function (r) { return r.ranges && r.ranges.indexOf(x) >= 0; }))
-        add("blacks", x[0], "Blacks look crushed (too dark) from " + fmt(x[0]) + " to " + fmt(x[1]) + ". Please lift the blacks.", x[1]);
+    if (rules.min_seconds && dur < rules.min_seconds) o.issues.push({kind: "length", t: 0, sev: 1, text: "The film is " + fmtS(dur) + " long, shorter than the " + fmtS(rules.min_seconds) + " minimum."});
+    if (rules.max_seconds && dur > rules.max_seconds) o.issues.push({kind: "length", t: 0, sev: 1, text: "The film is " + fmtS(dur) + " long, longer than the " + fmtS(rules.max_seconds) + " maximum."});
+    var ctx = {o: o, Q: Q2, A: A2, rules: rules, s: s, skip: already};
+    AC.hyg.run(ctx);
+    // crushed stretches a V1 "too dark" comment already reports aren't posted twice
+    o.issues = o.issues.filter(function (x) {
+      return x.kind !== "blacks" || !report.comments.some(function (r) { return r.ranges && r.ranges.some(function (g) { return Math.abs(g[0] - x.t) < 0.6; }); });
     });
-    if (rules.highlights !== false) runs(Q2.n, function (i) { return Q2.p95[i] >= 253 && Q2.lum[i] > 60; }, 4, 0.5).forEach(function (x) {
-      add("highlights", x[0], "Highlights look blown out from " + fmt(x[0]) + " to " + fmt(x[1]) + ".", x[1]);
-    });
-    if (rules.black_frames !== false) runs(Q2.n, function (i) { return Q2.lum[i] < 6 && Q2.p95[i] < 20 && i * 0.5 > 2 && i * 0.5 < dur - 3; }, 1, 0.5).forEach(function (x) {
-      if (x[1] - x[0] <= 3) add("black_frame", x[0], "Unexpected black frame(s) at " + fmt(x[0]) + ".");
-    });
-    // audio
-    var m = A2.rms.length;
-    if (rules.audio_peaks !== false) {
-      var clips = [];
-      for (var w3 = 0; w3 < m; w3++) if (A2.pk[w3] >= 0.985) clips.push(w3 * 0.05);
-      var groups = [];
-      clips.forEach(function (t) { if (!groups.length || t - groups[groups.length - 1][1] > 30) groups.push([t, t, 1]); else { groups[groups.length - 1][1] = t; groups[groups.length - 1][2]++; } });
-      groups.filter(function (g) { return g[2] * 0.05 >= 0.5 * s; }).forEach(function (g) {
-        add("audio_peaks", g[0], g[1] - g[0] > 5
-          ? "Audio hits 0 dB (near clipping) on and off from " + fmt(g[0]) + " to " + fmt(g[1]) + ". Please bring the level down."
-          : "Audio hits 0 dB (near clipping) at " + fmt(g[0]) + ". Please bring the level down.", g[1]);
-      });
-    }
-    if (rules.loudness !== false) {
-      var per = [];
-      for (var mi = 0; mi * 60 < A2.dur; mi++) {
-        var se = 0, cnt = 0;
-        for (var j2 = mi * 1200; j2 < Math.min(m, (mi + 1) * 1200); j2++) { se += A2.rms[j2] * A2.rms[j2]; cnt++; }
-        var db = 10 * Math.log10(se / Math.max(1, cnt) + 1e-12);
-        if (db > -40 && cnt > 400) per.push([mi, db]);
+    if (rules.black_frames !== false) {
+      // black stretches: look at each edge in HD. A fade in or out is style, not a mistake
+      var runsB = AC.hyg.blackRuns(Q2);
+      for (var bi = 0; bi < runsB.length && bi < 40; bi++) {
+        var rb = runsB[bi];
+        try {
+          var pre = await HD2.frames(rb.t - 1.4, rb.t + 0.3, fps, 64), post = await HD2.frames(rb.end - 0.3, rb.end + 1.4, fps, 64);
+          var lumOf = function (f) { return AC.meanLum(f); };
+          var outK = AC.hyg.edgeKind(pre.map(lumOf)), inK = AC.hyg.edgeKind(post.map(lumOf).reverse());
+          if (outK !== "unknown" || inK !== "unknown") rb.edges = {fadeOut: outK === "fade", fadeIn: inK === "fade"};
+        } catch (e) { /* the quick pass decides */ }
       }
-      if (per.length >= 4) {
-        var lo = per.reduce(function (a, b) { return b[1] < a[1] ? b : a; }), hi = per.reduce(function (a, b) { return b[1] > a[1] ? b : a; });
-        if (hi[1] - lo[1] > 15 * s) add("loudness", hi[0] * 60, "Loudness is uneven: around " + fmt(hi[0] * 60) + " the audio is about " + Math.round(hi[1] - lo[1]) + " dB louder than around " + fmt(lo[0] * 60) + ". Please level the audio.");
-      }
-    }
-    if (rules.pops !== false) {
-      var pops = [];
-      for (var w4 = 0; w4 < m; w4++) if (A2.score[w4] > 6 / s && A2.rms[w4] > 0.01) { var tp = w4 * 0.05; if (!pops.length || tp - pops[pops.length - 1] > 3) pops.push(tp); }
-      pops = pops.filter(function (t) { return !already(t); });
-      if (pops.length) add("pops", pops[0], "Possible audio pop here, please listen." + (pops.length > 1 ? " Also check " + pops.slice(1, 8).map(fmt).join(", ") + (pops.length > 8 ? " and " + (pops.length - 8) + " more" : "") + "." : ""));
-    }
-    if (rules.silence !== false) {
-      var k5 = 0;
-      while (k5 < m) {
-        if (A2.rms[k5] < 0.0015 && k5 * 0.05 > 3 && k5 * 0.05 < A2.dur - 5) {
-          var e5 = k5; while (e5 < m && A2.rms[e5] < 0.0015) e5++;
-          var len = (e5 - k5) * 0.05, vi = Math.round(k5 * 0.05 / 0.5);
-          if (len >= 1.5 && Q2.lum[vi] > 25) add("silence", k5 * 0.05, "Sudden silence for " + len.toFixed(1) + " s. Intended?");
-          k5 = e5;
-        } else k5++;
-      }
+      AC.hyg.blackFrames(o, Q2, runsB);
     }
     // HD pass: every cut, and the middle of each shot
     var cuts = AC.cuts(Q2).slice(0, 300);
@@ -283,39 +263,92 @@
       if (cc2 % 10 === 0) barEl.style.width = Math.round((0.8 + 0.08 * cc2 / Math.max(1, cuts.length)) * 100) + "%";
       try {
         var fr2 = await HD2.frames(tc2 - 0.6, tc2 + 0.6, fps, 160), lk = AC.cutLook(fr2);
-        if (!lk) continue;
-        if (rules.black_frames !== false && lk.flash != null && !already(lk.flash)) add("flash", lk.flash, "Flash frame at " + fmt(lk.flash) + " (one frame that doesn't belong).");
-        if (rules.jump_cuts !== false && lk.jump != null && !already(lk.jump)) add("jump_cut", lk.jump, "Possible jump cut at " + fmt(lk.jump) + ".");
-        else if (rules.colour_jumps !== false && lk.colour != null && !already(lk.colour)) add("colour_jump", lk.colour, "Colour/exposure jump between shots at " + fmt(lk.colour) + ". Please match the shots.");
+        if (rules.media_offline !== false) {
+          var off = fr2.filter(function (f) { return f.red >= 0.32; }).sort(function (a, b) { return b.red - a.red; })[0];
+          if (off && !o.issues.some(function (x) { return x.kind === "media_offline" && Math.abs(x.t - off.t) < 2; }))
+            o.flag("media_offline", off.red / 0.8, off.t, null, "Media Offline frame (red screen) at " + fmtS(off.t) + ". A clip is missing in the export: please relink it and export again.");
+        }
+        if (!lk || lk.dark) continue;     // cuts into / out of black are fades, not jumps
+        if (rules.black_frames !== false && lk.flash != null) flagC("flash", lk.flashSev || 1, lk.flash, null, "Flash frame at " + fmtS(lk.flash) + " (one frame that doesn't belong).");
+        if (rules.jump_cuts !== false && lk.jump != null) flagC("jump_cut", lk.jumpSev || 1, lk.jump, null, "Possible jump cut at " + fmtS(lk.jump) + ".");
+        else if (rules.colour_jumps !== false && lk.colour != null) flagC("colour_jump", lk.colourSev || 1, lk.colour, null, "Colour/exposure jump between shots at " + fmtS(lk.colour) + ". Please match the shots.");
       } catch (e) { /* a segment that won't load: skip */ }
     }
-    if (rules.shake !== false) {
+    if (rules.shake !== false || rules.blur !== false) {
+      // the middle of each shot; long shots (or two shots the cut finder took as one) every ~4 s
       var bounds = [0].concat(cuts, [dur]), shots = [];
-      for (var b2 = 1; b2 < bounds.length; b2++) if (bounds[b2] - bounds[b2 - 1] >= 2.5) shots.push((bounds[b2] + bounds[b2 - 1]) / 2);
-      shots = shots.slice(0, 250);
-      log("HD pass: camera shake in " + shots.length + " shots…", 0.88);
-      var shaky = [];
+      for (var b2 = 1; b2 < bounds.length; b2++) {
+        var len = bounds[b2] - bounds[b2 - 1];
+        if (len < 2.5) continue;
+        var parts = Math.max(1, Math.min(4, Math.floor(len / 4)));
+        for (var pp = 0; pp < parts; pp++) shots.push(bounds[b2 - 1] + len * (pp + 0.5) / parts);
+      }
+      shots = shots.slice(0, 300);
+      log("HD pass: " + (rules.shake !== false ? "camera shake" + (rules.blur !== false ? " and focus" : "") : "focus") + " in " + shots.length + " shots…", 0.88);
+      var sharpness = [];
       for (var si = 0; si < shots.length; si++) {
         if (si % 10 === 0) barEl.style.width = Math.round((0.88 + 0.06 * si / Math.max(1, shots.length)) * 100) + "%";
         try {
-          var j3 = AC.shake(await HD2.frames(shots[si] - 0.8, shots[si] + 0.8, 12.5, 320));
-          if (j3 != null && j3 > 0.75 * s && !already(shots[si])) shaky.push(shots[si]);
+          var sf = await HD2.frames(shots[si] - 0.8, shots[si] + 0.8, 12.5, 320);
+          if (rules.shake !== false) {
+            var j3 = AC.shake(sf);
+            if (j3 != null) flagC("shake", j3 / (0.75 * s), shots[si], null, "Camera shake in this shot. Please stabilise.");
+          }
+          if (rules.blur !== false && sf.length >= 3) {
+            // three frames across the shot; the sharpest counts (a pan blurs some frames on purpose)
+            var pick = [sf[0], sf[Math.floor(sf.length / 2)], sf[sf.length - 1]].map(AC.sharpness);
+            var bestS = pick.reduce(function (a, b) { return b.sharp > a.sharp ? b : a; });
+            sharpness.push({t: shots[si], sharp: bestS.sharp, lum: bestS.lum, std: bestS.std});
+          }
         } catch (e) { /* skip */ }
       }
-      shaky.forEach(function (t) { add("shake", t, "Camera shake in this shot. Please stabilise."); });
+      if (rules.blur !== false) {
+        var nb = o.issues.length;
+        AC.hyg.blur(o, sharpness);
+        o.issues.slice(nb).forEach(function (x) { if (already(x.t)) x.covered = true; });
+      }
     }
-    issues.sort(function (a, b) { return a.t - b.t; });
+    var found = o.finish();
+    report.issues = found.issues;
+    report.cands = found.cands;
+    var issues = report.issues;
+    var near = function (kind, t) { return issues.filter(function (x) { return x.kind === kind && x.t - 2.5 <= t && t <= (x.end || x.t) + 2.5; })[0]; };
+
+    // what happened to the last check's flags on the earlier version: still here in this one, or gone?
+    (job.prev_issues || []).forEach(function (pi) {
+      var m2 = Al ? AC.toV2(Al, pi.t) : null, f = {i: pi.i, kind: pi.kind};
+      if (!m2 || ["length", "loudness"].indexOf(pi.kind) >= 0) f.still = null;
+      else {
+        f.t2 = m2.t;
+        f.still = !!near(pi.kind, m2.t);
+        if (!f.still && AC.changedNear(Al, pi.t, m2.t, 1).length) f.still = null;      // that part was re-cut: can't tell
+      }
+      report.followup.push(f);
+    });
+    // our own flags from last time: fixed if the same check no longer finds them
+    report.comments.forEach(function (r) {
+      if (!r.ours) return;
+      var pi = (job.prev_issues || []).filter(function (x) { return Math.abs(x.t - r.t1) <= 1.5; })[0];
+      var again = r.t2 == null ? null : pi ? near(pi.kind, r.t2) : issues.filter(function (x) { return Math.abs(x.t - r.t2) <= 2.5; })[0];
+      if (r.t2 == null) { r.verdict = "fixed"; r.note = "this part isn't in " + N + " any more"; }
+      else if (again) { r.verdict = "not_fixed"; r.note = "still there: flagged again on " + N; again.repeat = true; }
+      else if (pi && ["length", "loudness"].indexOf(pi.kind) >= 0) { r.verdict = "check"; r.note = "please check"; }
+      else { r.verdict = "fixed"; r.note = "AutoCheck no longer finds it"; }
+    });
 
     // ---- 5. post on V2
     var posts = [];
     report.comments.forEach(function (r) {
-      if (r.verdict === "fixed" || r.t2 == null) return;
+      if (r.verdict === "fixed" || r.t2 == null || r.ours) return;      // our own: re-flagged below if still there
       var lead = r.verdict === "not_fixed" ? "Pending from " + P + " comment " + (r.n || "") + ": " : who + " needs to check: " + P + " comment " + (r.n || "") + " (";
       var body = r.verdict === "not_fixed" ? clean(r.text) + " (" + r.note + ")." : clean(r.text) + "): " + r.note + ".";
-      if (r.ranges) r.ranges.forEach(function (x) { posts.push({t: x[0], text: "[AutoCheck] Pending from " + P + " comment " + (r.n || "") + ": " + clean(r.text) + " (still crushed from " + fmt(x[0]) + " to " + fmt(x[1]) + ")."}); });
-      else posts.push({t: r.t2, text: "[AutoCheck] " + lead + body});
+      if (r.ranges) r.ranges.forEach(function (x) { posts.push({t: x[0], text: TAG + "Pending from " + P + " comment " + (r.n || "") + ": " + clean(r.text) + " (still crushed from " + fmt(x[0]) + " to " + fmt(x[1]) + ")."}); });
+      else posts.push({t: r.t2, text: TAG + lead + body});
     });
-    issues.forEach(function (x) { posts.push({t: x.t, text: "[AutoCheck] " + x.text}); });
+    issues.forEach(function (x, i) {
+      if (x.covered) return;
+      posts.push({t: x.t, text: TAG + (x.repeat ? "Still there from " + P + ": " : "") + x.text, issue: i, kind: x.kind});
+    });
     posts.sort(function (a, b) { return a.t - b.t; });
     posts = posts.slice(0, 60);
     log("Posting " + posts.length + " comment(s) on " + N + "…", 0.95);
@@ -323,7 +356,8 @@
     await chrome.tabs.update(t2, {active: true});
     for (var pi = 0; pi < posts.length; pi++) {
       var res = await inTab(t2, fioPost, [Math.max(0, posts[pi].t), posts[pi].text]);
-      report.posted.push({t: posts[pi].t, text: posts[pi].text, ok: !!(res && res.ok), error: res && res.error});
+      report.posted.push({t: posts[pi].t, text: posts[pi].text, ok: !!(res && res.ok), error: res && res.error,
+                          issue: posts[pi].issue, kind: posts[pi].kind});
     }
     await chrome.tabs.update(me.id, {active: true});
     var okN = report.posted.filter(function (p) { return p.ok; }).length;

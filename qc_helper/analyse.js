@@ -35,6 +35,60 @@
     return p[0] * 3600 + p[1] * 60 + p[2] + (p[3] || 0) / (fps || 25);
   };
 
+  /* what one small frame tells us: brightness per pixel, average colour, and the share of pixels
+     that are pure black, pure white, Media-Offline red or corrupt green */
+  function feats(d, W, H) {
+    var n = W * H, Y = new Float32Array(n), R = 0, G = 0, B = 0, dark = 0, bright = 0, red = 0, green = 0;
+    for (var k = 0; k < n; k++) {
+      var r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2], y = 0.299 * r + 0.587 * g + 0.114 * b;
+      Y[k] = y; R += r; G += g; B += b;
+      if (y <= 3) dark++; else if (y >= 252) bright++;
+      if (r > 150 && g < 60 && b < 60) red++;
+      else if (g > 150 && r < 70 && b < 70) green++;
+    }
+    return {Y: Y, W: W, H: H, rgb: [R / n, G / n, B / n], dark: dark / n, bright: bright / n, red: red / n, green: green / n};
+  }
+  AC.feats = feats;
+
+  /* black bars: rows / columns at the edges that are black all the way across, with picture next to them */
+  function bars(f) {
+    var W = f.W, H = f.H, Y = f.Y;
+    var rowMax = function (y) { var m = 0; for (var x = 0; x < W; x++) m = Math.max(m, Y[y * W + x]); return m; };
+    var rowMean = function (y) { var s = 0; for (var x = 0; x < W; x++) s += Y[y * W + x]; return s / W; };
+    var colMax = function (x) { var m = 0; for (var y = 0; y < H; y++) m = Math.max(m, Y[y * W + x]); return m; };
+    var colMean = function (x) { var s = 0; for (var y = 0; y < H; y++) s += Y[y * W + x]; return s / H; };
+    var edge = function (max, mean, from, dir, lim) {
+      var k = 0; while (k < lim && max(from + dir * k) < 16) k++;
+      if (!k || k >= lim) return 0;
+      // picture must start right there (the first line may be half bar, half picture at this size);
+      // dark content running to the edge isn't a bar
+      var a = mean(from + dir * k), b = k + 1 < lim ? mean(from + dir * (k + 1)) : 0;
+      return a >= 20 || b >= 28 || max(from + dir * k) >= 60 ? k : 0;
+    };
+    return [edge(rowMax, rowMean, 0, 1, H >> 1), edge(rowMax, rowMean, H - 1, -1, H >> 1),
+            edge(colMax, colMean, 0, 1, W >> 1), edge(colMax, colMean, W - 1, -1, W >> 1)];
+  }
+  AC.bars = bars;
+
+  /* how sharp a frame is: the sharpest of 4x3 regions (a sharp subject on a soft background still counts) */
+  AC.sharpness = function (f) {
+    var W = f.W, H = f.H, Y = f.Y, best = 0;
+    for (var ry = 0; ry < 3; ry++) for (var rx = 0; rx < 4; rx++) {
+      var y0 = Math.max(1, Math.floor(ry * H / 3)), y1 = Math.min(H - 1, Math.floor((ry + 1) * H / 3));
+      var x0 = Math.max(1, Math.floor(rx * W / 4)), x1 = Math.min(W - 1, Math.floor((rx + 1) * W / 4)), s = 0, n = 0;
+      for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++) {
+        var i = y * W + x, l = 4 * Y[i] - Y[i - 1] - Y[i + 1] - Y[i - W] - Y[i + W];
+        s += l * l; n++;
+      }
+      if (n) best = Math.max(best, s / n);
+    }
+    var m = 0, v = 0, k;
+    for (k = 0; k < Y.length; k++) m += Y[k];
+    m /= Y.length;
+    for (k = 0; k < Y.length; k += 3) v += (Y[k] - m) * (Y[k] - m);
+    return {sharp: best, lum: m, std: Math.sqrt(v / Math.ceil(Y.length / 3))};
+  };
+
   function seekTo(v, t) {
     return new Promise(function (res) {
       var done = false;
@@ -58,28 +112,21 @@
     var W = 32, H = 18, c = document.createElement("canvas"); c.width = W; c.height = H;
     var g = c.getContext("2d", {willReadFrequently: true});
     var dur = v.duration, n = Math.floor(dur / step);
-    var sig = new Uint8Array(n * 32), lum = new Float32Array(n), p5 = new Uint8Array(n), p95 = new Uint8Array(n),
-        rgb = new Uint8Array(n * 3);
+    var out = AC.emptyQ(dur, step, n);
     for (var i = 0; i < n; i++) {
       await seekTo(v, i * step + 0.01);
       g.drawImage(v, 0, 0, W, H);
-      var d = g.getImageData(0, 0, W, H).data, Y = new Uint8Array(W * H), s = 0, R = 0, G = 0, B = 0;
-      for (var k = 0; k < W * H; k++) {
-        var y = 0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2];
-        Y[k] = y; s += y; R += d[k * 4]; G += d[k * 4 + 1]; B += d[k * 4 + 2];
-      }
-      lum[i] = s / (W * H); rgb[i * 3] = R / (W * H); rgb[i * 3 + 1] = G / (W * H); rgb[i * 3 + 2] = B / (W * H);
-      var so = Array.from(Y).sort(function (a, b) { return a - b; });
-      p5[i] = so[Math.floor(W * H * 0.05)]; p95[i] = so[Math.floor(W * H * 0.95)];
-      for (var by = 0; by < 4; by++) for (var bx = 0; bx < 8; bx++) {
-        var t = 0, cnt = 0;
-        for (var yy = Math.floor(by * H / 4); yy < Math.floor((by + 1) * H / 4); yy++)
-          for (var xx = bx * 4; xx < bx * 4 + 4; xx++) { t += Y[yy * W + xx]; cnt++; }
-        sig[i * 32 + by * 8 + bx] = t / cnt;
-      }
+      qpFrom(feats(g.getImageData(0, 0, W, H).data, W, H), out, i);
       if (onProgress && i % 100 === 0) onProgress(i / n);
     }
-    return {dur: dur, step: step, n: n, sig: sig, lum: lum, p5: p5, p95: p95, rgb: rgb};
+    return out;
+  };
+
+  /* the arrays a quick pass fills: one entry per sample */
+  AC.emptyQ = function (dur, step, n) {
+    return {dur: dur, step: step, n: n, sig: new Uint8Array(n * 32), lum: new Float32Array(n), p5: new Uint8Array(n),
+            p95: new Uint8Array(n), rgb: new Uint8Array(n * 3), dark: new Float32Array(n), bright: new Float32Array(n),
+            red: new Float32Array(n), green: new Float32Array(n), bars: new Uint8Array(n * 4)};
   };
 
   /* ---------------- audio: Frame.io's audio stream, decoded at 16 kHz ---------------- */
@@ -88,6 +135,13 @@
     var lo = 1, hi = 8000;
     while (lo < hi) { var m = Math.ceil((lo + hi) / 2); if (await ok(m)) lo = m; else hi = m - 1; }
     return lo;
+  };
+
+  /* share of samples pressed against the peak: flattened (clipped) waves pile up there */
+  AC.flatShare = function (x, a, b, p) {
+    var near = 0, lim = p * 0.94;
+    for (var k = a; k < b; k++) if (Math.abs(x[k]) >= lim) near++;
+    return near / Math.max(1, b - a);
   };
 
   AC.audioPass = async function (base, onProgress) {
@@ -102,7 +156,7 @@
     var SR = 16000, ac = new OfflineAudioContext(1, SR * (last * 2 + 4), SR);
     var ab = await ac.decodeAudioData(await new Blob(parts).arrayBuffer());
     var x = ab.getChannelData(0), win = SR * 0.05, m = Math.floor(x.length / win);
-    var rms = new Float32Array(m), pk = new Float32Array(m), clk = new Float32Array(m);
+    var rms = new Float32Array(m), pk = new Float32Array(m), clk = new Float32Array(m), flat = new Float32Array(m);
     for (var w = 0; w < m; w++) {
       var s = 0, p = 0, dd = 0;
       for (var k = w * win + 1; k < (w + 1) * win; k++) {
@@ -110,6 +164,7 @@
         var df = Math.abs(a - x[k - 1]); if (df > dd) dd = df;
       }
       rms[w] = Math.sqrt(s / win); pk[w] = p; clk[w] = dd;
+      if (p >= 0.1) flat[w] = AC.flatShare(x, w * win, (w + 1) * win, p);
     }
     var score = new Float32Array(m);
     for (var q = 0; q < m; q++) {
@@ -117,7 +172,7 @@
       var med = arr[Math.floor(arr.length / 2)] || 0;
       score[q] = clk[q] / (med * 3 + 0.003);
     }
-    return {win: 0.05, dur: ab.duration, rms: rms, pk: pk, clk: clk, score: score};
+    return {win: 0.05, dur: ab.duration, rms: rms, pk: pk, clk: clk, score: score, flat: flat};
   };
 
   /* ---------------- line V1 up with V2 (robust to exposure changes) ---------------- */
@@ -217,9 +272,9 @@
     for (var t = Math.max(t0, lo) + 0.001; t < Math.min(t1, hi - 0.01); t += 1 / fps) {
       await seekTo(v, t);
       g.drawImage(v, 0, 0, W, H);
-      var d = g.getImageData(0, 0, W, H).data, Y = new Float32Array(W * H), R = 0, G = 0, Bb = 0;
-      for (var k = 0; k < W * H; k++) { Y[k] = 0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2]; R += d[k * 4]; G += d[k * 4 + 1]; Bb += d[k * 4 + 2]; }
-      out.push({t: t, Y: Y, W: W, H: H, rgb: [R / (W * H), G / (W * H), Bb / (W * H)]});
+      var fr = feats(g.getImageData(0, 0, W, H).data, W, H);
+      fr.t = t;
+      out.push(fr);
     }
     try { ms.endOfStream(); } catch (e) {}
     URL.revokeObjectURL(v.src);
@@ -267,9 +322,9 @@
         var t = meta && meta.mediaTime != null ? meta.mediaTime : v.currentTime;
         if (t + 0.021 >= next) {
           g.drawImage(v, 0, 0, W, H);
-          var d = g.getImageData(0, 0, W, H).data, Y = new Float32Array(W * H), R = 0, G = 0, B = 0;
-          for (var k = 0; k < W * H; k++) { Y[k] = 0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2]; R += d[k * 4]; G += d[k * 4 + 1]; B += d[k * 4 + 2]; }
-          cb({t: t, Y: Y, W: W, H: H, rgb: [R / (W * H), G / (W * H), B / (W * H)]});
+          var fr = feats(g.getImageData(0, 0, W, H).data, W, H);
+          fr.t = t;
+          cb(fr);
           while (next <= t + 0.021) next += step;
         }
         if (v.ended || t >= t1 - 0.05) return end();
@@ -286,6 +341,9 @@
     var Y = f.Y, n = Y.length, s = 0;
     for (var k = 0; k < n; k++) s += Y[k];
     out.lum[i] = s / n; out.rgb[i * 3] = f.rgb[0]; out.rgb[i * 3 + 1] = f.rgb[1]; out.rgb[i * 3 + 2] = f.rgb[2];
+    out.dark[i] = f.dark || 0; out.bright[i] = f.bright || 0; out.red[i] = f.red || 0; out.green[i] = f.green || 0;
+    var b = bars(f);
+    for (var q = 0; q < 4; q++) out.bars[i * 4 + q] = b[q];
     var so = Array.from(Y).sort(function (a, b) { return a - b; });
     out.p5[i] = so[Math.floor(n * 0.05)]; out.p95[i] = so[Math.floor(n * 0.95)];
     for (var by = 0; by < 4; by++) for (var bx = 0; bx < 8; bx++) {
@@ -306,8 +364,8 @@
     }
     if (!dur) dur = (await AC.lastSegment(low)) * 2;
     var hd = new AC.HD(low), n = Math.floor(dur / step), has = new Uint8Array(n);
-    var out = {dur: dur, step: step, n: n, sig: new Uint8Array(n * 32), lum: new Float32Array(n), p5: new Uint8Array(n),
-               p95: new Uint8Array(n), rgb: new Uint8Array(n * 3)};
+    var out = AC.emptyQ(dur, step, n);
+    out.has = has;          // samples actually seen (the rest are copied from a neighbour)
     var CH = 120, pending = hd.fetchSegs(0, Math.min(dur, CH));
     for (var t0 = 0; t0 < dur; t0 += CH) {
       var t1 = Math.min(dur, t0 + CH), got = 0, mine = pending;
@@ -318,9 +376,10 @@
       if (onProgress) onProgress(t0 / dur);
     }
     var fill = function (i, j) {
-      out.lum[i] = out.lum[j]; out.p5[i] = out.p5[j]; out.p95[i] = out.p95[j];
+      ["lum", "p5", "p95", "dark", "bright", "red", "green"].forEach(function (key) { out[key][i] = out[key][j]; });
       for (var k = 0; k < 32; k++) out.sig[i * 32 + k] = out.sig[j * 32 + k];
       for (var k2 = 0; k2 < 3; k2++) out.rgb[i * 3 + k2] = out.rgb[j * 3 + k2];
+      for (var k3 = 0; k3 < 4; k3++) out.bars[i * 4 + k3] = out.bars[j * 4 + k3];
     };
     for (var i = 1; i < n; i++) if (!has[i] && has[i - 1]) { fill(i, i - 1); has[i] = 1; }
     for (var i2 = n - 2; i2 >= 0; i2--) if (!has[i2] && has[i2 + 1]) { fill(i2, i2 + 1); has[i2] = 1; }
@@ -379,13 +438,16 @@
     // flash: one frame unlike both neighbours, while the neighbours are alike
     for (var k = 1; k < frames.length - 1; k++) {
       var a = diff(frames[k - 1], frames[k]), b = diff(frames[k], frames[k + 1]), c = diff(frames[k - 1], frames[k + 1]);
-      if (a > 25 && b > 25 && c < Math.min(a, b) * 0.35) { out.flash = frames[k].t; break; }
+      if (a > 25 && b > 25 && c < Math.min(a, b) * 0.35) { out.flash = frames[k].t; out.flashSev = Math.min(a, b) / 25; break; }
     }
     var ci = ds.indexOf(Math.max.apply(null, ds));
     out.peak = ds[ci]; out.med = med;
+    // the change is into / out of black (a fade or a dip): not a jump or a colour change
+    if (meanLum(frames[ci]) < 20 || meanLum(frames[ci + 1]) < 20) { out.cut = frames[ci + 1].t; out.dark = true; return out; }
     // a small jump inside a still shot (a few frames cut out): a lone spike far above the noise
     if (ds[ci] <= 12 && ds[ci] >= 2 && ds[ci] > med * 6) {
       out.jump = frames[ci + 1].t; out.struct = ndiff(frames[ci], frames[ci + 1]);
+      out.jumpSev = ds[ci] / (med * 6 + 0.01);
       return out;
     }
     if (ds[ci] > Math.max(12, med * 4)) {
@@ -394,8 +456,8 @@
       var nd = ndiff(pre, post), dl = Math.abs(meanLum(pre) - meanLum(post));
       var dc = Math.max(Math.abs(pre.rgb[0] - post.rgb[0]), Math.abs(pre.rgb[1] - post.rgb[1]), Math.abs(pre.rgb[2] - post.rgb[2]));
       out.struct = nd; out.dl = dl; out.dc = dc;
-      if (nd < 9 && ds[ci] > 6) out.jump = post.t;                 // same framing, picture jumped
-      if (nd < 14 && (dl > 16 || dc > 18)) out.colour = post.t;      // same scene, different look
+      if (nd < 9 && ds[ci] > 6) { out.jump = post.t; out.jumpSev = 9 / Math.max(nd, 3); }    // same framing, picture jumped
+      if (nd < 14 && (dl > 16 || dc > 18)) { out.colour = post.t; out.colourSev = Math.max(dl / 16, dc / 18); }   // same scene, different look
     }
     return out;
   };

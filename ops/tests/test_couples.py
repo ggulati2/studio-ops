@@ -1751,7 +1751,7 @@ class AutoCheckPortal(SeededTestCase):
         self.assertContains(qc.get("/qc/helper/"), "Load unpacked")
         z = zipfile.ZipFile(io.BytesIO(qc.get("/qc/helper/download/").content))
         names = z.namelist()
-        for f in ("manifest.json", "runner.js", "analyse.js", "fio.js", "bridge.js"):
+        for f in ("manifest.json", "runner.js", "analyse.js", "checks.js", "fio.js", "bridge.js"):
             self.assertIn(f"RedWed-QC-Helper/{f}", names)
         self.assertNotEqual(self.login("pratik").get("/qc/helper/download/").status_code, 200)
 
@@ -1949,3 +1949,156 @@ class DeleteProjects(SeededTestCase):
         self.assertTrue(Project.objects.filter(pk=self.p.pk).exists())
         self.assertEqual(self.f.get(f"/projects/{self.p.pk}/delete/").status_code, 302)     # GET deletes nothing
         self.assertTrue(Project.objects.filter(pk=self.p.pk).exists())
+
+
+class AutoCheckLearning(SeededTestCase):
+    """AutoCheck learns from what QC does with its [Hygiene] comments on the earlier version:
+    deleted / "not an issue" = wrong, QC's own note or the editor's fix = right, QC's note where
+    it flagged nothing = missed. Limits move only with enough evidence, in steps, and founders
+    can undo or lock them."""
+
+    def setUp(self):
+        from ops.models import AutoCheckRun
+        self.brc = Agency.objects.get(code="BRC")
+        self.p = Project.objects.create(couple="Learn Me", deliverable="Highlight", agency=self.brc,
+                                        start_date=timezone.localdate(), status=Project.QC)
+        self.Run = AutoCheckRun
+        self.n = 0
+
+    def pair(self, issues, seen, cands=None, followup=None):
+        """A finished check on V(n) with these flags posted, then the next check on V(n+1) that read V(n)'s comments."""
+        self.n += 1
+        a, b = f"https://f.io/v{self.n}a", f"https://f.io/v{self.n}b"
+        posted = [{"t": x["t"], "text": "[Hygiene] " + x["text"], "ok": True, "issue": i, "kind": x["kind"]} for i, x in enumerate(issues)]
+        prev = self.Run.objects.create(project=self.p, v2_link=a, status="done", report={
+            "issues": issues, "posted": posted, "cands": cands or {}})
+        run = self.Run.objects.create(project=self.p, v1_link=a, v2_link=b, status="done",
+                                      report={"seen": seen, "followup": followup or [], "issues": []})
+        return prev, run
+
+    def test_judging_what_qc_did(self):
+        from ops.learning import learn
+        issues = [{"kind": "shake", "t": 10, "text": "Camera shake in this shot. Please stabilise.", "sev": 1.1},
+                  {"kind": "blur", "t": 40, "text": "Shot looks out of focus (soft) here.", "sev": 1.3},
+                  {"kind": "pops", "t": 70, "text": "Possible audio pop here, please listen.", "sev": 1.05},
+                  {"kind": "colour_jump", "t": 100, "text": "Colour/exposure jump between shots at 1:40.", "sev": 1.2}]
+        seen = [{"t": 10, "text": "[Hygiene] Camera shake in this shot. Please stabilise.", "ours": True},
+                {"t": 11, "text": "yes stabilise this, very shaky", "ours": False},          # agrees -> right
+                {"t": 40, "text": "[Hygiene] Shot looks out of focus (soft) here.", "ours": True},
+                {"t": 41, "text": "intended, it's a dreamy shot", "ours": False},             # dismissed -> wrong
+                # the pop comment was deleted by QC -> wrong
+                {"t": 100, "text": "[Hygiene] Colour/exposure jump between shots at 1:40.", "ours": True},
+                {"t": 200, "text": "this part is out of focus", "ours": False},                # missed, had a candidate
+                {"t": 300, "text": "audio distorted here", "ours": False},                    # missed, too faint
+                {"t": 400, "text": "change the font of the names", "ours": False}]            # no check for that
+        prev, run = self.pair(issues, seen, cands={"blur": [[201, 0.8]]},
+                              followup=[{"i": 3, "kind": "colour_jump", "still": False}])     # editor fixed it -> right
+        s = learn(run)
+        self.assertEqual((s["right"], s["wrong"], s["missed"], s["subtle"], s["notes"]), (2, 2, 1, 1, 1))
+        why = {(w["kind"], w["real"]): w["why"] for w in s["why"]}
+        self.assertEqual(why[("shake", True)], "QC noted the same thing")
+        self.assertEqual(why[("blur", False)], "QC said it's not an issue")
+        self.assertEqual(why[("pops", False)], "QC deleted the flag")
+        self.assertEqual(why[("colour_jump", True)], "the editor fixed it")
+        self.assertEqual(why[("blur", True)], "QC found one it saw but kept below its limit")
+        prev.refresh_from_db()
+        self.assertEqual(prev.report["feedback"]["run"], run.pk)
+        self.assertIsNone(learn(run))                       # each earlier check teaches once
+
+    def test_limit_moves_with_enough_evidence_and_is_used(self):
+        from ops.learning import factors_for, learn, MIN_SAMPLES
+        from ops.models import AutoCheckLesson, AutoCheckTuning
+        for k in range(MIN_SAMPLES + 2):        # QC keeps deleting weak shake flags (strength 1.0–1.2)
+            issues = [{"kind": "shake", "t": 10, "text": f"Camera shake {k}.", "sev": 1.0 + (k % 3) * 0.1},
+                      {"kind": "shake", "t": 60, "text": f"Strong shake {k}.", "sev": 2.0}]
+            seen = [{"t": 60, "text": f"[Hygiene] Strong shake {k}.", "ours": True},
+                    {"t": 61, "text": "very shaky, stabilise", "ours": False}]
+            learn(self.pair(issues, seen)[1])
+        studio = AutoCheckTuning.objects.get(agency=None, deliverable="", kind="shake")
+        self.assertGreater(studio.factor, 1.0)                      # flags shake less often now
+        self.assertLessEqual(studio.factor, 1.25 * 1.25 * 1.25)    # in steps, never more than x1.25 at once
+        self.assertLess(studio.factor, 2.0)                         # strong shakes still flagged
+        self.assertEqual(studio.wrong, MIN_SAMPLES + 2)
+        self.assertTrue(AutoCheckLesson.objects.filter(tuning=studio).exists())
+        tune = factors_for(self.p)
+        self.assertGreater(tune["shake"], 1.0)
+        # the run hands the limits and the last flags to the helper
+        qc = self.login("qc")
+        d = qc.post(f"/qc/{self.p.pk}/autocheck/", {"v1_link": f"https://f.io/v{self.n}a", "v2_link": "https://f.io/next"}).json()
+        self.assertGreater(d["job"]["rules"]["tune"]["shake"], 1.0)
+        self.assertEqual([x["kind"] for x in d["job"]["prev_issues"]], ["shake", "shake"])
+        # other agencies only get the studio-wide limit; this agency + film type learnt its own
+        own = AutoCheckTuning.objects.get(agency=self.brc, deliverable="Highlight", kind="shake")
+        self.assertAlmostEqual(own.factor, studio.factor)
+
+    def test_misses_make_it_stricter(self):
+        from ops.learning import learn, MIN_SAMPLES
+        from ops.models import AutoCheckTuning
+        for k in range(MIN_SAMPLES + 1):
+            seen = [{"t": 30, "text": "this shot is out of focus", "ours": False}]
+            learn(self.pair([], seen, cands={"blur": [[31, 0.7]]})[1])
+        row = AutoCheckTuning.objects.get(agency=None, deliverable="", kind="blur")
+        self.assertLess(row.factor, 1.0)
+        self.assertEqual(row.missed, MIN_SAMPLES + 1)
+
+    def test_founder_page_undo_lock_reset(self):
+        from ops.learning import learn, MIN_SAMPLES
+        from ops.models import AutoCheckLesson, AutoCheckTuning
+        for k in range(MIN_SAMPLES + 1):
+            learn(self.pair([], [{"t": 30, "text": "shot is blurry", "ours": False},
+                                 {"t": 90, "text": "spelling of the names", "ours": False}], cands={"blur": [[30, 0.6]]})[1])
+        f = self.login("ag")
+        page = f.get("/qc/autocheck/learnt/")
+        self.assertContains(page, "Out-of-focus shots")
+        self.assertContains(page, "flags more often")
+        self.assertContains(page, "Titles, names and spelling")
+        row = AutoCheckTuning.objects.get(agency=None, deliverable="", kind="blur")
+        les = AutoCheckLesson.objects.filter(tuning=row).first()
+        f.post("/qc/autocheck/learnt/", {"op": "undo", "lesson": les.pk})
+        row.refresh_from_db()
+        self.assertEqual(row.factor, les.old_factor)
+        self.assertTrue(row.locked)                         # undone limits stay put
+        f.post("/qc/autocheck/learnt/", {"op": "lock", "pk": row.pk})
+        row.refresh_from_db()
+        self.assertFalse(row.locked)
+        f.post("/qc/autocheck/learnt/", {"op": "reset", "pk": row.pk})
+        row.refresh_from_db()
+        self.assertEqual((row.factor, row.samples), (1.0, []))
+        self.assertEqual(self.login("qc").get("/qc/autocheck/learnt/").status_code, 403)
+
+    def test_report_from_helper_triggers_learning(self):
+        import json
+        prev, run = self.pair([{"kind": "flash", "t": 5, "text": "Flash frame at 0:05.", "sev": 1.2}],
+                              [{"t": 20, "text": "nothing here", "ours": False}])
+        from django.contrib.auth import get_user_model
+        run.status, run.started_by = "running", get_user_model().objects.get(username="qc")
+        run.save()
+        qc = self.login("qc")
+        rep = {"version": "1.3.0", "issues": [], "seen": [{"t": 6, "text": "flash frame here, remove", "ours": False}],
+               "followup": [], "comments": [], "posted": []}
+        qc.post(f"/qc/autocheck/{run.pk}/update/", json.dumps({"type": "done", "report": rep}), content_type="application/json")
+        run.refresh_from_db()
+        self.assertEqual(run.report["learnt"]["right"], 1)
+        self.assertIn("learnt from QC", run.progress)
+        self.assertContains(qc.get(f"/qc/autocheck/{run.pk}/"), "Learnt from QC")
+
+    def test_keywords(self):
+        from ops.learning import flag_of
+        for text, kind in [("Media offline at 2:10", "media_offline"), ("black bars on this clip", "framing"),
+                           ("soft focus, use another take", "blur"), ("music stops abruptly at the end", "music_end"),
+                           ("voice is distorted", "clipping"), ("blacks are crushed", "blacks"), ("too shaky", "shake"),
+                           ("change the song", None)]:
+            self.assertEqual(flag_of(text), kind, text)
+
+
+class HelperChecksJS(SeededTestCase):
+    def test_hygiene_checks_in_node(self):
+        import shutil
+        import subprocess
+        from pathlib import Path
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node isn't installed")
+        script = Path(__file__).resolve().parent / "js" / "test_checks.js"
+        r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
