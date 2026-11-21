@@ -350,12 +350,25 @@
       if (x.covered) return;
       posts.push({t: x.t, text: TAG + (x.repeat ? "Still there from " + P + ": " : "") + x.text, issue: i, kind: x.kind});
     });
+    // every comment goes up, across the whole film. Only past a safety ceiling are the least
+    // important kept back (QC's pending notes first, then the strongest flags); those are listed
+    // as not posted, so "Post them again" on the report can still put them up
+    var MAX_POSTS = 400;
+    if (posts.length > MAX_POSTS) {
+      var rank = function (p) { return p.issue == null ? 1000 : (issues[p.issue] && issues[p.issue].sev) || 1; };
+      posts.sort(function (a, b) { return rank(b) - rank(a); });
+      posts.slice(MAX_POSTS).forEach(function (p) {
+        report.posted.push({t: p.t, text: p.text, ok: false, error: "kept back: more than " + MAX_POSTS + " comments", issue: p.issue, kind: p.kind});
+      });
+      posts = posts.slice(0, MAX_POSTS);
+    }
     posts.sort(function (a, b) { return a.t - b.t; });
-    posts = posts.slice(0, 60);
     log("Posting " + posts.length + " comment(s) on " + N + "…", 0.95);
     var me = await chrome.tabs.getCurrent();
     await chrome.tabs.update(t2, {active: true});
     for (var pi = 0; pi < posts.length; pi++) {
+      // keep Studio Ops informed: a long posting run must not look stalled
+      if (pi && pi % 10 === 0) log("Posted " + pi + " of " + posts.length + " (at " + fmt(posts[pi].t) + ")…", 0.95 + 0.04 * pi / posts.length);
       var res = await inTab(t2, fioPost, [Math.max(0, posts[pi].t), posts[pi].text]);
       report.posted.push({t: posts[pi].t, text: posts[pi].text, ok: !!(res && res.ok), error: res && res.error,
                           issue: posts[pi].issue, kind: posts[pi].kind});
@@ -392,7 +405,7 @@
     await chrome.tabs.update(t2, {active: true});
     for (var i = 0; i < job.repost.length; i++) {
       var p = job.repost[i];
-      log("Posting " + (i + 1) + " of " + job.repost.length + " (" + AC.fmt(p.t) + ")…", 0.1 + 0.85 * i / job.repost.length);
+      if (i % 5 === 0) log("Posting " + (i + 1) + " of " + job.repost.length + " (" + AC.fmt(p.t) + ")…", 0.1 + 0.85 * i / job.repost.length);
       var res = await inTab(t2, fioPost, [Math.max(0, p.t), p.text]);
       out.push({t: p.t, text: p.text, ok: !!(res && res.ok), error: res && res.error});
     }

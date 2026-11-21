@@ -2254,3 +2254,32 @@ class AutoCheckRepost(SeededTestCase):
         self.assertNotContains(qc.get(f"/qc/autocheck/{run.pk}/"), "didn't post on Frame.io")
         self.assertFalse(qc.post(f"/qc/autocheck/{run.pk}/repost/").json()["ok"])
         self.assertEqual(self.login("pratik").post(f"/qc/autocheck/{run.pk}/repost/").status_code, 403)
+
+
+class AutoCheckPostsEverything(SeededTestCase):
+    """Older helpers posted only the first 60 comments; the report offers the rest and posts them."""
+
+    def test_never_tried_flags_are_offered_and_merged(self):
+        import json
+        from django.contrib.auth import get_user_model
+        from ops.models import AutoCheckRun
+        p = Project.objects.create(couple="Long Film", deliverable="Full Film", agency=Agency.objects.get(code="BRC"),
+                                   start_date=timezone.localdate(), status=Project.QC)
+        issues = [{"kind": "shake", "t": float(i * 30), "text": f"Camera shake in this shot {i}.", "sev": 1.2} for i in range(147)]
+        posted = [{"t": x["t"], "text": "[Hygiene] " + x["text"], "ok": True, "issue": i, "kind": "shake"} for i, x in enumerate(issues[:60])]
+        run = AutoCheckRun.objects.create(project=p, v2_link="https://f.io/long", status="done", posted=60,
+                                          started_by=get_user_model().objects.get(username="qc"),
+                                          report={"issues": issues + [{"kind": "blur", "t": 5, "text": "Soft.", "covered": True}],
+                                                  "posted": posted, "comments": []})
+        qc = self.login("qc")
+        self.assertContains(qc.get(f"/qc/autocheck/{run.pk}/"), "87 comments didn't post on Frame.io")
+        job = qc.post(f"/qc/autocheck/{run.pk}/repost/").json()["job"]
+        self.assertEqual(len(job["repost"]), 87)                         # the covered one is never posted
+        self.assertEqual(job["repost"][0], {"t": 1800.0, "text": "[Hygiene] Camera shake in this shot 60."})
+        back = {"repost": True, "posted": [dict(x, ok=True) for x in job["repost"]]}
+        qc.post(f"/qc/autocheck/{run.pk}/update/", json.dumps({"type": "done", "report": back, "posted": 87}),
+                content_type="application/json")
+        run.refresh_from_db()
+        self.assertEqual(run.posted, 147)
+        self.assertEqual(run.report["posted"][-1]["issue"], 146)          # linked to its flag, for learning
+        self.assertNotContains(qc.get(f"/qc/autocheck/{run.pk}/"), "didn't post on Frame.io")

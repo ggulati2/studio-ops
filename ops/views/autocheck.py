@@ -148,13 +148,20 @@ def autocheck_update(request, pk):
             run.progress = str(data.get("text") or run.progress)[:200]
             fields = ["status", "progress", "updated"]
     elif kind == "done" and (data.get("report") or {}).get("repost"):
-        # only the comments that didn't post last time: mark the ones that went up now
+        # only the comments that didn't post last time: mark the ones that went up now (and add
+        # flags that had never been tried)
         rep = dict(run.report or {})
+        rep["posted"] = list(rep.get("posted", []))
         again = {(round(float(x.get("t") or 0), 1), x.get("text")): x for x in data["report"].get("posted", [])}
-        for x in rep.get("posted", []):
-            y = again.get((round(float(x.get("t") or 0), 1), x.get("text")))
+        for x in rep["posted"]:
+            y = again.pop((round(float(x.get("t") or 0), 1), x.get("text")), None)
             if y and not x.get("ok"):
                 x["ok"], x["error"] = bool(y.get("ok")), y.get("error") if not y.get("ok") else None
+        issue_at = {"[Hygiene] " + (x.get("text") or ""): (i, x.get("kind")) for i, x in enumerate(rep.get("issues", []))}
+        for (t, text), y in again.items():
+            i, kind = issue_at.get(text, (None, None))
+            rep["posted"].append({"t": t, "text": text, "ok": bool(y.get("ok")), "error": y.get("error"), "issue": i, "kind": kind})
+        rep["posted"].sort(key=lambda x: float(x.get("t") or 0))
         run.report, run.status = rep, AutoCheckRun.DONE
         run.posted = sum(1 for x in rep.get("posted", []) if x.get("ok"))
         left = sum(1 for x in rep.get("posted", []) if not x.get("ok"))
@@ -189,13 +196,29 @@ def autocheck_update(request, pk):
     return JsonResponse({"ok": True, "status": run.status})
 
 
+def missing_posts(report):
+    """Comments that aren't on Frame.io: ones that failed, plus flags never tried (older helpers
+    posted 60 at most). Each as {t, text}, in film order."""
+    import re
+    posted = report.get("posted", []) or []
+    out = [{"t": x.get("t"), "text": x.get("text")} for x in posted if not x.get("ok")]
+    tried_idx = {x.get("issue") for x in posted if x.get("issue") is not None}
+    norm = lambda t: re.sub(r"^\s*\[(autocheck|hygiene)\]\s*(still there from v\d+:\s*)?", "", (t or "").strip(), flags=re.I)[:60].lower()
+    tried_text = {norm(x.get("text")) for x in posted}
+    for i, x in enumerate(report.get("issues", []) or []):
+        if x.get("covered") or i in tried_idx or norm(x.get("text")) in tried_text:
+            continue
+        out.append({"t": x.get("t"), "text": "[Hygiene] " + (x.get("text") or "")})
+    return sorted(out, key=lambda x: float(x.get("t") or 0))
+
+
 @requires("qc.review")
 def autocheck_repost(request, pk):
     """Post again only the comments that didn't go up on Frame.io (runs in this browser)."""
     run = get_object_or_404(AutoCheckRun.objects.select_related("project__agency", "event"), pk=pk)
     if request.method != "POST":
         return redirect("autocheck_report", run.pk)
-    missing = [{"t": x.get("t"), "text": x.get("text")} for x in (run.report or {}).get("posted", []) if not x.get("ok")]
+    missing = missing_posts(run.report or {})
     if not missing:
         return JsonResponse({"ok": False, "error": "Every comment is already posted."})
     if run.status == AutoCheckRun.RUNNING and run.updated >= timezone.now() - STALE:
@@ -213,7 +236,7 @@ def autocheck_report(request, pk):
     return render(request, "team/autocheck_report.html", {
         "run": run, "p": run.project, "rep": r, "comments": r.get("comments", []), "issues": r.get("issues", []),
         "posted": r.get("posted", []), "structure": r.get("structure", []), "learnt": r.get("learnt"),
-        "not_posted": sum(1 for x in r.get("posted", []) if not x.get("ok")), "helper_version": helper_version(),
+        "not_posted": len(missing_posts(r)), "helper_version": helper_version(),
         "feedback": r.get("feedback"), "labels": L.LABELS,
         "prev_label": labels(run)[0] or "V1", "cur_label": labels(run)[1]})
 
