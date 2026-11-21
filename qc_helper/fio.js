@@ -84,16 +84,48 @@ async function fioComments() {
   return Object.keys(got).map(function (k) { return got[k]; }).filter(function (c) { return c.tc; });
 }
 
-/* Post one comment on this file at `sec` seconds. Returns what Frame.io shows. */
+/* Post one comment on this file at `sec` seconds. Returns what Frame.io shows.
+   The player has to really be at that moment first: a spot Frame.io hasn't loaded yet takes a
+   few seconds, so wait for it, nudge it (a blink of play) and, if needed, click the timeline. */
 async function fioPost(sec, text) {
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   var pad = function (n) { return String(n).padStart(2, "0"); };
-  var want = pad(Math.floor(sec / 3600)) + ":" + pad(Math.floor(sec % 3600 / 60)) + ":" + pad(Math.floor(sec % 60));
+  var hms = function (s) { return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s % 3600 / 60)) + ":" + pad(Math.floor(s % 60)); };
+  var tcSec = function (tc) { var p = (tc || "").split(":").map(Number); return p.length >= 3 ? p[0] * 3600 + p[1] * 60 + p[2] : NaN; };
   var comp = document.querySelector("[data-testid=create-comment-comment-composer]");
   if (!comp) return {ok: false, error: "comment box not found"};
-  for (var attempt = 0; attempt < 3; attempt++) {
-    document.querySelectorAll("video").forEach(function (v) { v.pause(); v.currentTime = sec; });
-    await sleep(900);
+  var vids = Array.prototype.slice.call(document.querySelectorAll("video"));
+  var main = vids.slice().sort(function (a, b) { return b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight; })[0];
+  var at = function () { return main ? main.currentTime : NaN; };
+  var seek = function () { vids.forEach(function (v) { v.pause(); v.currentTime = sec + 0.04; }); };
+  var settled = async function (ms) {     // the player is at `sec` with a picture ready
+    for (var w = 0; w < ms / 250; w++) {
+      await sleep(250);
+      if (main && !main.seeking && main.readyState >= 2 && Math.abs(at() - sec) < 0.6) return true;
+    }
+    return false;
+  };
+  var timeline = function () {            // Frame.io's own scrubber, clicked where `sec` is
+    var bar = document.querySelector("[role=slider][aria-valuemax]");
+    if (!bar || !main || !isFinite(main.duration)) return false;
+    var r = bar.getBoundingClientRect(), x = r.left + r.width * Math.min(1, Math.max(0, sec / main.duration)), y = r.top + r.height / 2;
+    ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (type) {
+      var Ev = type.indexOf("pointer") === 0 ? PointerEvent : MouseEvent;
+      bar.dispatchEvent(new Ev(type, {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0}));
+    });
+    return true;
+  };
+  var shown = "", ok = false;
+  for (var attempt = 0; attempt < 5 && !ok; attempt++) {
+    if (attempt >= 2) timeline();
+    seek();
+    var there = await settled(attempt ? 8000 : 4000);
+    if (!there && main) {                 // stuck on the old spot: seek during a blink of play, then stop there
+      try { await main.play(); } catch (e) { /* autoplay blocked: carry on */ }
+      main.currentTime = sec + 0.04; await sleep(400);
+      main.pause(); main.currentTime = sec + 0.04;
+      await settled(4000);
+    }
     var tcEl = document.querySelector("[data-testid=timecode]") || document.querySelector("[data-testid=time-display]");
     if (tcEl) { tcEl.click(); await sleep(250); document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true})); await sleep(150); }
     comp.focus(); comp.click(); await sleep(400);
@@ -101,10 +133,10 @@ async function fioPost(sec, text) {
     var pre = Array.prototype.slice.call(box.querySelectorAll("*")).find(function (e) {
       return e.childElementCount === 0 && /^\d\d:\d\d:\d\d:\d\d$/.test((e.textContent || "").trim());
     });
-    var shown = pre ? pre.textContent.trim() : "";
-    if (shown.slice(0, 8) === want) break;
+    shown = pre ? pre.textContent.trim() : "";
+    ok = Math.abs(tcSec(shown) - sec) <= 1.01;     // a frame or two either side is the same moment
   }
-  if (shown.slice(0, 8) !== want) return {ok: false, error: "couldn't set the time (showed " + shown + ")"};
+  if (!ok) return {ok: false, error: "couldn't move the player to " + hms(sec) + " (it stayed at " + (shown.slice(0, 8) || "an unknown time") + ")"};
   // clear anything left in the box, then type through the editor's own input events
   var sel = getSelection(), r = document.createRange();
   r.selectNodeContents(comp); sel.removeAllRanges(); sel.addRange(r);

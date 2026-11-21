@@ -79,6 +79,14 @@
       save(m.id, {type: "done", report: m.report, posted: m.posted}).then(function (ok) {
         if (!ok) return;                         // the helper keeps it and hands it over again next time
         ack(m.id);
+        if (m.report && m.report.repost) {
+          var st = doc.querySelector("[data-ac-repost-status]"), left = (m.report.posted || []).filter(function (x) { return !x.ok; }).length;
+          if (st) st.textContent = left ? left + " still didn't post. Open the film on Frame.io and add " + (left > 1 ? "them" : "it") + " by hand." : "All posted.";
+          say(m.posted + " comment(s) posted on Frame.io" + (left ? ", " + left + " still not." : "."), left ? "warning" : "success");
+          if (!left) setTimeout(function () { location.reload(); }, 1200);
+          delete active[m.id];
+          return;
+        }
         showLive(m.id, "Done: " + m.posted + " comment(s) posted on Frame.io.", 1);
         var b = strip(m.id);
         if (b && !b.querySelector("[data-ac-report]")) {
@@ -122,6 +130,24 @@
       var h = w.querySelector("[data-ac-have]"); if (h && have) h.textContent = have;
     });
   }
+  /* report page: post again only the comments that didn't go up */
+  doc.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-ac-repost]");
+    if (!b) return;
+    var box = b.closest("[data-ac-repost-box]"), st = box.querySelector("[data-ac-repost-status]");
+    if (!helperVersion()) { refresh(true); say("Install the Red Wed QC Helper first.", "error"); return; }
+    b.disabled = true; st.textContent = "Starting…";
+    post(box.getAttribute("data-url"), new FormData())
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { b.disabled = false; st.textContent = ""; say(d.error || "Couldn't start.", "error"); return; }
+        active[d.job.id] = {box: box, repost: true};
+        st.textContent = "Posting in a new tab…";
+        window.postMessage({source: "redwed-portal", type: "autocheck:run", job: d.job}, location.origin);
+      })
+      .catch(function () { b.disabled = false; st.textContent = ""; say("Couldn't start. Check your connection.", "error"); });
+  });
+
   function init() {
     Array.prototype.forEach.call(doc.querySelectorAll("[data-autocheck]"), setup);
     refresh();

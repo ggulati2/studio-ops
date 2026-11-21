@@ -91,6 +91,7 @@
     var P = job.prev_label || "V1", N = job.cur_label || "V2";
     document.getElementById("title").textContent = "AutoCheck · " + (job.film || "");
     var rules = job.rules || {}, s = SENS[rules.sensitivity] || 1, who = job.checker || "QC";
+    if (job.repost) return repost(N);
     var report = {version: chrome.runtime.getManifest().version, comments: [], issues: [], posted: [], structure: [],
                   seen: [], followup: [], cands: {}, tune: rules.tune || {}};
     tell({type: "autocheck:status", id: jobId, status: "running"});
@@ -359,6 +360,16 @@
       report.posted.push({t: posts[pi].t, text: posts[pi].text, ok: !!(res && res.ok), error: res && res.error,
                           issue: posts[pi].issue, kind: posts[pi].kind});
     }
+    // a second go at any that didn't post (the player is warmed up by now)
+    var missed = report.posted.filter(function (x) { return !x.ok; });
+    if (missed.length) {
+      log("Trying " + missed.length + " comment(s) again…", 0.98);
+      for (var mi = 0; mi < missed.length; mi++) {
+        var res2 = await inTab(t2, fioPost, [Math.max(0, missed[mi].t), missed[mi].text]);
+        if (res2 && res2.ok) { missed[mi].ok = true; delete missed[mi].error; }
+        else if (res2) missed[mi].error = res2.error;
+      }
+    }
     await chrome.tabs.update(me.id, {active: true});
     var okN = report.posted.filter(function (p) { return p.ok; }).length;
     report.seconds = Math.round((Date.now() - started) / 1000);
@@ -368,6 +379,30 @@
     chrome.storage.local.remove("job:" + jobId);
     document.getElementById("done").hidden = false;
     if (job.auto) setTimeout(function () { chrome.windows.remove(myWindow); }, 8000);   // its own window: tidy up
+  }
+
+  /* only post comments that didn't go up last time (from the report's "Post them again") */
+  async function repost(N) {
+    tell({type: "autocheck:status", id: jobId, status: "running"});
+    log("Opening " + N + " on Frame.io…", 0.05);
+    var t2 = await openTab(job.v2, "The " + N);
+    var I2 = await prepare(t2);
+    if (!I2 || I2.error) throw new Error(N + ": " + ((I2 && I2.error) || "couldn't open"));
+    var me = await chrome.tabs.getCurrent(), out = [];
+    await chrome.tabs.update(t2, {active: true});
+    for (var i = 0; i < job.repost.length; i++) {
+      var p = job.repost[i];
+      log("Posting " + (i + 1) + " of " + job.repost.length + " (" + AC.fmt(p.t) + ")…", 0.1 + 0.85 * i / job.repost.length);
+      var res = await inTab(t2, fioPost, [Math.max(0, p.t), p.text]);
+      out.push({t: p.t, text: p.text, ok: !!(res && res.ok), error: res && res.error});
+    }
+    await chrome.tabs.update(me.id, {active: true});
+    var okN = out.filter(function (x) { return x.ok; }).length;
+    log("Done: " + okN + " of " + out.length + " posted on " + N + ".", 1);
+    tell({type: "autocheck:done", id: jobId, report: {repost: true, posted: out, version: chrome.runtime.getManifest().version}, posted: okN});
+    chrome.tabs.remove([t2]);
+    chrome.storage.local.remove("job:" + jobId);
+    document.getElementById("done").hidden = false;
   }
 
   main().catch(function (err) {

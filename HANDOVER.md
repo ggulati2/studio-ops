@@ -133,7 +133,7 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
 | QC page assembly | `_autocheck_units` in `ops/views/team.py` |
 | Templates | `team/_autocheck.html`, `_autocheck_helper.html`, `autocheck_report.html`, `autocheck_rules.html`, `qc_helper.html` |
 | Portal JS | `static/autocheck.js` |
-| Extension | `qc_helper/`: `manifest.json` (version **1.3.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
+| Extension | `qc_helper/`: `manifest.json` (version **1.3.1**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
 | Learning | `ops/learning.py` (judging QC's reaction, fitting limits), models `AutoCheckTuning` / `AutoCheckLesson`, page `team/autocheck_learnt.html` |
 | JS tests | `ops/tests/js/test_checks.js` (node; the Django suite runs it when node is installed) |
 
@@ -159,6 +159,7 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
   1. Seek, click the timecode, press Escape, focus the composer.
   2. Type through `InputEvent('beforeinput', {inputType: 'insertText'})`. `execCommand` doesn't update the editor.
   3. Avoid `#` in comment text, because it turns into a link.
+  4. Since 1.3.1 the helper waits until the player has really loaded that moment (up to ~10 s), nudges it with a blink of play if it sticks on the old spot, then clicks Frame.io's timeline (`[role=slider]`) as a last resort; a comment is only posted when the composer shows the right time (±1 s). Ones that still fail get a second try at the end, and the report has **Post them again** (`/qc/autocheck/<id>/repost/`, helper job with `repost`), which posts only the missing ones.
 
 **Calibration** (real V1/V2 pair, 19 Nov: `https://f.io/uVO4cwDv` → `https://f.io/5o99v9JU`, 36 min, 18 comments):
 - **Verdicts matched a human look:**

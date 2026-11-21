@@ -26,6 +26,11 @@
 {% if structure %}<section class="card"><h2>Edits between {{ prev_label }} and {{ cur_label }}</h2>
   {% for s in structure %}<div class="small">{% if s.kind == 'added' %}Added in {{ cur_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% else %}Removed from {{ prev_label }} at {{ s.from|clock }}–{{ s.to|clock }}{% endif %}</div>{% endfor %}
   <p class="small muted" style="margin:0">Changes nobody asked for are worth a quick look.</p></section>{% endif %}
+{% if not_posted %}<section class="card tight warn ac-repost" data-ac-repost-box data-url="{% url 'autocheck_repost' run.pk %}">
+  <b>{{ not_posted }} comment{{ not_posted|pluralize }} didn't post on Frame.io</b>
+  <span class="small">Usually Frame.io's player hadn't loaded that moment yet, so AutoCheck couldn't place the comment at the right time and left it rather than put it in the wrong place. Post {{ not_posted|pluralize:"it,them" }} again (only {{ not_posted|pluralize:"this one,these" }}, no new check): needs the QC Helper {{ helper_version }} in this Chrome.</span>
+  <div class="actions"><button type="button" class="btn sm dark" data-ac-repost>Post {{ not_posted|pluralize:"it,them" }} again</button><span class="small muted" data-ac-repost-status></span></div>
+</section>{% include "team/_autocheck_helper.html" %}{% endif %}
 {% if posted %}<section class="card"><h2>Posted on {{ cur_label }} · {{ run.posted }}</h2>
   {% for x in posted %}<div class="small">{% if x.ok %}✓{% else %}<b style="color:var(--bad)">not posted</b>{% endif %} <b>{{ x.t|clock }}</b> {{ x.text }}{% if x.error %} <span class="muted">({{ x.error }})</span>{% endif %}</div>{% endfor %}</section>{% endif %}
 {% endblock %}

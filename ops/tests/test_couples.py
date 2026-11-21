@@ -2205,7 +2205,8 @@ class QCBoardInPlaceAndAutoCheckPage(SeededTestCase):
         page = qc.get("/autocheck/")
         self.assertContains(page, "Check a film")
         self.assertContains(page, 'href="/qc/helper/download/"')
-        self.assertContains(page, "QC Helper 1.3.0")
+        from ops.views.autocheck import helper_version
+        self.assertContains(page, f"QC Helper {helper_version()}")
         self.assertContains(page, "Fold Open · Full Film")
         d = qc.get(f"/autocheck/links/?p={self.p.pk}").json()
         self.assertEqual((d["v1"], d["v2"], d["start"]), ("", "https://f.io/full-1", f"/qc/{self.p.pk}/autocheck/"))
@@ -2218,3 +2219,38 @@ class QCBoardInPlaceAndAutoCheckPage(SeededTestCase):
         self.assertContains(qc.get("/autocheck/"), "Running")
         self.assertEqual(self.login("pratik").get("/autocheck/").status_code, 403)
         self.assertEqual(self.login("pratik").get(f"/autocheck/links/?p={self.p.pk}").status_code, 403)
+
+
+class AutoCheckRepost(SeededTestCase):
+    """Comments that didn't post on Frame.io can be posted again from the report, without a new check."""
+
+    def test_repost_only_the_missing_ones(self):
+        import json
+        from django.contrib.auth import get_user_model
+        from ops.models import AutoCheckRun
+        p = Project.objects.create(couple="Repost", deliverable="Teaser", agency=Agency.objects.get(code="BRC"),
+                                   start_date=timezone.localdate(), status=Project.QC)
+        qcu = get_user_model().objects.get(username="qc")
+        run = AutoCheckRun.objects.create(project=p, v2_link="https://f.io/r2", status="done", started_by=qcu, posted=1, report={
+            "issues": [], "comments": [],
+            "posted": [{"t": 12.0, "text": "[Hygiene] Flash frame at 0:12.", "ok": True},
+                       {"t": 694.0, "text": "[Hygiene] Camera shake in this shot. Please stabilise.", "ok": False,
+                        "error": "couldn't set the time (showed 00:10:11:04)"}]})
+        qc = self.login("qc")
+        page = qc.get(f"/qc/autocheck/{run.pk}/")
+        self.assertContains(page, "1 comment didn't post on Frame.io")
+        self.assertContains(page, "data-ac-repost")
+        d = qc.post(f"/qc/autocheck/{run.pk}/repost/").json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["job"]["repost"], [{"t": 694.0, "text": "[Hygiene] Camera shake in this shot. Please stabilise."}])
+        self.assertEqual(d["job"]["v2"], "https://f.io/r2")
+        rep = {"repost": True, "posted": [{"t": 694.0, "text": "[Hygiene] Camera shake in this shot. Please stabilise.", "ok": True}]}
+        qc.post(f"/qc/autocheck/{run.pk}/update/", json.dumps({"type": "done", "report": rep, "posted": 1}),
+                content_type="application/json")
+        run.refresh_from_db()
+        self.assertEqual((run.status, run.posted), ("done", 2))
+        self.assertTrue(all(x["ok"] for x in run.report["posted"]))
+        self.assertEqual(len(run.report["posted"]), 2)                   # merged, not replaced
+        self.assertNotContains(qc.get(f"/qc/autocheck/{run.pk}/"), "didn't post on Frame.io")
+        self.assertFalse(qc.post(f"/qc/autocheck/{run.pk}/repost/").json()["ok"])
+        self.assertEqual(self.login("pratik").post(f"/qc/autocheck/{run.pk}/repost/").status_code, 403)

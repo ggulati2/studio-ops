@@ -26,7 +26,7 @@ from ..models import Agency, AutoCheckLesson, AutoCheckRule, AutoCheckRun, AutoC
 from ..rbac import QC, has_perm, requires, role_of
 
 __all__ = ["autocheck_start", "autocheck_claim", "autocheck_update", "autocheck_report", "autocheck_rules", "qc_helper",
-           "qc_helper_zip", "autocheck_learnt", "autocheck_home", "autocheck_links"]
+           "qc_helper_zip", "autocheck_learnt", "autocheck_home", "autocheck_links", "autocheck_repost"]
 
 HELPER_DIR = Path(settings.BASE_DIR) / "qc_helper"
 STALE = timezone.timedelta(minutes=30)      # a running check that hasn't reported for this long has stopped
@@ -147,6 +147,21 @@ def autocheck_update(request, pk):
             run.status = AutoCheckRun.RUNNING
             run.progress = str(data.get("text") or run.progress)[:200]
             fields = ["status", "progress", "updated"]
+    elif kind == "done" and (data.get("report") or {}).get("repost"):
+        # only the comments that didn't post last time: mark the ones that went up now
+        rep = dict(run.report or {})
+        again = {(round(float(x.get("t") or 0), 1), x.get("text")): x for x in data["report"].get("posted", [])}
+        for x in rep.get("posted", []):
+            y = again.get((round(float(x.get("t") or 0), 1), x.get("text")))
+            if y and not x.get("ok"):
+                x["ok"], x["error"] = bool(y.get("ok")), y.get("error") if not y.get("ok") else None
+        run.report, run.status = rep, AutoCheckRun.DONE
+        run.posted = sum(1 for x in rep.get("posted", []) if x.get("ok"))
+        left = sum(1 for x in rep.get("posted", []) if not x.get("ok"))
+        c = run.counts
+        run.progress = (f"{c['fixed']} fixed · {c['not_fixed']} not fixed · {c['check']} to check · {c['new']} new · "
+                        f"{run.posted} posted" + (f" · {left} not posted" if left else ""))[:200]
+        fields = ["report", "status", "posted", "progress", "updated"]
     elif kind == "done":
         report = data.get("report") or {}
         if len(json.dumps(report)) > 400_000:
@@ -175,12 +190,30 @@ def autocheck_update(request, pk):
 
 
 @requires("qc.review")
+def autocheck_repost(request, pk):
+    """Post again only the comments that didn't go up on Frame.io (runs in this browser)."""
+    run = get_object_or_404(AutoCheckRun.objects.select_related("project__agency", "event"), pk=pk)
+    if request.method != "POST":
+        return redirect("autocheck_report", run.pk)
+    missing = [{"t": x.get("t"), "text": x.get("text")} for x in (run.report or {}).get("posted", []) if not x.get("ok")]
+    if not missing:
+        return JsonResponse({"ok": False, "error": "Every comment is already posted."})
+    if run.status == AutoCheckRun.RUNNING and run.updated >= timezone.now() - STALE:
+        return JsonResponse({"ok": False, "error": "This check is still running."})
+    run.started_by, run.progress = request.user, f"Posting {len(missing)} comment(s) again…"
+    run.save(update_fields=["started_by", "progress", "updated"])
+    record(request, "autocheck.repost", str(run.project), f"{len(missing)} comment(s)")
+    return JsonResponse({"ok": True, "job": {**_job(run, request), "repost": missing}})
+
+
+@requires("qc.review")
 def autocheck_report(request, pk):
     run = get_object_or_404(AutoCheckRun.objects.select_related("project__agency", "started_by__profile", "event"), pk=pk)
     r = run.report or {}
     return render(request, "team/autocheck_report.html", {
         "run": run, "p": run.project, "rep": r, "comments": r.get("comments", []), "issues": r.get("issues", []),
         "posted": r.get("posted", []), "structure": r.get("structure", []), "learnt": r.get("learnt"),
+        "not_posted": sum(1 for x in r.get("posted", []) if not x.get("ok")), "helper_version": helper_version(),
         "feedback": r.get("feedback"), "labels": L.LABELS,
         "prev_label": labels(run)[0] or "V1", "cur_label": labels(run)[1]})
 
