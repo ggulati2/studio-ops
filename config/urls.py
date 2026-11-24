@@ -80,6 +80,7 @@ urlpatterns = [
     path("pod/event/<int:pk>/", v.tl_event_review, name="tl_event_review"),
     path("qc/event/<int:pk>/", v.qc_event_review, name="qc_event_review"),
     path("my-jobs/<int:pk>/submit/", v.job_submit, name="job_submit"),
+    path("my-jobs/<int:pk>/footage/", v.job_footage, name="job_footage"),
     path("my-jobs/<int:pk>/close/", v.close_job, name="close_job"),
     path("my-extra/", v.my_extra, name="my_extra"),
     path("my-extra/<int:pk>/respond/", v.extra_respond, name="extra_respond"),

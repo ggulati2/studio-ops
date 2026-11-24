@@ -2283,3 +2283,45 @@ class AutoCheckPostsEverything(SeededTestCase):
         self.assertEqual(run.posted, 147)
         self.assertEqual(run.report["posted"][-1]["issue"], 146)          # linked to its flag, for learning
         self.assertNotContains(qc.get(f"/qc/autocheck/{run.pk}/"), "didn't post on Frame.io")
+
+
+class EditorSetsFootage(SeededTestCase):
+    """Editors change where the footage of their own film is (drive or cloud) from My jobs."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from ops.models import HardDrive
+        self.ed = get_user_model().objects.get(username="pratik")
+        self.brc = Agency.objects.get(code="BRC")
+        self.p = Project.objects.create(couple="Footage Fix", deliverable="Teaser", agency=self.brc, editor=self.ed,
+                                        start_date=timezone.localdate())
+        self.d = HardDrive.objects.create(code="HDD-77", agency=self.brc, location="Rack D · 4")
+
+    def test_editor_picks_a_drive_then_cloud(self):
+        c = self.login("pratik")
+        page = c.get("/my-jobs/")
+        self.assertContains(page, f'action="/my-jobs/{self.p.pk}/footage/"')
+        self.assertContains(page, "HDD-77")
+        r = c.post(f"/my-jobs/{self.p.pk}/footage/", {"footage": self.d.pk}, HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertTrue(r["ok"])
+        self.assertIn("on HDD-77, kept at Rack D · 4", r["messages"][0]["text"])
+        self.assertEqual(r["swap"][0]["sel"], f'[data-footage="{self.p.pk}"]')
+        self.assertIn("Footage on <b class=\"mono\">HDD-77</b>", r["swap"][0]["html"])
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.drive_id, self.p.received_online), (self.d.pk, False))
+        r = c.post(f"/my-jobs/{self.p.pk}/footage/", {"footage": "cloud"}, HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertIn('name="cloud_link"', r["swap"][0]["html"])           # a box for the download link appears
+        c.post(f"/my-jobs/{self.p.pk}/footage/", {"footage": "cloud", "cloud_link": "https://we.tl/t-abc"}, HTTP_X_REQUESTED_WITH="fetch")
+        self.p.refresh_from_db()
+        self.assertEqual((self.p.drive_id, self.p.received_online, self.p.cloud_link), (None, True, "https://we.tl/t-abc"))
+        bad = c.post(f"/my-jobs/{self.p.pk}/footage/", {"footage": "cloud", "cloud_link": "javascript:alert(1)"}, HTTP_X_REQUESTED_WITH="fetch").json()
+        self.assertFalse(bad["ok"])
+        from ops.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(action="project.footage", detail__contains="by the editor").exists())
+
+    def test_only_their_own_films(self):
+        other = Project.objects.create(couple="Not Mine", deliverable="Teaser", agency=self.brc, start_date=timezone.localdate())
+        self.assertEqual(self.login("pratik").post(f"/my-jobs/{other.pk}/footage/", {"footage": self.d.pk}).status_code, 403)
+        self.assertEqual(self.login("drives").post(f"/my-jobs/{self.p.pk}/footage/", {"footage": self.d.pk}).status_code, 403)
+        other.refresh_from_db()
+        self.assertIsNone(other.drive_id)

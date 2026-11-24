@@ -1,0 +1,18 @@
+{% comment %}An editor's own job: where its footage is (drive or cloud), changeable in place.{% endcomment %}
+{% load ops_extras %}<div class="job-footage" data-footage="{{ p.pk }}">
+  <form method="post" action="{% url 'job_footage' p.pk %}" data-live class="job-footage-form">{% csrf_token %}
+    <label class="small"><span>Footage</span>
+      <select name="footage" class="input footage-select mono" data-autosubmit aria-label="Where the footage of {{ p }} is">
+        <option value=""{% if not p.drive_id and not p.received_online %} selected{% endif %}>– not set –</option>
+        <option value="cloud"{% if p.received_online and not p.drive_id %} selected{% endif %}>☁ Cloud (online download)</option>
+        {% if p.drive_id and p.drive.status == "sent" %}<option value="{{ p.drive_id }}" selected>{{ p.drive.code }} (sent back)</option>{% endif %}
+        <optgroup label="{{ p.agency.code|default:p.agency.name }} drives">{% for d in drive_opts %}{% if d.agency_id == p.agency_id %}<option value="{{ d.pk }}"{% if d.pk == p.drive_id %} selected{% endif %}>{{ d.code }}</option>{% endif %}{% endfor %}</optgroup>
+        <optgroup label="Other drives">{% for d in drive_opts %}{% if d.agency_id != p.agency_id %}<option value="{{ d.pk }}"{% if d.pk == p.drive_id %} selected{% endif %}>{{ d.code }}{% if d.studio_owned %} · studio{% elif d.agency %} · {{ d.agency.code|default:d.agency.name }}{% endif %}</option>{% endif %}{% endfor %}</optgroup>
+      </select></label>
+    {% if p.received_online and not p.drive_id %}<label class="small grow"><span>Download link</span>
+      <input class="input" type="url" name="cloud_link" value="{{ p.cloud_link }}" placeholder="WeTransfer / Drive / Dropbox link" data-save-on-leave aria-label="Download link for {{ p }}"></label>{% endif %}
+    <noscript><button class="btn sm">Save</button></noscript>
+  </form>
+  {% if p.drive and not p.received_online %}{% include "team/_drive.html" with drv=p.drive %}{% endif %}
+  {% if p.received_online and p.cloud_link %}<a class="small" href="{{ p.cloud_link }}" target="_blank" rel="noopener noreferrer">☁ Open download link</a>{% endif %}
+</div>

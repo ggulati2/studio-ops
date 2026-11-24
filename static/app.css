@@ -1364,3 +1364,10 @@ tr.qc-detail>td{padding:0 !important;border-top:0 !important;background:var(--su
 .autocheck .ac-any-form{display:flex;flex-direction:column;flex-wrap:nowrap;gap:12px;align-items:stretch}
 .autocheck .ac-any-form .ac-any-row{width:100%}
 .autocheck .ac-any-form label{width:auto;min-width:0}
+
+/* My jobs: where the footage is */
+.job-footage{display:flex;flex-direction:column;gap:6px}
+.job-footage-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.job-footage-form label{display:flex;flex-direction:column;gap:4px}
+.job-footage-form label.grow{flex:1 1 240px}
+.job-footage-form .footage-select{min-width:200px}

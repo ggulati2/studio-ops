@@ -23,7 +23,7 @@ from ..services import (add_months, attendance, celebrated_award, day_kind, extr
                         trophy_counts)
 
 User = get_user_model()
-__all__ = ["qc_film", "job_event_submit", "tl_event_review", "qc_event_review", "today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
+__all__ = ["qc_film", "job_footage", "job_event_submit", "tl_event_review", "qc_event_review", "today", "my_month", "my_day_quick", "my_jobs", "job_submit", "close_job", "my_extra", "extra_respond", "extra_delete",
            "leaderboard", "congrats", "pod", "tl_review", "qc_queue", "qc_review", "my_payslips", "payslip_view"]
 
 
@@ -211,7 +211,62 @@ def my_jobs(request):
         jobs.append({"p": p, "hours": project_hours(p), "last": last, "delay": p.delays.first(), "events": events,
                      "by_event": events or p.deliverable in EVENT_FILMS})
     done = Project.objects.filter(editor=request.user, status=Project.CLOSED).order_by("-closed_on")[:10]
-    return render(request, "team/jobs.html", {"jobs": jobs, "done": done, "event_names": FilmEvent.NAMES})
+    return render(request, "team/jobs.html", {"jobs": jobs, "done": done, "event_names": FilmEvent.NAMES,
+                                              "drive_opts": S.drive_options()})
+
+
+@requires("work.log_own")
+def job_footage(request, pk):
+    """An editor sets where the footage of their own film is: a drive from the register, the
+    cloud (with its download link), or nothing. Saved in place; audited."""
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
+    from ..audit import record
+    from ..models import HardDrive
+    p = get_object_or_404(Project.objects.select_related("agency", "drive"), pk=pk)
+    if p.editor_id != request.user.pk and not p.spells.filter(user=request.user).exists():
+        raise PermissionDenied
+    if request.method != "POST":
+        return redirect("my_jobs")
+    P, say = request.POST, []
+    old = p.source_label or "nothing"
+    raw = P.get("footage", "")
+    if raw == "cloud":
+        p.drive, p.received_online = None, True
+    elif raw.isdigit():
+        d = HardDrive.objects.filter(pk=raw).first()
+        if d:
+            p.drive, p.received_online = d, False
+        else:
+            say.append(("error", "That drive isn't in the register any more. Ask the drive desk."))
+    else:
+        p.drive, p.received_online = None, False
+    if "cloud_link" in P and p.received_online and not say:
+        link = P.get("cloud_link", "").strip()
+        safe = S.safe_web_link(link) if link else ""
+        if link and not safe:
+            say.append(("error", "That download link isn't a web address. Paste the full link starting with https://"))
+        elif safe != p.cloud_link:
+            p.cloud_link = safe
+            record(request, "project.cloud_link", str(p), "set" if safe else "cleared")
+    if not any(l == "error" for l, _ in say):
+        p.save(update_fields=["drive", "received_online", "cloud_link"])
+        now = p.source_label or "nothing"
+        if now != old:
+            record(request, "project.footage", str(p), f"{old} -> {now} (by the editor)")
+            say.append(("success", f"{p}: footage " + (f"on {p.drive}" + (f", kept at {p.drive.location}" if p.drive.location else "")
+                                                       if p.drive_id else "in the cloud" if p.received_online else "not set") + "."))
+        elif not say:
+            say.append(("success", f"{p}: saved."))
+    if request.headers.get("X-Requested-With") == "fetch":
+        p = Project.objects.select_related("agency", "drive").prefetch_related("drive__photos").get(pk=p.pk)
+        html = render_to_string("team/_job_footage.html", {"p": p, "drive_opts": S.drive_options()}, request=request)
+        return JsonResponse({"ok": not any(l == "error" for l, _ in say),
+                             "messages": [{"level": l, "text": t} for l, t in say],
+                             "swap": [{"sel": f'[data-footage="{p.pk}"]', "mode": "outer", "html": html}]})
+    for l, t in say:
+        getattr(messages, l)(request, t)
+    return redirect("my_jobs")
 
 
 # films long enough to be sent for review one event at a time
