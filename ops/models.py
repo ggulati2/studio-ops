@@ -813,6 +813,11 @@ class AutoCheckRun(models.Model):
     auto = models.BooleanField(default=False)
     attempts = models.PositiveSmallIntegerField(default=0)
     updated = models.DateTimeField(auto_now=True)
+    # daily feedback read: a QC person's helper re-reads the comments on the version this check
+    # posted on, so AutoCheck learns from what QC did without waiting for the next version
+    fb_read_at = models.DateTimeField("feedback last read", null=True, blank=True)
+    fb_claim_at = models.DateTimeField(null=True, blank=True)
+    fb_claim_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-started_at"]

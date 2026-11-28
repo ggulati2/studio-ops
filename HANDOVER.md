@@ -123,6 +123,13 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
 5. Progress, the result and the report go back to the portal tab (`autocheck:*` messages via `bridge.js`). Results are kept in `chrome.storage` until the portal confirms it saved them, so a closed tab doesn't lose them.
 6. The QC page shows an **AutoCheck box inside each event** (and the whole-film review): both versions, status, the result, the report link, Change links and Run now / Run again. Editors never see AutoCheck in the portal.
 7. Founders set rules (length, sensitivity, which checks run) per agency and film type under **QC → AutoCheck rules**.
+8. **Daily feedback read (since helper 1.5.0).** When a claim finds no check to run, it may hand out a read-only job instead (`_feedback_job`, `job.feedback`): re-read the comments on a version checked 12 h to 14 days ago, about once a day (`learning.needs_read`).
+   - Only helpers at version 1.5.0 or later get one. The claim sends `helper`; an older helper would treat the job as a full check and post comments.
+   - The runner only opens the link and reads the comments (`readFeedback`), then sends `autocheck:feedback`. The portal saves it with `type: "feedback"`, accepted only from the person the job was handed to.
+   - `learning.read_feedback` learns once QC has finished with the version: QC did something (a note, or a flag gone), and the comments are unchanged for 20 h, or 10 days have passed. It learns through the same `judge` / `_teach` as the next-version check and sets `report.feedback`, so that version never teaches twice.
+   - Skipped: versions the next version's check already compares against, posts with nothing on them, and reposts.
+   - The report shows "Learnt from QC's comments on V…".
+   - Frame.io shows the avatar's initials ("RF") on their own line in each comment. `fioComments` skips that line, and `ours()` / `OURS` also accept initials before `[Hygiene]`. Before 1.5.0, our own flags read as "RF [Hygiene] …" were taken for QC's notes ("QC noted the same thing").
 
 **Code:**
 
@@ -133,7 +140,7 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
 | QC page assembly | `_autocheck_units` in `ops/views/team.py` |
 | Templates | `team/_autocheck.html`, `_autocheck_helper.html`, `autocheck_report.html`, `autocheck_rules.html`, `qc_helper.html` |
 | Portal JS | `static/autocheck.js` |
-| Extension | `qc_helper/`: `manifest.json` (version **1.4.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
+| Extension | `qc_helper/`: `manifest.json` (version **1.5.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
 | Learning | `ops/learning.py` (judging QC's reaction, fitting limits), models `AutoCheckTuning` / `AutoCheckLesson`, page `team/autocheck_learnt.html` |
 | JS tests | `ops/tests/js/test_checks.js` (node; the Django suite runs it when node is installed) |
 

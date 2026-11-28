@@ -2110,6 +2110,87 @@ class AutoCheckLearning(SeededTestCase):
         self.assertEqual(locked.factor, 1.8)
         self.assertTrue(AutoCheckLesson.objects.filter(tuning=old, new_factor=1.0, reason__contains="measured a new way").exists())
 
+    def test_daily_feedback_read(self):
+        """Once a day a QC person's helper re-reads the comments on a version checked lately (read
+        only) and AutoCheck learns once QC has finished with it, without waiting for a new version."""
+        import json
+        from ops.learning import learn, needs_read
+        now = timezone.now()
+        issues = [{"kind": "blur", "t": 40, "text": "Shot looks out of focus (soft) here.", "sev": 1.3},
+                  {"kind": "pops", "t": 70, "text": "Possible audio pop here, please listen.", "sev": 1.05},
+                  {"kind": "blacks", "t": 100, "text": "Blacks look crushed (too dark) here.", "sev": 1.4}]
+        posted = [{"t": x["t"], "text": "[Hygiene] " + x["text"], "ok": True, "issue": i, "kind": x["kind"]} for i, x in enumerate(issues)]
+        run = self.Run.objects.create(project=self.p, v2_link="https://f.io/daily", status="done", report={
+            "issues": issues, "posted": posted, "cands": {}, "version": "1.5.0"})
+        self.Run.objects.filter(pk=run.pk).update(finished_at=now - timezone.timedelta(hours=13))
+        qc = self.login("qc")
+        claim = lambda helper: qc.post("/qc/autocheck/claim/", {"helper": helper}).json()["job"]
+        # only helpers that know what a read job is get one (an older one would run a full check)
+        self.assertIsNone(qc.post("/qc/autocheck/claim/").json()["job"])
+        self.assertIsNone(claim("1.4.0"))
+        job = claim("1.5.0")
+        self.assertEqual((job["id"], job["feedback"], job["v2"]), (run.pk, True, "https://f.io/daily"))
+        self.assertIsNone(claim("1.5.0"))                                          # one at a time
+        send = lambda c, seen: c.post(f"/qc/autocheck/{run.pk}/update/", json.dumps({"type": "feedback", "seen": seen}),
+                                      content_type="application/json")
+        self.assertEqual(send(self.login("ag"), []).status_code, 403)              # only whoever was handed it
+        ours = [{"t": x["t"], "text": x["text"], "ours": True} for x in posted]
+        # QC hasn't looked yet: everything still there, nothing of theirs -> nothing to learn, keep reading
+        self.assertFalse(send(qc, ours).json()["learnt"])
+        run.refresh_from_db()
+        self.assertEqual((run.fb_claim_by, run.report["fb"]["reads"], "feedback" in run.report), (None, 1, False))
+        self.assertIsNone(claim("1.5.0"))                                          # read today already
+        # QC dismissed the blur flag, deleted the pop one and agreed with the blacks one
+        seen = [ours[0], {"t": 41, "text": "intended, dreamy shot", "ours": False}, ours[2],
+                {"t": 101, "text": "yes lift the blacks here", "ours": False}]
+        self.Run.objects.filter(pk=run.pk).update(fb_read_at=now - timezone.timedelta(hours=21))
+        self.assertEqual(claim("1.5.0")["id"], run.pk)
+        self.assertFalse(send(qc, seen).json()["learnt"])                          # just changed: QC may not be done
+        # a day later, unchanged: QC has finished with it -> learn now
+        run.refresh_from_db()
+        rep = run.report
+        rep["fb"]["since"] = (now - timezone.timedelta(hours=21)).isoformat(timespec="seconds")
+        self.Run.objects.filter(pk=run.pk).update(report=rep, fb_read_at=now - timezone.timedelta(hours=21))
+        self.assertEqual(claim("1.5.0")["id"], run.pk)
+        self.assertTrue(send(qc, seen).json()["learnt"])
+        run.refresh_from_db()
+        fb = run.report["feedback"]
+        self.assertEqual((fb["daily"], fb["right"], fb["wrong"]), (True, 1, 2))
+        self.assertFalse(needs_read(run))                                          # each version teaches once
+        self.assertContains(self.login("qc").get(f"/qc/autocheck/{run.pk}/"), "Learnt from QC's comments on")
+        # ...also not again when the next version is checked against it
+        nxt = self.Run.objects.create(project=self.p, v1_link="https://f.io/daily", v2_link="https://f.io/daily2",
+                                      status="done", report={"seen": seen, "followup": [], "issues": []})
+        self.assertIsNone(learn(nxt))
+        # a failed read never marks the finished check failed
+        qc.post(f"/qc/autocheck/{run.pk}/update/", '{"type": "failed", "error": "x"}', content_type="application/json")
+        run.refresh_from_db()
+        self.assertEqual(run.status, "done")
+
+    def test_our_comments_recognised_with_avatar_initials(self):
+        """Frame.io shows the commenter's initials first ("RF [Hygiene] …"): still our own comment, so a
+        flag still on the version isn't taken for QC agreeing with it."""
+        from ops.learning import judge
+        issues = [{"kind": "shake", "t": 10, "text": "Camera shake in this shot. Please stabilise.", "sev": 1.2}]
+        posted = [{"t": 10, "text": "[Hygiene] Camera shake in this shot. Please stabilise.", "ok": True, "issue": 0}]
+        seen = [{"t": 10, "text": "RF [Hygiene] Camera shake in this shot. Please stabilise.", "ours": False}]
+        samples, counts, notes = judge({"issues": issues, "posted": posted}, {"seen": seen})
+        self.assertEqual((samples, counts, notes), ([], {}, {}))
+
+    def test_feedback_read_skips_old_and_already_followed_versions(self):
+        from ops.learning import needs_read
+        now = timezone.now()
+        posted = [{"t": 5, "text": "[Hygiene] x", "ok": True}]
+        mk = lambda link, hours: self.Run.objects.filter(pk=self.Run.objects.create(
+            project=self.p, v2_link=link, status="done", report={"posted": posted}).pk).update(
+            finished_at=now - timezone.timedelta(hours=hours)) and self.Run.objects.get(v2_link=link)
+        self.assertFalse(needs_read(mk("https://f.io/fresh", 2)))                 # QC hasn't had time to review
+        self.assertFalse(needs_read(mk("https://f.io/old", 24 * 15)))             # past two weeks
+        followed = mk("https://f.io/followed", 30)
+        self.assertTrue(needs_read(followed))
+        self.Run.objects.create(project=self.p, v1_link="https://f.io/followed", v2_link="https://f.io/next", status="queued")
+        self.assertFalse(needs_read(followed))                                    # the next version's check will learn
+
     def test_keywords(self):
         from ops.learning import flag_of
         for text, kind in [("Media offline at 2:10", "media_offline"), ("black bars on this clip", "framing"),

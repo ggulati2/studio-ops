@@ -15,6 +15,7 @@
     var li = document.createElement("li"); li.textContent = text; logEl.appendChild(li);
     if (frac != null) barEl.style.width = Math.round(frac * 100) + "%";
     lastText = text; lastTold = Date.now();
+    if (job && job.feedback) return;      // a daily read only reports what it read
     tell({type: "autocheck:progress", id: jobId, text: text, frac: frac});
   }
   // progress inside a long step: move the bar, and tell Studio Ops now and then. Without this a long
@@ -27,7 +28,7 @@
   }
   function tell(msg) {
     msg.source = "redwed-helper";
-    if (msg.type === "autocheck:done" || msg.type === "autocheck:failed") {
+    if (msg.type === "autocheck:done" || msg.type === "autocheck:failed" || msg.type === "autocheck:feedback") {
       // kept until Studio Ops confirms it saved it (the portal tab may have been closed or moved on)
       msg.film = job && job.film;
       var keep = {};
@@ -89,8 +90,9 @@
   }
   var throughout = function (t) { return /through ?out|thru ?out|thur ?out|thro ?out|whole film|all over|entire|everywhere|full film/i.test(t || ""); };
   var TAG = "[Hygiene] ";
-  var ours = function (text) { return /^\s*\[(AutoCheck|Hygiene)\]/i.test(text || ""); };
-  var clean = function (s) { return (s || "").replace(/^\s*\[(AutoCheck|Hygiene)\]\s*/i, "").replace(/#/g, "no. ").replace(/\s+/g, " ").trim(); };
+  // our own comments start [Hygiene] (older ones [AutoCheck]); Frame.io may show the avatar's initials first
+  var ours = function (text) { return /^\s*(?:[A-Z]{1,3}\s+)?\[(AutoCheck|Hygiene)\]/i.test(text || ""); };
+  var clean = function (s) { return (s || "").replace(/^\s*(?:[A-Z]{1,3}\s+)?\[(AutoCheck|Hygiene)\]\s*/i, "").replace(/#/g, "no. ").replace(/\s+/g, " ").trim(); };
 
   async function main() {
     var got = await chrome.storage.local.get("job:" + jobId);
@@ -101,6 +103,7 @@
     var P = job.prev_label || "V1", N = job.cur_label || "V2";
     document.getElementById("title").textContent = "AutoCheck · " + (job.film || "");
     var rules = job.rules || {}, s = SENS[rules.sensitivity] || 1, who = job.checker || "QC";
+    if (job.feedback) return readFeedback(N);
     if (job.repost) return repost(N);
     var report = {version: chrome.runtime.getManifest().version, comments: [], issues: [], posted: [], structure: [],
                   seen: [], followup: [], cands: {}, tune: rules.tune || {}};
@@ -428,8 +431,45 @@
     document.getElementById("done").hidden = false;
   }
 
+  /* the daily read: open the version this check posted on and read every comment, nothing else.
+     Read only: it never posts, edits or deletes. Studio Ops learns from what QC did there. */
+  async function readFeedback(N) {
+    document.getElementById("title").textContent = "AutoCheck · reading QC's comments · " + (job.film || "");
+    log("Reading QC's comments on " + N + " (read only)…", 0.2);
+    var tab = await openTab(job.v2, "The " + N);
+    var comments = [];
+    try {
+      comments = await inTab(tab, fioComments) || [];
+      if (!comments.length) {
+        // the comment list may only fill in once the tab has been shown: show it in this window and try again
+        await chrome.tabs.update(tab, {active: true});
+        await AC.sleep(1500);
+        comments = await inTab(tab, fioComments) || [];
+      }
+    } finally {
+      chrome.tabs.remove(tab, function () { void chrome.runtime.lastError; });
+    }
+    var maxFF = 0;
+    comments.forEach(function (c) { maxFF = Math.max(maxFF, +c.tc.slice(9)); });
+    var fps = maxFF >= 25 ? 30 : 25;
+    var seen = comments.map(function (c) {
+      return {t: Math.round(AC.tcToSec(c.tc, fps) * 10) / 10, text: (c.text || "").slice(0, 300), ours: ours(c.text)};
+    });
+    log(seen.length + " comment(s) read.", 1);
+    tell({type: "autocheck:feedback", id: jobId, seen: seen, version: chrome.runtime.getManifest().version});
+    chrome.storage.local.remove("job:" + jobId);
+    document.getElementById("done").hidden = false;
+    setTimeout(function () { chrome.windows.remove(myWindow, function () { void chrome.runtime.lastError; }); }, 2000);
+  }
+
   main().catch(function (err) {
     log("Stopped: " + err.message);
+    if (job && job.feedback) {
+      // a read that couldn't be done: say so (Studio Ops tries again tomorrow); never mark the check failed
+      tell({type: "autocheck:feedback", id: jobId, error: err.message});
+      setTimeout(function () { chrome.windows.remove(myWindow, function () { void chrome.runtime.lastError; }); }, 5000);
+      return;
+    }
     tell({type: "autocheck:failed", id: jobId, error: err.message});
     if (job && job.auto) setTimeout(function () { chrome.windows.remove(myWindow); }, 60000);
   });

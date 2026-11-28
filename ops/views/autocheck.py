@@ -15,7 +15,7 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from ..audit import record
@@ -125,7 +125,35 @@ def autocheck_claim(request):
                 return JsonResponse({"ok": True, "job": None})
             run = AutoCheckRun.objects.select_related("project__agency", "event").get(pk=r.pk)
             return JsonResponse({"ok": True, "job": _job(run, request)})
-    return JsonResponse({"ok": True, "job": None})
+    return JsonResponse({"ok": True, "job": _feedback_job(request, now)})
+
+
+FEEDBACK_HELPER = "1.5.0"                      # helpers before this would take a read job for a full check
+FB_CLAIM = timezone.timedelta(minutes=10)      # a feedback read not reported back by then is handed out again
+
+
+def _feedback_job(request, now):
+    """Nothing to check: maybe re-read QC's comments on a version checked lately (read only), so
+    AutoCheck learns from what QC did there. One at a time per person, about once a day per version."""
+    if L._older(request.POST.get("helper", ""), FEEDBACK_HELPER):
+        return None
+    if AutoCheckRun.objects.filter(fb_claim_by=request.user, fb_claim_at__gte=now - FB_CLAIM).exists():
+        return None
+    candidates = (AutoCheckRun.objects.filter(status=AutoCheckRun.DONE, finished_at__gte=now - L.READ_FOR,
+                                              finished_at__lte=now - L.FIRST_READ)
+                  .filter(Q(fb_read_at__isnull=True) | Q(fb_read_at__lt=now - L.EVERY))
+                  .filter(Q(fb_claim_at__isnull=True) | Q(fb_claim_at__lt=now - FB_CLAIM))
+                  .select_related("project__agency", "event").order_by(F("fb_read_at").asc(nulls_first=True), "finished_at"))
+    for run in candidates[:30]:
+        if not L.needs_read(run, now):
+            continue
+        if not AutoCheckRun.objects.filter(pk=run.pk).filter(Q(fb_claim_at__isnull=True) | Q(fb_claim_at__lt=now - FB_CLAIM)).update(
+                fb_claim_at=now, fb_claim_by=request.user):
+            continue
+        p = run.project
+        return {"id": run.pk, "feedback": True, "auto": True, "v2": run.v2_link, "cur_label": labels(run)[1],
+                "film": str(p) + (f" · {run.event.name}" if run.event_id else ""), "portal": request.build_absolute_uri("/")}
+    return None
 
 
 @requires("qc.review")
@@ -134,13 +162,25 @@ def autocheck_update(request, pk):
     run = get_object_or_404(AutoCheckRun, pk=pk)
     if request.method != "POST":
         return JsonResponse({"ok": False}, status=405)
-    if run.started_by_id != request.user.pk and not has_perm(request.user, "payroll.manage"):
-        return JsonResponse({"ok": False}, status=403)
     try:
         data = json.loads(request.body or b"{}")
     except ValueError:
         return JsonResponse({"ok": False, "error": "bad data"}, status=400)
     kind = data.get("type")
+    if kind == "feedback":
+        # a daily read of QC's comments, by whoever's helper was handed it (read only, nothing posted)
+        if run.fb_claim_by_id != request.user.pk:
+            return JsonResponse({"ok": False}, status=403)
+        seen = data.get("seen")
+        if data.get("error") or not isinstance(seen, list):
+            AutoCheckRun.objects.filter(pk=run.pk).update(fb_read_at=timezone.now(), fb_claim_at=None, fb_claim_by=None)
+            return JsonResponse({"ok": True, "learnt": False})
+        if len(json.dumps(seen)) > 400_000:
+            return JsonResponse({"ok": False, "error": "too large"}, status=400)
+        learnt = L.read_feedback_safely(run, seen)
+        return JsonResponse({"ok": True, "learnt": bool(learnt)})
+    if run.started_by_id != request.user.pk and not has_perm(request.user, "payroll.manage"):
+        return JsonResponse({"ok": False}, status=403)
     fields = []
     if kind in ("progress", "status"):
         if run.status in (AutoCheckRun.QUEUED, AutoCheckRun.RUNNING):
@@ -187,7 +227,7 @@ def autocheck_update(request, pk):
                             f"{learnt['missed']} missed")[:200]
             run.save(update_fields=["progress"])
         fields = []
-    elif kind == "failed":
+    elif kind == "failed" and run.status != AutoCheckRun.DONE:     # a finished check stays finished
         run.status, run.finished_at = AutoCheckRun.FAILED, timezone.now()
         run.progress = ("Stopped: " + str(data.get("error") or "unknown error"))[:200]
         fields = ["status", "finished_at", "progress", "updated"]

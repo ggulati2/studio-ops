@@ -13,7 +13,7 @@
     if (d.type === "autocheck:run") {
       chrome.runtime.sendMessage({type: "autocheck:run", job: d.job}, function (r) {
         toPage({type: "autocheck:accepted", id: d.job.id, ok: !!(r && r.ok), error: r && r.error,
-                auto: !!d.job.auto, film: d.job.film});
+                auto: !!d.job.auto, feedback: !!d.job.feedback, film: d.job.film});
       });
     } else if (d.type === "autocheck:ack") {
       chrome.runtime.sendMessage({type: "autocheck:ack", id: d.id});

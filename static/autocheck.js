@@ -67,7 +67,12 @@
       refresh(); return;
     }
     if (!m.id) return;
-    if (m.type === "autocheck:accepted") {
+    if (m.type === "autocheck:accepted" && m.feedback) {
+      return;                                    // a quiet daily read of QC's comments: nothing to show
+    } else if (m.type === "autocheck:feedback") {
+      // the helper re-read QC's comments on a version checked lately: save them (AutoCheck learns from them)
+      save(m.id, {type: "feedback", seen: m.seen, error: m.error}).then(function (ok) { if (ok) ack(m.id); });
+    } else if (m.type === "autocheck:accepted") {
       if (!m.ok) {
         showLive(m.id, "The QC Helper couldn't start: " + (m.error || "unknown error"));
         save(m.id, {type: "failed", error: m.error || "helper refused"});
@@ -112,7 +117,9 @@
     var url = meta("ac-claim");
     if (!url || !helperVersion() || claiming) return;
     claiming = true;
-    post(url, new FormData())
+    var f = new FormData();
+    f.append("helper", helperVersion());          // which jobs this helper understands
+    post(url, f)
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.job) window.postMessage({source: "redwed-portal", type: "autocheck:run", job: d.job}, location.origin);

@@ -60,7 +60,9 @@ async function fioComments() {
       var author = cell.querySelector("[data-testid=comment-author-name]");
       var num = ((cell.innerText || "").match(/#(\d+)/) || [])[1];
       var lines = (cell.innerText || "").split("\n").map(function (s) { return s.replace(/\ufeff/g, "").trim(); }).filter(Boolean);
-      var skip = [author ? author.textContent.trim() : "", tc, "Reply", "Edited"];
+      // the avatar's initials ("RF") are a line of their own: not part of the comment
+      var avatar = cell.querySelector("[data-testid=avatar-container]");
+      var skip = [author ? author.textContent.trim() : "", avatar ? (avatar.innerText || "").trim() : "", tc, "Reply", "Edited"];
       var body = lines.filter(function (l) {
         return skip.indexOf(l) < 0 && !/^#\d+$/.test(l) && !/^(\d+[smhdw]|Just now|\d+ ?(min|mins|hours?|days?) ago)$/i.test(l)
           && !/^(Read|Seen|Viewed) by\b/i.test(l) && l.length > 1;

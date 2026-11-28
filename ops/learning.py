@@ -11,6 +11,10 @@ reviewed and reports it. Matching those against the last check's flags tells us,
   nothing                                                                   -> it was missed
   (if it had seen something there below its limit, that strength is a sample too)
 
+QC doesn't have to send a new version for this: once a day a QC person's helper re-reads the
+comments on each recently checked version (read_feedback), and AutoCheck learns as soon as QC has
+finished with it (they did something, and nothing changed for a day). Either way a check teaches once.
+
 Each kind of flag keeps its recent samples, per agency + film type, per agency and for the whole
 studio. Once there are enough (MIN_SAMPLES), the limit is moved, in small steps, to where it
 best separates "QC agreed" from "QC removed it". The run uses the most specific limit that has
@@ -63,7 +67,8 @@ KEYWORDS = [
 _KEYWORDS = [(k, re.compile(p, re.I)) for k, p in KEYWORDS]
 NEG = re.compile(r"not an? (issue|problem)|no (issue|problem)|ignore|intended|on purpose|by design|that'?s fine|it'?s fine|"
                  r"its fine|looks fine|is fine|ok as is|leave (it|as is)|false (alarm|flag)|wrong flag|not needed|skip this", re.I)
-OURS = re.compile(r"^\s*\[(autocheck|hygiene)\]\s*", re.I)
+# our own comments start [Hygiene] (older ones [AutoCheck]); Frame.io may show the avatar's initials first
+OURS = re.compile(r"^\s*(?:[A-Z]{1,3}\s+)?\[(autocheck|hygiene)\]\s*", re.I)
 
 # a flag's strength means something new from this helper version on: older reports don't teach it
 REMEASURED = {"shake": "1.4.0"}     # 1.4.0: wobble around the camera's path, not any change of speed
@@ -261,7 +266,7 @@ def _reason(kind, old, new, rows):
 def learn(run):
     """Learn from QC's reaction to the previous check. Safe to call more than once: each previous
     check teaches once. Returns a short summary (also stored on both reports), or None."""
-    from .models import AutoCheckLesson, AutoCheckRun, AutoCheckTuning
+    from .models import AutoCheckRun
     report = run.report or {}
     prev = previous_run(run)
     if not prev or not report.get("seen"):
@@ -270,7 +275,18 @@ def learn(run):
     if (prev.report or {}).get("feedback"):
         return None
     samples, counts, notes = judge(prev.report or {}, report)
-    p = run.project
+    summary = _teach(run.project, samples, counts, notes, run, from_run=prev.pk)
+    prev.report = {**(prev.report or {}), "feedback": summary}
+    prev.save(update_fields=["report", "updated"])
+    run.report = {**report, "learnt": summary}
+    run.save(update_fields=["report", "updated"])
+    return summary
+
+
+def _teach(p, samples, counts, notes, run, from_run):
+    """Add what QC's reaction showed to each limit's evidence and move the limits that have enough.
+    Returns the summary stored on the reports."""
+    from .models import AutoCheckLesson, AutoCheckTuning
     changed = []
     kinds = {k for k, *_ in samples} | set(counts)
     for kind in kinds:
@@ -298,14 +314,90 @@ def learn(run):
         row.missed += n
         row.save(update_fields=["missed", "updated"])
     total = {key: sum(c.get(key, 0) for c in counts.values()) for key in ("right", "wrong", "missed", "subtle")}
-    summary = {**total, "notes": sum(notes.values()), "changed": len(changed), "from_run": prev.pk, "run": run.pk,
-               "at": timezone.now().isoformat(timespec="seconds"),
-               "why": [{"kind": k, "sev": s, "real": real, "why": w} for k, s, real, w in samples][:60]}
-    prev.report = {**(prev.report or {}), "feedback": summary}
-    prev.save(update_fields=["report", "updated"])
-    run.report = {**report, "learnt": summary}
-    run.save(update_fields=["report", "updated"])
+    return {**total, "notes": sum(notes.values()), "changed": len(changed), "from_run": from_run, "run": run.pk,
+            "at": timezone.now().isoformat(timespec="seconds"),
+            "why": [{"kind": k, "sev": s, "real": real, "why": w} for k, s, real, w in samples][:60]}
+
+
+# ---------------------------------------------------------------- the daily feedback read
+SETTLE = timezone.timedelta(hours=20)     # QC's comments unchanged this long: they've finished with it
+LATEST = timezone.timedelta(days=10)      # learn by then at the latest (if QC did anything)
+READ_FOR = timezone.timedelta(days=14)    # stop re-reading a version after this
+FIRST_READ = timezone.timedelta(hours=12)  # give QC time to review before the first read
+EVERY = timezone.timedelta(hours=20)      # about once a day
+
+
+def _fingerprint(seen):
+    import hashlib
+    import json
+    key = sorted((round(float(c.get("t") or 0), 1), (c.get("text") or "").strip()) for c in seen)
+    return hashlib.sha1(json.dumps(key).encode()).hexdigest()
+
+
+def qc_touched(report, seen):
+    """Has QC done anything on this version yet: a note of their own, or one of our flags gone?"""
+    if any(not (c.get("ours") or OURS.match(c.get("text") or "")) for c in seen):
+        return True
+    ours = {(_norm(c.get("text")), round(float(c.get("t") or 0))) for c in seen if c.get("ours") or OURS.match(c.get("text") or "")}
+    posted = [p for p in (report or {}).get("posted", []) if p.get("ok")]
+    return any(not any(n == _norm(p.get("text")) and abs(t - float(p.get("t") or 0)) <= 1.5 for n, t in ours) for p in posted)
+
+
+def needs_read(run, now=None):
+    """Should a helper re-read the comments on the version this check posted on?"""
+    now = now or timezone.now()
+    rep = run.report or {}
+    if run.status != run.DONE or not run.finished_at or rep.get("feedback") or rep.get("repost"):
+        return False
+    if not any(p.get("ok") for p in rep.get("posted", [])):
+        return False
+    if not (now - READ_FOR <= run.finished_at <= now - FIRST_READ):
+        return False
+    if run.fb_read_at and run.fb_read_at > now - EVERY:
+        return False
+    # the next version was already checked against this one: that check learnt (or will learn) from it
+    return not type(run).objects.filter(project_id=run.project_id, event_id=run.event_id, v1_link=run.v2_link,
+                                        status__in=[run.DONE, run.RUNNING, run.QUEUED]).exclude(pk=run.pk).exists()
+
+
+@transaction.atomic
+def read_feedback(run, seen, now=None):
+    """A helper re-read QC's comments on this version. Learn once QC has finished with it: they did
+    something, and the comments haven't changed for a day (or 10 days have passed). Returns the
+    summary when it learnt, else None. Each version teaches once (also not again at the next version)."""
+    from .models import AutoCheckRun
+    now = now or timezone.now()
+    run = AutoCheckRun.objects.select_for_update().get(pk=run.pk)
+    rep = dict(run.report or {})
+    run.fb_read_at, run.fb_claim_at, run.fb_claim_by = now, None, None
+    if rep.get("feedback"):
+        run.save(update_fields=["fb_read_at", "fb_claim_at", "fb_claim_by", "updated"])
+        return None
+    seen = [{"t": c.get("t"), "text": str(c.get("text") or "")[:300], "ours": bool(c.get("ours"))} for c in seen or []][:2000]
+    h, fb = _fingerprint(seen), dict(rep.get("fb") or {})
+    if fb.get("hash") != h:
+        fb.update({"hash": h, "since": now.isoformat(timespec="seconds")})
+    fb.update({"reads": int(fb.get("reads") or 0) + 1, "last": now.isoformat(timespec="seconds"), "comments": len(seen)})
+    since = timezone.datetime.fromisoformat(fb["since"])
+    touched = qc_touched(rep, seen)
+    settled = touched and (now - since >= SETTLE or now - run.finished_at >= LATEST)
+    summary = None
+    if settled:
+        samples, counts, notes = judge(rep, {"seen": seen, "followup": []})
+        summary = {**_teach(run.project, samples, counts, notes, run, from_run=run.pk), "daily": True}
+        rep["feedback"] = summary
+    rep["fb"] = fb
+    run.report = rep
+    run.save(update_fields=["report", "fb_read_at", "fb_claim_at", "fb_claim_by", "updated"])
     return summary
+
+
+def read_feedback_safely(run, seen):
+    try:
+        return read_feedback(run, seen)
+    except Exception:          # a feedback read must never break anything else
+        log.exception("AutoCheck feedback read failed for run %s", run.pk)
+        return None
 
 
 def learn_safely(run):
