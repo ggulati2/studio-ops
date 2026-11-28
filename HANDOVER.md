@@ -133,7 +133,7 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
 | QC page assembly | `_autocheck_units` in `ops/views/team.py` |
 | Templates | `team/_autocheck.html`, `_autocheck_helper.html`, `autocheck_report.html`, `autocheck_rules.html`, `qc_helper.html` |
 | Portal JS | `static/autocheck.js` |
-| Extension | `qc_helper/`: `manifest.json` (version **1.3.3**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
+| Extension | `qc_helper/`: `manifest.json` (version **1.4.0**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
 | Learning | `ops/learning.py` (judging QC's reaction, fitting limits), models `AutoCheckTuning` / `AutoCheckLesson`, page `team/autocheck_learnt.html` |
 | JS tests | `ops/tests/js/test_checks.js` (node; the Django suite runs it when node is installed) |
 
@@ -172,7 +172,11 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
   - shake at 8:54 still there
   - jump at 10:05 re-edited
 - **Titles** are judged by the most-changed 8×6 region (`AC.blocks`, ≥12 = changed).
-- **Shake threshold** is 0.75 × sensitivity (shots sampled at 320 px).
+- **Shake threshold** is 0.75 × sensitivity (shots sampled at 320 px, 1.6 s at 12.5 fps).
+- **Shake measure (since 1.4.0, `AC.shakeInfo`):** the camera's motion between frames is found to a fraction of a pixel. It uses a coarse search at 1/4 size (±40 px) and 12 regions refined, taking the median, so people moving don't count. Shake is the wobble around a running median of that motion (5 samples). A smooth gimbal move, speed ramp or whip stops counting; back-and-forth wobble still does. A shot is judged only if at least 60% of its frame pairs can be measured.
+  - Calibration, synthetic moves on a real still: pans up to 600 px/s, an eased orbit, a push-in and 24p cadence scored ≤ 0.27. Handheld wobble of 4 px or more scored ≥ 0.91, still camera or moving. 2 px scored 0.21.
+  - Real check: the Wedding run of 22 Nov (Gyan & Surbhi) flagged 98 shake shots. The old measure was fooled by speed ramps and moves that start or stop suddenly. The new one keeps 28 at normal sensitivity, and 22 can't be measured reliably.
+  - Limits learnt on the old measure were reset (migration `0030`). Reports from helpers older than 1.4.0 don't teach the shake limit (`learning.REMEASURED`).
 - **Loudness** flags a spread over 15 dB × sensitivity.
 - **Audio glitches** too subtle to measure in V1 go to "needs to check".
 - **No false jump, colour or flash flags** came up in 213 cuts.

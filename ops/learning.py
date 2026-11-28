@@ -65,6 +65,24 @@ NEG = re.compile(r"not an? (issue|problem)|no (issue|problem)|ignore|intended|on
                  r"its fine|looks fine|is fine|ok as is|leave (it|as is)|false (alarm|flag)|wrong flag|not needed|skip this", re.I)
 OURS = re.compile(r"^\s*\[(autocheck|hygiene)\]\s*", re.I)
 
+# a flag's strength means something new from this helper version on: older reports don't teach it
+REMEASURED = {"shake": "1.4.0"}     # 1.4.0: wobble around the camera's path, not any change of speed
+
+
+def _older(version, than):
+    def parts(v):
+        try:
+            return [int(x) for x in str(v).split(".")[:3]]
+        except ValueError:
+            return [0]
+    return parts(version or "0") < parts(than)
+
+
+def _stale(kind, report):
+    """True if this report measured `kind` the old way (its strengths can't teach today's limit)."""
+    version = (report or {}).get("version")
+    return kind in REMEASURED and bool(version) and _older(version, REMEASURED[kind])
+
 
 def flag_of(text):
     """Which kind of flag a QC note is about, or None."""
@@ -167,7 +185,7 @@ def judge(prev_report, report):
     used = set()
     for i, x in enumerate(issues):
         kind, sev = x.get("kind"), x.get("sev")
-        if kind not in LABELS or sev is None:
+        if kind not in LABELS or sev is None or _stale(kind, prev_report):
             continue
         a, b = (x.get("t") or 0) - NEAR_S, (x.get("end") or x.get("t") or 0) + NEAR_S
         near = [c for c in human if a <= (c.get("t") or 0) <= b]
@@ -202,6 +220,8 @@ def judge(prev_report, report):
         if any(x.get("kind") == kind and (x.get("t") or 0) - NEAR_S <= t <= (x.get("end") or x.get("t") or 0) + NEAR_S
                for x in issues):
             continue        # we flagged it (and the note was counted above)
+        if _stale(kind, prev_report):
+            continue        # measured the old way: its near misses don't say where today's limit should be
         near = [cv for ct, cv in cands.get(kind, []) if abs(ct - t) <= NEAR_S]
         if near:
             samples.append((kind, float(max(near)), True, "QC found one it saw but kept below its limit"))

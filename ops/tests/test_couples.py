@@ -2082,6 +2082,34 @@ class AutoCheckLearning(SeededTestCase):
         self.assertIn("learnt from QC", run.progress)
         self.assertContains(qc.get(f"/qc/autocheck/{run.pk}/"), "Learnt from QC")
 
+    def test_shake_from_an_older_helper_doesnt_teach(self):
+        """Shake is measured a new way from helper 1.4.0: flags measured the old way (mostly gimbal
+        moves and speed ramps) must not move today's limit, and old learnt limits start again."""
+        import importlib
+        from django.apps import apps
+        from ops.learning import learn
+        from ops.models import AutoCheckLesson, AutoCheckTuning
+        issues = [{"kind": "shake", "t": 10, "text": "Camera shake in this shot. Please stabilise.", "sev": 2.2},
+                  {"kind": "blur", "t": 40, "text": "Shot looks out of focus (soft) here.", "sev": 1.3}]
+        seen = [{"t": 11, "text": "not an issue, gimbal move", "ours": False},
+                {"t": 41, "text": "intended, dreamy shot", "ours": False}]
+        for version, shake_taught in (("1.3.3", False), ("1.4.0", True)):
+            prev, run = self.pair(issues, seen)
+            prev.report = {**prev.report, "version": version}
+            prev.save()
+            kinds = {w["kind"] for w in learn(run)["why"]}
+            self.assertIn("blur", kinds, version)                 # other checks learn as before
+            self.assertEqual("shake" in kinds, shake_taught, version)
+        # the migration resets a limit learnt the old way (not a locked one) and says why
+        old = AutoCheckTuning.objects.create(agency=None, deliverable="x", kind="shake", factor=2.0, samples=[[2.2, 0, 1]])
+        locked = AutoCheckTuning.objects.create(agency=None, deliverable="y", kind="shake", factor=1.8, locked=True)
+        importlib.import_module("ops.migrations.0030_shake_remeasured").reset(apps, None)
+        old.refresh_from_db()
+        locked.refresh_from_db()
+        self.assertEqual((old.factor, old.samples), (1.0, []))
+        self.assertEqual(locked.factor, 1.8)
+        self.assertTrue(AutoCheckLesson.objects.filter(tuning=old, new_factor=1.0, reason__contains="measured a new way").exists())
+
     def test_keywords(self):
         from ops.learning import flag_of
         for text, kind in [("Media offline at 2:10", "media_offline"), ("black bars on this clip", "framing"),

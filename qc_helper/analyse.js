@@ -596,26 +596,94 @@
   };
   AC.meanLum = meanLum; AC.diff = diff; AC.ndiff = ndiff;
 
-  /* global camera motion between frames: (dx, dy) by block matching on a small copy */
-  function shift(A, B) {
-    var W = A.W, H = A.H, best = 1e9, bx = 0, by = 0;
-    for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
-      var s = 0, n = 0;
-      for (var y = 8; y < H - 8; y += 3) for (var x = 8; x < W - 8; x += 3) { s += Math.abs(A.Y[y * W + x] - B.Y[(y + dy) * W + x + dx]); n++; }
-      s /= n; if (s < best) { best = s; bx = dx; by = dy; }
+  /* ---------------- camera shake ----------------
+     Shake is the camera wobbling around its path, not the camera moving. A gimbal pan, orbit or
+     push-in moves smoothly, so it isn't shake however fast it goes; handheld wobble is.
+     1. Camera motion between frames: a coarse search on a 1/4-size copy (catches fast moves),
+        then each of 12 regions refined to a fraction of a pixel. The camera's motion is the median
+        of the regions, so people moving in part of the frame don't count. Pairs where the regions
+        disagree (mostly people moving, a zoom, a cut) are left out.
+     2. The intended path: a running median of the motion (5 samples, 0.4 s). It follows a steady
+        move, an ease in or out, and a sudden change of speed (speed ramps, whips, a move that
+        stops), which wedding edits are full of, but not wobble that flips back and forth.
+     3. Shake = how far the motion wobbles around that path. The worst fifth is left out, so a
+        repeated frame (24p in a 25p timeline) or one bad match doesn't count as shake.
+     Checked on synthetic moves (pans, orbits, zoom, cadence: low; handheld wobble: high) and on
+     the 98 shots a real wedding film's check flagged with the old measure (most were speed ramps
+     and gimbal moves). */
+  function small(f, k) {
+    var key = "_d" + k;
+    if (f[key]) return f[key];
+    var W = Math.floor(f.W / k), H = Math.floor(f.H / k), Y = new Float32Array(W * H);
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      var s = 0;
+      for (var yy = 0; yy < k; yy++) for (var xx = 0; xx < k; xx++) s += f.Y[(y * k + yy) * f.W + x * k + xx];
+      Y[y * W + x] = s / (k * k);
     }
-    return [bx, by, best];
+    return (f[key] = {Y: Y, W: W, H: H});
   }
-  AC.shake = function (frames) {
+  function sad(A, B, x0, y0, x1, y1, dx, dy, st) {
+    var W = A.W, s = 0, n = 0;
+    for (var y = y0; y < y1; y += st) for (var x = x0; x < x1; x += st) { s += Math.abs(A.Y[y * W + x] - B.Y[(y + dy) * W + x + dx]); n++; }
+    return n ? s / n : 1e9;
+  }
+  function sub(a, b, c) {   // where between -1 and 1 the bottom of a parabola through a, b, c lies
+    var d = a - 2 * b + c;
+    return d > 1e-6 ? Math.max(-0.5, Math.min(0.5, (a - c) / (2 * d))) : 0;
+  }
+  var R4 = 10;   // coarse search: ±10 px at 1/4 size = ±40 px at 320 wide (an eighth of the frame per sample)
+  function motion(A, B) {
+    var a = small(A, 4), b = small(B, 4), m = R4 + 1, best = 1e9, cx = 0, cy = 0;
+    for (var dy = -R4; dy <= R4; dy++) for (var dx = -R4; dx <= R4; dx++) {
+      var s = sad(a, b, m, m, a.W - m, a.H - m, dx, dy, 1);
+      if (s < best) { best = s; cx = dx; cy = dy; }
+    }
+    var W = A.W, H = A.H, gx = cx * 4, gy = cy * 4, R = 3, mx = Math.abs(gx) + R + 2, my = Math.abs(gy) + R + 2;
+    var vs = [];
+    for (var by = 0; by < 3; by++) for (var bx = 0; bx < 4; bx++) {
+      var x0 = Math.max(mx, Math.floor(bx * W / 4)), x1 = Math.min(W - mx, Math.floor((bx + 1) * W / 4));
+      var y0 = Math.max(my, Math.floor(by * H / 3)), y1 = Math.min(H - my, Math.floor((by + 1) * H / 3));
+      if (x1 - x0 < 16 || y1 - y0 < 12) continue;
+      var bs = 1e9, ox = 0, oy = 0, tab = {};
+      for (var ey = -R; ey <= R; ey++) for (var ex = -R; ex <= R; ex++) {
+        var v = tab[ex + "," + ey] = sad(A, B, x0, y0, x1, y1, gx + ex, gy + ey, 2);
+        if (v < bs) { bs = v; ox = ex; oy = ey; }
+      }
+      if (Math.abs(ox) === R || Math.abs(oy) === R) continue;          // at the edge of the search: no true match
+      var l = tab[(ox - 1) + "," + oy], r = tab[(ox + 1) + "," + oy], u = tab[ox + "," + (oy - 1)], d = tab[ox + "," + (oy + 1)];
+      if ((l + r + u + d) / 4 - bs < 0.6) continue;                     // flat region (sky, wall): can't tell
+      vs.push([gx + ox + sub(l, bs, r), gy + oy + sub(u, bs, d)]);
+    }
+    if (vs.length < 4) return {ok: false, err: best};
+    var med = function (k) { var z = vs.map(function (p) { return p[k]; }).sort(function (p, q) { return p - q; }), h = z.length >> 1; return z.length % 2 ? z[h] : (z[h - 1] + z[h]) / 2; };
+    var mxv = med(0), myv = med(1);
+    var agree = vs.filter(function (p) { return Math.abs(p[0] - mxv) + Math.abs(p[1] - myv) <= 1.2; }).length / vs.length;
+    return {ok: agree >= 0.5, x: mxv, y: myv, agree: agree, err: best};
+  }
+  function med5(arr, i) {
+    var z = arr.slice(Math.max(0, i - 2), i + 3).sort(function (a, b) { return a - b; });
+    return z[z.length >> 1];
+  }
+  var SHAKE_SCALE = 1;   // set by calibration so a still camera's handheld wobble reads as before
+  AC.shakeInfo = function (frames) {
     if (frames.length < 6) return null;
     var mv = [];
-    for (var i = 1; i < frames.length; i++) mv.push(shift(frames[i - 1], frames[i]));
-    var med = mv.map(function (m) { return m[2]; }).sort(function (a, b) { return a - b; })[Math.floor(mv.length / 2)];
-    // skip a cut inside the window
-    mv = mv.filter(function (m) { return m[2] < med * 4 + 6; });
-    var jit = 0;
-    for (var k = 1; k < mv.length; k++) jit += Math.abs(mv[k][0] - mv[k - 1][0]) + Math.abs(mv[k][1] - mv[k - 1][1]);
-    return mv.length > 2 ? jit / (mv.length - 1) : null;
+    for (var i = 1; i < frames.length; i++) { var m = motion(frames[i - 1], frames[i]); m.i = i; mv.push(m); }
+    var errs = mv.map(function (m) { return m.err; }).sort(function (a, b) { return a - b; }), med = errs[errs.length >> 1];
+    var good = mv.filter(function (m) { return m.ok && m.err < med * 4 + 6; });     // a cut inside the window doesn't count
+    // judge only shots that can mostly be measured: too dark, blurred or full of moving people -> no verdict
+    if (good.length < Math.max(8, Math.ceil(mv.length * 0.6))) return {score: null, pairs: good.length, of: mv.length};
+    var xs = good.map(function (m) { return m.x; }), ys = good.map(function (m) { return m.y; }), res = [];
+    for (var k = 2; k < good.length - 2; k++) res.push(Math.abs(xs[k] - med5(xs, k)) + Math.abs(ys[k] - med5(ys, k)));
+    res.sort(function (a, b) { return a - b; });
+    var keep = res.slice(0, Math.max(1, Math.ceil(res.length * 0.8))), sum = 0;
+    keep.forEach(function (r) { sum += r; });
+    var pan = 0; good.forEach(function (m) { pan += Math.abs(m.x) + Math.abs(m.y); });
+    return {score: SHAKE_SCALE * sum / keep.length, pan: pan / good.length, pairs: good.length, of: mv.length};
+  };
+  AC.shake = function (frames) {
+    var r = AC.shakeInfo(frames);
+    return r ? r.score : null;
   };
 
   /* look at the frames around a cut: flash frame, jump cut, colour jump */
