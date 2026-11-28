@@ -233,22 +233,206 @@
     });
   };
 
+  /* ---------------- reading Frame.io's fragmented MP4 (init.mp4 + N.m4s) for WebCodecs ---------------- */
+  function boxes(dv, start, end, cb) {
+    var p = start;
+    while (p + 8 <= end) {
+      var size = dv.getUint32(p), type = String.fromCharCode(dv.getUint8(p + 4), dv.getUint8(p + 5), dv.getUint8(p + 6), dv.getUint8(p + 7)), hdr = 8;
+      if (size === 1) { size = dv.getUint32(p + 8) * 4294967296 + dv.getUint32(p + 12); hdr = 16; }
+      else if (size === 0) size = end - p;
+      if (size < hdr || p + size > end) break;
+      if (cb(type, p + hdr, p + size, p) === false) return;
+      p += size;
+    }
+  }
+  function child(dv, start, end, type) {
+    var hit = null;
+    boxes(dv, start, end, function (t, a, b, at) { if (t === type) { hit = {a: a, b: b, at: at}; return false; } });
+    return hit;
+  }
+  function path(dv, start, end, types) {
+    var cur = {a: start, b: end};
+    for (var i = 0; i < types.length && cur; i++) cur = child(dv, cur.a, cur.b, types[i]);
+    return cur;
+  }
+
+  /* from init.mp4: the video track's decoder setup, clock and sample defaults */
+  AC.mp4Init = function (buf) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf), moov = child(dv, 0, buf.byteLength, "moov");
+    if (!moov) throw new Error("no moov");
+    var track = null;
+    boxes(dv, moov.a, moov.b, function (t, a, b) {
+      if (t !== "trak" || track) return;
+      var hdlr = path(dv, a, b, ["mdia", "hdlr"]);
+      if (hdlr && String.fromCharCode(u8[hdlr.a + 8], u8[hdlr.a + 9], u8[hdlr.a + 10], u8[hdlr.a + 11]) === "vide") track = {a: a, b: b};
+    });
+    if (!track) throw new Error("no video track");
+    var tkhd = child(dv, track.a, track.b, "tkhd"), id = dv.getUint32(tkhd.a + (u8[tkhd.a] === 1 ? 20 : 12));
+    var mdhd = path(dv, track.a, track.b, ["mdia", "mdhd"]), scale = dv.getUint32(mdhd.a + (u8[mdhd.a] === 1 ? 20 : 12));
+    var stsd = path(dv, track.a, track.b, ["mdia", "minf", "stbl", "stsd"]);
+    var entry = stsd.a + 8, eType = String.fromCharCode(u8[entry + 4], u8[entry + 5], u8[entry + 6], u8[entry + 7]);
+    if (!/^avc[13]$/.test(eType)) throw new Error("not H.264 (" + eType + ")");
+    var eEnd = entry + dv.getUint32(entry), avcC = child(dv, entry + 8 + 78, eEnd, "avcC");
+    if (!avcC) throw new Error("no avcC");
+    var desc = u8.slice(avcC.a, avcC.b);
+    var codec = "avc1." + [desc[1], desc[2], desc[3]].map(function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+    // an edit list that starts the track later (B-frame delay) shifts every time back, as players do
+    var shift = 0, elst = path(dv, track.a, track.b, ["edts", "elst"]);
+    if (elst) {
+      var v1 = u8[elst.a] === 1, cnt = dv.getUint32(elst.a + 4), q = elst.a + 8;
+      for (var e = 0; e < cnt; e++, q += v1 ? 20 : 12) {
+        var mt = v1 ? dv.getInt32(q + 8) * 4294967296 + dv.getUint32(q + 12) : dv.getInt32(q + 4);
+        if (mt >= 0) { shift = mt; break; }   // the first edit that isn't an empty gap
+      }
+    }
+    var dflt = {dur: 0, size: 0, flags: 0}, mvex = child(dv, moov.a, moov.b, "mvex");
+    if (mvex) boxes(dv, mvex.a, mvex.b, function (t, a) {
+      if (t === "trex" && dv.getUint32(a + 4) === id) dflt = {dur: dv.getUint32(a + 12), size: dv.getUint32(a + 16), flags: dv.getUint32(a + 20)};
+    });
+    return {id: id, scale: scale, codec: codec, desc: desc, shift: shift, dflt: dflt,
+            width: dv.getUint16(entry + 8 + 24), height: dv.getUint16(entry + 8 + 26)};
+  };
+
+  /* from one N.m4s: every video sample with its times (seconds) and whether it's a key frame */
+  AC.mp4Samples = function (ti, buf, out) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf);
+    boxes(dv, 0, buf.byteLength, function (t, a, b, at) {
+      if (t !== "moof") return;
+      boxes(dv, a, b, function (t2, ta, tb) {
+        if (t2 !== "traf") return;
+        var tfhd = child(dv, ta, tb, "tfhd");
+        if (!tfhd || dv.getUint32(tfhd.a + 4) !== ti.id) return;
+        var fl = dv.getUint32(tfhd.a) & 0xffffff, p = tfhd.a + 8, base = at;
+        var dDur = ti.dflt.dur, dSize = ti.dflt.size, dFlags = ti.dflt.flags;
+        if (fl & 0x1) { base = dv.getUint32(p) * 4294967296 + dv.getUint32(p + 4); p += 8; }
+        if (fl & 0x2) p += 4;
+        if (fl & 0x8) { dDur = dv.getUint32(p); p += 4; }
+        if (fl & 0x10) { dSize = dv.getUint32(p); p += 4; }
+        if (fl & 0x20) { dFlags = dv.getUint32(p); p += 4; }
+        var tfdt = child(dv, ta, tb, "tfdt"), dts = 0;
+        if (tfdt) dts = u8[tfdt.a] === 1 ? dv.getUint32(tfdt.a + 4) * 4294967296 + dv.getUint32(tfdt.a + 8) : dv.getUint32(tfdt.a + 4);
+        var pos = base;
+        boxes(dv, ta, tb, function (t3, ra) {
+          if (t3 !== "trun") return;
+          var v = u8[ra], rf = dv.getUint32(ra) & 0xffffff, n = dv.getUint32(ra + 4), q = ra + 8, first = null;
+          if (rf & 0x1) { pos = base + dv.getInt32(q); q += 4; }
+          if (rf & 0x4) { first = dv.getUint32(q); q += 4; }
+          for (var i = 0; i < n; i++) {
+            var dur = dDur, size = dSize, sf = i === 0 && first != null ? first : dFlags, cto = 0;
+            if (rf & 0x100) { dur = dv.getUint32(q); q += 4; }
+            if (rf & 0x200) { size = dv.getUint32(q); q += 4; }
+            if (rf & 0x400) { sf = dv.getUint32(q); q += 4; }
+            if (rf & 0x800) { cto = v ? dv.getInt32(q) : dv.getUint32(q); q += 4; }
+            if (pos + size > buf.byteLength) return;
+            out.push({data: u8.subarray(pos, pos + size), key: !((sf >> 16) & 1) && ((sf >> 24) & 3) !== 1,
+                      dts: dts / ti.scale, pts: (dts + cto - ti.shift) / ti.scale, dur: dur / ti.scale});
+            pos += size; dts += dur;
+          }
+        });
+      });
+    });
+    return out;
+  };
+
+  /* decode the samples covering t0..t1 and measure a frame every 1/fps seconds (the frame on screen
+     at that moment, as a player would show it). No <video>, no timers: works in a hidden window. */
+  AC.decodeFrames = async function (ti, bufs, t0, t1, fps, W) {
+    var S = [];
+    bufs.forEach(function (b) { if (b) AC.mp4Samples(ti, b, S); });
+    if (!S.length) return [];
+    var lo = Infinity, hi = -Infinity;
+    S.forEach(function (s) { lo = Math.min(lo, s.pts); hi = Math.max(hi, s.pts + s.dur); });
+    var targets = [];
+    for (var t = Math.max(t0, lo) + 0.001; t < Math.min(t1, hi - 0.01); t += 1 / fps) targets.push(t);
+    if (!targets.length) return [];
+    // start at the last key frame at or before the first moment wanted; stop a little past the last
+    var from = 0;
+    for (var i = 0; i < S.length; i++) if (S[i].key && S[i].pts <= targets[0]) from = i;
+    while (from < S.length && !S[from].key) from++;
+    var stopDts = targets[targets.length - 1] + 1;
+
+    var H = Math.round(W * 9 / 16), c = document.createElement("canvas"); c.width = W; c.height = H;
+    var g = c.getContext("2d", {willReadFrequently: true});
+    var out = [], k = 0, prev = null, prevF = null, failed = null;
+    var measure = function () {
+      if (!prevF) { g.drawImage(prev.frame, 0, 0, W, H); prevF = feats(g.getImageData(0, 0, W, H).data, W, H); }
+      return prevF;
+    };
+    var emitUpTo = function (limit) {   // every target before `limit` shows the previous frame
+      while (k < targets.length && targets[k] < limit) {
+        if (prev && targets[k] >= prev.t - 0.0005) { var f = measure(); out.push({Y: f.Y, W: f.W, H: f.H, rgb: f.rgb, dark: f.dark, bright: f.bright, red: f.red, green: f.green, t: targets[k]}); }
+        k++;
+      }
+    };
+    var dec = new VideoDecoder({
+      output: function (frame) {
+        var ft = frame.timestamp / 1e6;
+        if (k >= targets.length || ft <= (prev ? prev.t : -Infinity)) { frame.close(); return; }
+        emitUpTo(ft);
+        if (prev) prev.frame.close();
+        prev = {frame: frame, t: ft, end: frame.duration ? ft + frame.duration / 1e6 : hi}; prevF = null;
+      },
+      error: function (e) { failed = e || new Error("decoder error"); if (wake) wake(); }
+    });
+    var wake = null;
+    dec.configure({codec: ti.codec, description: ti.desc, codedWidth: ti.width, codedHeight: ti.height});
+    try {
+      for (var j = from; j < S.length && S[j].dts <= stopDts && !failed; j++) {
+        var s = S[j];
+        dec.decode(new EncodedVideoChunk({type: s.key ? "key" : "delta", timestamp: Math.round(s.pts * 1e6),
+                                          duration: Math.round(s.dur * 1e6), data: s.data}));
+        // don't run far ahead of the decoder (keeps memory flat on long stretches)
+        if (dec.decodeQueueSize > 24) await new Promise(function (r) { wake = r; dec.addEventListener("dequeue", r, {once: true}); });
+      }
+      if (!failed) await dec.flush();
+    } finally {
+      if (prev) { if (!failed) emitUpTo(Math.min(prev.end, hi) + 0.0005); prev.frame.close(); }
+      try { dec.close(); } catch (e) { /* already closed */ }
+    }
+    if (failed) throw failed;
+    return out;
+  };
+
   /* ---------------- HD frames: Frame.io's 1080p stream, a few seconds at a time ---------------- */
   AC.HD = function (base) {
     this.base = base; this.segDur = 2; this.init = null; this.codec = null;
   };
-  AC.HD.prototype.frames = async function (t0, t1, fps, W) {
+  AC.HD.prototype.ensureInit = async function () {
     var self = this;
-    if (!self.init) {
-      self.init = await (await AC.get(self.base + "init.mp4")).arrayBuffer();
-      var u8 = new Uint8Array(self.init); self.codec = "avc1.640028";
-      for (var i = 0; i < u8.length - 8; i++) {
-        if (u8[i] === 0x61 && u8[i + 1] === 0x76 && u8[i + 2] === 0x63 && u8[i + 3] === 0x43) {
-          self.codec = "avc1." + [u8[i + 5], u8[i + 6], u8[i + 7]].map(function (x) { return x.toString(16).padStart(2, "0"); }).join("");
-          break;
-        }
+    if (self.init) return;
+    var init = await (await AC.get(self.base + "init.mp4")).arrayBuffer();
+    var u8 = new Uint8Array(init); self.codec = "avc1.640028";
+    for (var i = 0; i < u8.length - 8; i++) {
+      if (u8[i] === 0x61 && u8[i + 1] === 0x76 && u8[i + 2] === 0x63 && u8[i + 3] === 0x43) {
+        self.codec = "avc1." + [u8[i + 5], u8[i + 6], u8[i + 7]].map(function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+        break;
       }
     }
+    try { self.wc = AC.mp4Init(init); } catch (e) { self.wc = null; }
+    self.init = init;
+  };
+
+  /* Frames from t0 to t1 at `fps`, each W wide. Decoded with WebCodecs when the browser has it:
+     that runs at full speed in a hidden or covered window, where a <video> element seeks and
+     plays slowly or not at all (that is what made checks running behind other windows stall). */
+  AC.HD.prototype.frames = async function (t0, t1, fps, W, pending) {
+    var self = this;
+    await self.ensureInit();
+    if (self.wc && !self.noWC && typeof VideoDecoder !== "undefined") {
+      try {
+        var bufs = await (pending || self.fetchSegs(t0, t1));
+        return await AC.decodeFrames(self.wc, bufs, Math.max(0, t0), t1, fps, W || 320);
+      } catch (e) {
+        self.noWC = true;   // this stream won't decode that way: use the player from now on
+        if (window.console) console.warn("AutoCheck: WebCodecs failed, using the player instead:", e);
+      }
+    }
+    return self.framesMSE(t0, t1, fps, W);
+  };
+
+  AC.HD.prototype.framesMSE = async function (t0, t1, fps, W) {
+    var self = this;
+    await self.ensureInit();
     t0 = Math.max(0, t0);
     var s0 = Math.floor(t0 / self.segDur) + 1, s1 = Math.floor(Math.max(t0, t1 - 0.001) / self.segDur) + 1;
     var bufs = [];
@@ -284,7 +468,7 @@
   /* fetch the segments of a stretch of a stream (6 at a time) */
   AC.HD.prototype.fetchSegs = async function (t0, t1) {
     var self = this;
-    if (!self.init) await self.frames(0, 0.01, 1, 16);
+    await self.ensureInit();
     var s0 = Math.floor(Math.max(0, t0) / self.segDur) + 1, s1 = Math.floor(Math.max(t0, t1 - 0.001) / self.segDur) + 1, bufs = [];
     for (var s = s0; s <= s1; s += 6) {
       var ps = [];
@@ -371,8 +555,14 @@
       var t1 = Math.min(dur, t0 + CH), got = 0, mine = pending;
       pending = t1 < dur ? hd.fetchSegs(t1, Math.min(dur, t1 + CH)) : null;   // fetch the next stretch while this one plays
       var put = function (f) { var i = Math.round(f.t / step); if (i < n && !has[i]) { qpFrom(f, out, i); has[i] = 1; got++; } };
-      if (!document.hidden) await hd.sample(t0, t1, step, 32, put, mine);
-      if (got < (t1 - t0) / step * 0.6) (await hd.frames(t0, t1, 1 / step, 32)).forEach(put);   // tab in the background: seek instead
+      await hd.ensureInit();
+      if (hd.wc && !hd.noWC && typeof VideoDecoder !== "undefined") {
+        // decode straight from the stream: same speed whether this window is in front or not
+        (await hd.frames(t0, t1, 1 / step, 32, mine)).forEach(put);
+      } else {
+        if (!document.hidden) await hd.sample(t0, t1, step, 32, put, mine);
+        if (got < (t1 - t0) / step * 0.6) (await hd.framesMSE(t0, t1, 1 / step, 32)).forEach(put);   // tab in the background: seek instead
+      }
       if (onProgress) onProgress(t0 / dur);
     }
     var fill = function (i, j) {

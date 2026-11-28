@@ -10,10 +10,20 @@
   var AC = window.AC, jobId = location.hash.slice(1), job = null, portalTab = null, myWindow;
   var started = Date.now(), logEl = document.getElementById("log"), barEl = document.getElementById("bar");
 
+  var lastText = "", lastTold = 0;
   function log(text, frac) {
     var li = document.createElement("li"); li.textContent = text; logEl.appendChild(li);
     if (frac != null) barEl.style.width = Math.round(frac * 100) + "%";
+    lastText = text; lastTold = Date.now();
     tell({type: "autocheck:progress", id: jobId, text: text, frac: frac});
+  }
+  // progress inside a long step: move the bar, and tell Studio Ops now and then. Without this a long
+  // film's quick pass said nothing for over 30 minutes, and Studio Ops re-queued the check as stalled.
+  function bar(frac) {
+    barEl.style.width = Math.round(frac * 100) + "%";
+    if (Date.now() - lastTold < 30000) return;
+    lastTold = Date.now();
+    tell({type: "autocheck:progress", id: jobId, text: lastText.replace(/…$/, "") + "… " + Math.round(frac * 100) + "%", frac: frac});
   }
   function tell(msg) {
     msg.source = "redwed-helper";
@@ -121,14 +131,14 @@
     // ---- 2. quick pass + audio
     var Q2, A2, Q1, A1;
     log("Quick pass on " + N + " (whole film)…", 0.08);
-    Q2 = await AC.quickPassHLS(I2.vBase, I2.duration, 0.5, function (f) { barEl.style.width = Math.round((0.08 + f * 0.17) * 100) + "%"; });
+    Q2 = await AC.quickPassHLS(I2.vBase, I2.duration, 0.5, function (f) { bar(0.08 + f * 0.17); });
     log("Listening to " + N + "'s audio…", 0.26);
-    A2 = await AC.audioPass(I2.aBase);
+    A2 = await AC.audioPass(I2.aBase, function (f) { bar(0.26 + f * 0.06); });
     if (I1) {
       log("Quick pass on " + P + "…", 0.32);
-      Q1 = await AC.quickPassHLS(I1.vBase, I1.duration, 0.5, function (f) { barEl.style.width = Math.round((0.32 + f * 0.17) * 100) + "%"; });
+      Q1 = await AC.quickPassHLS(I1.vBase, I1.duration, 0.5, function (f) { bar(0.32 + f * 0.17); });
       log("Listening to " + P + "'s audio…", 0.5);
-      A1 = await AC.audioPass(I1.aBase);
+      A1 = await AC.audioPass(I1.aBase, function (f) { bar(0.5 + f * 0.05); });
     }
     var HD2 = new AC.HD(I2.vBase), HD1 = I1 ? new AC.HD(I1.vBase) : null;
 
@@ -261,7 +271,7 @@
     log("HD pass: " + cuts.length + " cuts…", 0.8);
     for (var cc2 = 0; cc2 < cuts.length; cc2++) {
       var tc2 = cuts[cc2];
-      if (cc2 % 10 === 0) barEl.style.width = Math.round((0.8 + 0.08 * cc2 / Math.max(1, cuts.length)) * 100) + "%";
+      if (cc2 % 10 === 0) bar(0.8 + 0.08 * cc2 / Math.max(1, cuts.length));
       try {
         var fr2 = await HD2.frames(tc2 - 0.6, tc2 + 0.6, fps, 160), lk = AC.cutLook(fr2);
         if (rules.media_offline !== false) {
@@ -288,7 +298,7 @@
       log("HD pass: " + (rules.shake !== false ? "camera shake" + (rules.blur !== false ? " and focus" : "") : "focus") + " in " + shots.length + " shots…", 0.88);
       var sharpness = [];
       for (var si = 0; si < shots.length; si++) {
-        if (si % 10 === 0) barEl.style.width = Math.round((0.88 + 0.06 * si / Math.max(1, shots.length)) * 100) + "%";
+        if (si % 10 === 0) bar(0.88 + 0.06 * si / Math.max(1, shots.length));
         try {
           var sf = await HD2.frames(shots[si] - 0.8, shots[si] + 0.8, 12.5, 320);
           if (rules.shake !== false) {

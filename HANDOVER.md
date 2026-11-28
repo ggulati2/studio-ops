@@ -133,7 +133,7 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
 | QC page assembly | `_autocheck_units` in `ops/views/team.py` |
 | Templates | `team/_autocheck.html`, `_autocheck_helper.html`, `autocheck_report.html`, `autocheck_rules.html`, `qc_helper.html` |
 | Portal JS | `static/autocheck.js` |
-| Extension | `qc_helper/`: `manifest.json` (version **1.3.2**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
+| Extension | `qc_helper/`: `manifest.json` (version **1.3.3**), `background.js`, `bridge.js`, `runner.js`, `analyse.js` (measuring), `checks.js` (the hygiene checks, pure functions), `fio.js` |
 | Learning | `ops/learning.py` (judging QC's reaction, fitting limits), models `AutoCheckTuning` / `AutoCheckLesson`, page `team/autocheck_learnt.html` |
 | JS tests | `ops/tests/js/test_checks.js` (node; the Django suite runs it when node is installed) |
 
@@ -152,9 +152,10 @@ It then posts **public** comments on the new version starting with `[Hygiene]` (
   - Renditions: `h264_1080_best`, `h264_360`, …; audio is `aac_cha2`.
   - All renditions share one token path.
   - URLs only appear in `performance` entries after pressing play (`fioPrepare`).
-  - The 180p proxy is often not loaded, so the quick pass plays the **360p** stream at 16× (`AC.quickPassHLS`).
+  - The 180p proxy is often not loaded, so the quick pass reads the **360p** stream (`AC.quickPassHLS`).
   - The stream server sometimes stalls on a segment. `AC.get` adds a time limit and retries.
-- **Reading frames:** MSE + canvas works and isn't tainted.
+- **Reading frames:** since 1.3.3 the helper parses the fMP4 itself (`AC.mp4Init` / `AC.mp4Samples`) and decodes with **WebCodecs** (`AC.decodeFrames`). This runs at full speed in a hidden or covered window. Checks that start by themselves run in a window behind the editor's work, and macOS Chrome marks a covered window hidden. There, the old `<video>` path (MSE + seeking, 16× playback) slowed to a crawl and never finished a full film. That path is kept as `framesMSE` / `sample`, used only if WebCodecs fails on a stream. Canvas reads of decoded frames aren't tainted.
+- **Progress:** the runner tells Studio Ops its progress at least every 30 s during long steps (`bar()` in `runner.js`). Before 1.3.3 a long film's quick pass was silent past `STALE` (30 min), so the portal re-queued a check that was still running.
 - **Posting a comment:**
   1. Seek, click the timecode, press Escape, focus the composer.
   2. Type through `InputEvent('beforeinput', {inputType: 'insertText'})`. `execCommand` doesn't update the editor.
